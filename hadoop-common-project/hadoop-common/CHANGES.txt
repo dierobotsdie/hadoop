@@ -13,6 +13,12 @@ Trunk (Unreleased)
 
     HADOOP-10950. rework heap management vars (John Smith via aw)
 
+    HADOOP-6857. FsShell should report raw disk usage including replication
+    factor. (Byron Wong via shv)
+
+    HADOOP-11657. Align the output of `hadoop fs -du` to be more Unix-like.
+    (aajisaka)
+
   NEW FEATURES
 
     HADOOP-6590. Add a username check for hadoop sub-commands (John Smith via aw)
@@ -406,6 +412,8 @@ Trunk (Unreleased)
     HADOOP-10774. Update KerberosTestUtils for hadoop-auth tests when using
     IBM Java (sangamesh via aw)
 
+    HADOOP-11602. Fix toUpperCase/toLowerCase to use Locale.ENGLISH. (ozawa)
+
   OPTIMIZATIONS
 
     HADOOP-7761. Improve the performance of raw comparisons. (todd)
@@ -459,9 +467,6 @@ Release 2.7.0 - UNRELEASED
     (Yongjun Zhang via wang)
 
     HADOOP-10748. HttpServer2 should not load JspServlet. (wheat9)
-
-    HADOOP-6857. FsShell should report raw disk usage including replication
-    factor. (Byron Wong via shv)
 
     HADOOP-10847. Remove the usage of sun.security.x509.* in testing code.
     (Pascal Oliva via wheat9)
@@ -639,6 +644,9 @@ Release 2.7.0 - UNRELEASED
     HADOOP-10976. moving the source code of hadoop-tools docs to the
     directory under hadoop-tools (Masatake Iwasaki via aw)
 
+    HADOOP-11658. Externalize io.compression.codecs property.
+    (Kai Zheng via aajisaka)
+
   OPTIMIZATIONS
 
     HADOOP-11323. WritableComparator#compare keeps reference to byte array.
@@ -658,6 +666,8 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11620. Add support for load balancing across a group of KMS for HA.
     (Arun Suresh via wang)
+
+    HADOOP-11183. Memory-based S3AOutputstream. (Thomas Demoor via stevel)
 
   BUG FIXES
 
@@ -1021,6 +1031,12 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11634. Description of webhdfs' principal/keytab should switch places
     each other. (Brahma Reddy Battula via ozawa)
+
+    HADOOP-11615. Update ServiceLevelAuth.md for YARN.
+    (Brahma Reddy Battula via aajisaka)
+
+    HADOOP-11605. FilterFileSystem#create with ChecksumOpt should propagate it
+    to wrapped FS. (gera)
 
 Release 2.6.1 - UNRELEASED
 

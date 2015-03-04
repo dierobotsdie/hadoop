@@ -303,7 +303,7 @@ public class MRApps extends Apps {
               remoteFS.getWorkingDirectory()));
           String name = (null == u.getFragment())
               ? p.getName() : u.getFragment();
-          if (!name.toLowerCase().endsWith(".jar")) {
+          if (!StringUtils.toLowerCase(name).endsWith(".jar")) {
             linkLookup.put(p, name);
           }
         }
@@ -317,7 +317,7 @@ public class MRApps extends Apps {
         if (name == null) {
           name = p.getName();
         }
-        if(!name.toLowerCase().endsWith(".jar")) {
+        if(!StringUtils.toLowerCase(name).endsWith(".jar")) {
           MRApps.addToEnvironment(
               environment,
               classpathEnvVar,
@@ -345,7 +345,7 @@ public class MRApps extends Apps {
    * {@link MRJobConfig#MAPREDUCE_JOB_CLASSLOADER} is set to true, and
    * the APP_CLASSPATH environment variable is set.
    * @param conf
-   * @returns the created job classloader, or null if the job classloader is not
+   * @return the created job classloader, or null if the job classloader is not
    * enabled or the APP_CLASSPATH environment variable is not set
    * @throws IOException
    */

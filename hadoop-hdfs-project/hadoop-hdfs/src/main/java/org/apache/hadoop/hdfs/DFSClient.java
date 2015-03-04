@@ -174,6 +174,7 @@ import org.apache.hadoop.hdfs.protocol.SnapshotAccessControlException;
 import org.apache.hadoop.hdfs.protocol.SnapshotDiffReport;
 import org.apache.hadoop.hdfs.protocol.SnapshottableDirectoryStatus;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
+import org.apache.hadoop.hdfs.protocol.datatransfer.DataTransferProtoUtil;
 import org.apache.hadoop.hdfs.protocol.datatransfer.IOStreamPair;
 import org.apache.hadoop.hdfs.protocol.datatransfer.Op;
 import org.apache.hadoop.hdfs.protocol.datatransfer.ReplaceDatanodeOnFailure;
@@ -2219,6 +2220,9 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
 
     // get block checksum for each block
     long remaining = length;
+    if (src.contains(HdfsConstants.SEPARATOR_DOT_SNAPSHOT_DIR_SEPARATOR)) {
+      remaining = Math.min(length, blockLocations.getFileLength());
+    }
     for(int i = 0; i < locatedblocks.size() && remaining > 0; i++) {
       if (refetchBlocks) {  // refetch to get fresh tokens
         blockLocations = callGetBlockLocations(namenode, src, 0, length);
@@ -2260,15 +2264,9 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
           final BlockOpResponseProto reply =
             BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
 
-          if (reply.getStatus() != Status.SUCCESS) {
-            if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN) {
-              throw new InvalidBlockTokenException();
-            } else {
-              throw new IOException("Bad response " + reply + " for block "
-                  + block + " from datanode " + datanodes[j]);
-            }
-          }
-          
+          String logInfo = "for block " + block + " from datanode " + datanodes[j];
+          DataTransferProtoUtil.checkBlockOpStatus(reply, logInfo);
+
           OpBlockChecksumResponseProto checksumData =
             reply.getChecksumResponse();
 
@@ -2425,16 +2423,9 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
           0, 1, true, CachingStrategy.newDefaultStrategy());
       final BlockOpResponseProto reply =
           BlockOpResponseProto.parseFrom(PBHelper.vintPrefixed(in));
-      
-      if (reply.getStatus() != Status.SUCCESS) {
-        if (reply.getStatus() == Status.ERROR_ACCESS_TOKEN) {
-          throw new InvalidBlockTokenException();
-        } else {
-          throw new IOException("Bad response " + reply + " trying to read "
-              + lb.getBlock() + " from datanode " + dn);
-        }
-      }
-      
+      String logInfo = "trying to read " + lb.getBlock() + " from datanode " + dn;
+      DataTransferProtoUtil.checkBlockOpStatus(reply, logInfo);
+
       return PBHelper.convert(reply.getReadOpChecksumInfo().getChecksum().getType());
     } finally {
       IOUtils.cleanup(null, pair.in, pair.out);
