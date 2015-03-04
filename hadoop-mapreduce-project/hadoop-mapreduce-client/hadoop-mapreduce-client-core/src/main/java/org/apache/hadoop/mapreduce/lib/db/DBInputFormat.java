@@ -45,6 +45,8 @@ import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.apache.hadoop.mapreduce.RecordReader;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.util.StringUtils;
+
 /**
  * A InputFormat that reads input data from an SQL table.
  * <p>
@@ -162,7 +164,8 @@ public class DBInputFormat<T extends DBWritable>
       this.connection = createConnection();
 
       DatabaseMetaData dbMeta = connection.getMetaData();
-      this.dbProductName = dbMeta.getDatabaseProductName().toUpperCase();
+      this.dbProductName =
+          StringUtils.toUpperCase(dbMeta.getDatabaseProductName());
     }
     catch (Exception ex) {
       throw new RuntimeException(ex);
@@ -316,7 +319,7 @@ public class DBInputFormat<T extends DBWritable>
    * Java object holding tuple fields.
    * @param tableName The table to read data from
    * @param conditions The condition which to select data with, 
-   * eg. '(updated > 20070101 AND length > 0)'
+   * eg. '(updated &gt; 20070101 AND length &gt; 0)'
    * @param orderBy the fieldNames in the orderBy clause.
    * @param fieldNames The field names in the table
    * @see #setInput(Job, Class, String, String)

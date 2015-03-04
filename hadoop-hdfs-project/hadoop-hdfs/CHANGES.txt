@@ -14,6 +14,10 @@ Trunk (Unreleased)
 
     HDFS-2538. option to disable fsck dots (Mohammad Kamrul Islam via aw)
 
+    HDFS-7302. Remove "downgrade" from "namenode -rollingUpgrade" startup
+    option since it may incorrectly finalize an ongoing rolling upgrade.
+    (Kai Sasaki via szetszwo)
+
   NEW FEATURES
 
     HDFS-3125. Add JournalService to enable Journal Daemon. (suresh)
@@ -694,6 +698,14 @@ Release 2.7.0 - UNRELEASED
     HDFS-5853. Add "hadoop.user.group.metrics.percentiles.intervals" to
     hdfs-default.xml. (aajisaka)
 
+    HDFS-7439. Add BlockOpResponseProto's message to the exception messages.
+    (Takanobu Asanuma via szetszwo)
+
+    HDFS-7789. DFSck should resolve the path to support cross-FS symlinks.
+    (gera)
+
+    HDFS-7535. Utilize Snapshot diff report for distcp. (jing9)
+
   OPTIMIZATIONS
 
     HDFS-7454. Reduce memory footprint for AclEntries in NameNode.
@@ -1057,6 +1069,29 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-6753. Initialize checkDisk when DirectoryScanner not able to get
     files list for scanning (J.Andreina via vinayakumarb)
+
+    HDFS-7785. Improve diagnostics information for HttpPutFailedException.
+    (Chengbing Liu via wheat9)
+
+    HDFS-7871. NameNodeEditLogRoller can keep printing "Swallowing exception"
+    message. (jing9)
+
+    HDFS-7757. Misleading error messages in FSImage.java. (Brahma Reddy Battula
+    via Arpit Agarwal)
+
+    HDFS-6565. Use jackson instead jetty json in hdfs-client.
+    (Akira Ajisaka via wheat9)
+
+    HDFS-7682. {{DistributedFileSystem#getFileChecksum}} of a snapshotted file
+    includes non-snapshotted content. (Charles Lamb via atm)
+
+    HDFS-7869. Inconsistency in the return information while performing rolling
+    upgrade ( J.Andreina via vinayakumarb )
+
+    HDFS-7879. hdfs.dll does not export functions of the public libhdfs API.
+    (Chris Nauroth via wheat9)
+
+    HDFS-7434. DatanodeID hashCode should not be mutable. (daryn via kihwal)
 
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 

@@ -181,6 +181,9 @@ Trunk (Unreleased)
     MAPREDUCE-6234. TestHighRamJob fails due to the change in MAPREDUCE-5785. 
     (Masatake Iwasaki via kasha)
 
+    MAPREDUCE-5657. Fix Javadoc errors caused by incorrect or illegal tags in doc
+    comments. (Akira AJISAKA via ozawa)
+
   BREAKDOWN OF MAPREDUCE-2841 (NATIVE TASK) SUBTASKS
 
     MAPREDUCE-5985. native-task: Fix build on macosx. Contributed by
@@ -255,6 +258,9 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-6228. Add truncate operation to SLive. (Plamen Jeliazkov via shv)
 
+    MAPREDUCE-5583. Ability to limit running map and reduce tasks. 
+    (Jason Lowe via junping_du)
+
   IMPROVEMENTS
 
     MAPREDUCE-6149. Document override log4j.properties in MR job.
@@ -313,6 +319,12 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-5612. Add javadoc for TaskCompletionEvent.Status.
     (Chris Palmer via aajisaka)
+
+    MAPREDUCE-6248. Exposed the internal MapReduce job's information as a public
+    API in DistCp. (Jing Zhao via vinodkv)
+
+    MAPREDUCE-6267. Refactor JobSubmitter#copyAndConfigureFiles into it's own 
+    class. (Chris Trezzo via kasha)
 
   OPTIMIZATIONS
 
@@ -398,6 +410,9 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-6223. TestJobConf#testNegativeValueForTaskVmem failures. 
     (Varun Saxena via kasha)
+
+    MAPREDUCE-6268. Fix typo in Task Attempt API's URL. (Ryu Kobayashi
+    via ozawa)
 
 Release 2.6.1 - UNRELEASED
 
