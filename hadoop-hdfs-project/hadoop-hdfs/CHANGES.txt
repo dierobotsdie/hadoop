@@ -706,6 +706,15 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7535. Utilize Snapshot diff report for distcp. (jing9)
 
+    HDFS-1522. Combine two BLOCK_FILE_PREFIX constants into one.
+    (Dongming Liang via shv)
+
+    HDFS-7746. Add a test randomly mixing append, truncate and snapshot
+    operations. (szetszwo)
+
+    HADOOP-11648. Set DomainSocketWatcher thread name explicitly.
+    (Liang Xie via ozawa)
+
   OPTIMIZATIONS
 
     HDFS-7454. Reduce memory footprint for AclEntries in NameNode.
