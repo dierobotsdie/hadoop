@@ -11,6 +11,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+import datetime
 import re
 import sys
 from optparse import OptionParser
@@ -78,6 +79,8 @@ class Jira:
     self.fields = data['fields']
     self.parent = parent
     self.notes = None
+    self.incompat = None
+    self.reviewed = None
 
   def getId(self):
     return mstr(self.key)
@@ -92,7 +95,21 @@ class Jira:
         self.notes=mstr(self.fields[field])
       else:
         self.notes=self.getDescription()
-    return self.notes
+    return self.notes     
+    
+  def getIncompatibleChange(self):
+    if (self.incompat == None):
+      field = self.parent.fieldIdMap['Hadoop Flags']
+      self.reviewed=False
+      self.incompat=False
+      if (self.fields.has_key(field)):
+        if self.fields[field]:
+          for hf in self.fields[field]:
+            if hf['value'] == "Incompatible change":
+              self.incompat=True
+            if hf['value'] == "Reviewed":
+              self.reviewed=True
+    return self.incompat
 
   def getPriority(self):
     ret = ""
@@ -134,7 +151,19 @@ class Jira:
     if(mid != None):
       ret = mid['key']
     return mstr(ret)
-
+    
+  def __cmp__(self,other):
+    selfsplit=self.getId().split('-')
+    othersplit=other.getId().split('-')
+    v1=cmp(selfsplit[0],othersplit[0])
+    if (v1!=0):
+      return v1
+    else:
+      if selfsplit[1] < othersplit[1]:
+        return True
+      elif selfsplit[1] > othersplit[1]:
+        return False
+    return False
 
 
 class JiraIter:
@@ -157,6 +186,7 @@ class JiraIter:
     while (at < end):
       params = urllib.urlencode({'jql': "project in (HADOOP,HDFS,MAPREDUCE,YARN) and fixVersion in ('"+"' , '".join(versions)+"') and resolution = Fixed", 'startAt':at, 'maxResults':count})
       resp = urllib.urlopen("https://issues.apache.org/jira/rest/api/2/search?%s"%params)
+      print "Fetching data"
       data = json.loads(resp.read())
       if (data.has_key('errorMessages')):
         raise Exception(data['errorMessages'])
@@ -199,20 +229,28 @@ class Outputs:
     self.base.write(str)
     if (self.others.has_key(key)):
       self.others[key].write(str)
-  
+      
+  def writeList(self, mylist):
+    for jira in sorted(mylist):
+      line = '| [%s](https://issues.apache.org/jira/browse/%s) | %s |  %s | %s | %s | %s |\n' \
+        % (clean(jira.getId()), clean(jira.getId()), 
+           clean(jira.getSummary()),
+           clean(jira.getPriority()),
+           formatComponents(jira.getComponents()),
+           clean(jira.getReporter()),
+           clean(jira.getAssignee()))
+      self.writeKeyRaw(jira.getProject(), line)
+ 
   def close(self):
     self.base.close()
     for fd in self.others.values():
       fd.close()
 
 def main():
-  parser = OptionParser(usage="usage: %prog --version VERSION [--previousVer VERSION]")
+  parser = OptionParser(usage="usage: %prog --version x.x.x")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string", 
-             help="versions in JIRA to include in releasenotes", metavar="VERSION")
-  parser.add_option("--previousVer", dest="previousVer",
-             action="store", type="string", 
-             help="previous version to include in releasenotes", metavar="VERSION")
+             help="versions in JIRA to include in changes", metavar="VERSION")
 
   (options, args) = parser.parse_args()
 
@@ -229,44 +267,74 @@ def main():
   versions.sort();
 
   maxVersion = str(versions[-1])
-  if(options.previousVer == None):  
-    options.previousVer = str(versions[0].decBugFix())
-    print >> sys.stderr, "WARNING: no previousVersion given, guessing it is "+options.previousVer
 
-  list = JiraIter(options.versions)
-  version = maxVersion
-  outputs = Outputs("releasenotes.%(ver)s.html", 
-    "releasenotes.%(key)s.%(ver)s.html", 
-    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer})
+  jlist = JiraIter(options.versions)
+  today=datetime.date.today()
+  outputs = Outputs("CHANGES.%(ver)s.md", 
+    "CHANGES.%(key)s.%(ver)s.md", 
+    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
 
-  head = '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">\n' \
-    '<title>Hadoop %(key)s %(ver)s Release Notes</title>\n' \
-    '<STYLE type="text/css">\n' \
-    '	H1 {font-family: sans-serif}\n' \
-    '	H2 {font-family: sans-serif; margin-left: 7mm}\n' \
-    '	TABLE {margin-left: 7mm}\n' \
-    '</STYLE>\n' \
-    '</head>\n' \
-    '<body>\n' \
-    '<h1>Hadoop %(key)s %(ver)s Release Notes</h1>\n' \
-    'These release notes include new developer and user-facing incompatibilities, features, and major improvements. \n' \
-    '<a name="changes"/>\n' \
-    '<h2>Changes since Hadoop %(previousVer)s</h2>\n' \
-    '<ul>\n'
+  head = '# Hadoop Changelog\n\n' \
+    '## Release %(ver)s - %(date)s\n'\
+    '\n'
 
   outputs.writeAll(head)
 
-  for jira in list:
-    line = '<li> <a href="https://issues.apache.org/jira/browse/%s">%s</a>.\n' \
-      '     %s %s reported by %s and fixed by %s %s<br>\n' \
-      '     <b>%s</b><br>\n' \
-      '     <blockquote>%s</blockquote></li>\n' \
-      % (quoteHtml(jira.getId()), quoteHtml(jira.getId()), clean(jira.getPriority()), clean(jira.getType()).lower(),
-         quoteHtml(jira.getReporter()), quoteHtml(jira.getAssignee()), formatComponents(jira.getComponents()),
-         quoteHtml(jira.getSummary()), quoteHtml(jira.getReleaseNote()))
-    outputs.writeKeyRaw(jira.getProject(), line)
- 
-  outputs.writeAll("</ul>\n</body></html>\n")
+  incompatlist=[]
+  buglist=[]
+  improvementlist=[]
+  newfeaturelist=[]
+  subtasklist=[]
+  tasklist=[]
+  testlist=[]
+  otherlist=[]
+
+  for jira in jlist:
+    if jira.getIncompatibleChange():
+      incompatlist.append(jira)
+    elif jira.getType() == "Bug":
+      buglist.append(jira)
+    elif jira.getType() == "Improvement":
+      improvementlist.append(jira)
+    elif jira.getType() == "New Feature":
+      newfeaturelist.append(jira)
+    elif jira.getType() == "Sub-task":
+      subtasklist.append(jira)
+    elif jira.getType() == "Task":
+     tasklist.append(jira)  
+    elif jira.getType() == "Test":
+      testlist.append(jira)
+    else:
+       otherlist.append(jira)
+
+  outputs.writeAll("### INCOMPATIBLE CHANGES:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(incompatlist)
+
+  outputs.writeAll("\n\n### NEW FEATURES:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(newfeaturelist)
+
+  outputs.writeAll("\n\n### IMPROVEMENTS:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(improvementlist)
+
+  outputs.writeAll("\n\n### BUG FIXES:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(buglist)
+  
+  outputs.writeAll("\n\n### OTHER:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(otherlist)
+  outputs.writeList(testlist)
+  outputs.writeList(tasklist)
+   
+  outputs.writeAll("\n\n")
   outputs.close()
 
 if __name__ == "__main__":

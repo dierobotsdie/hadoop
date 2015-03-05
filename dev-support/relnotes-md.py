@@ -26,7 +26,7 @@ except ImportError:
 namePattern = re.compile(r' \([0-9]+\)')
 
 def clean(str):
-  return quoteHtml(re.sub(namePattern, "", str))
+  return clean(re.sub(namePattern, "", str))
 
 def formatComponents(str):
   str = re.sub(namePattern, '', str).replace("'", "")
@@ -34,9 +34,10 @@ def formatComponents(str):
     ret = "(" + str + ")"
   else:
     ret = ""
-  return quoteHtml(ret)
+  return clean(ret)
     
-def quoteHtml(str):
+def clean(str):
+  str=str.replace("_","\_")
   return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
 
 def mstr(obj):
@@ -135,7 +136,18 @@ class Jira:
       ret = mid['key']
     return mstr(ret)
 
-
+  def __cmp__(self,other):
+    selfsplit=self.getId().split('-')
+    othersplit=other.getId().split('-')
+    v1=cmp(selfsplit[0],othersplit[0])
+    if (v1!=0):
+      return v1
+    else:
+      if selfsplit[1] < othersplit[1]:
+        return True
+      elif selfsplit[1] > othersplit[1]:
+        return False
+    return False
 
 class JiraIter:
   """An Iterator of JIRAs"""
@@ -206,7 +218,7 @@ class Outputs:
       fd.close()
 
 def main():
-  parser = OptionParser(usage="usage: %prog --version VERSION [--previousVer VERSION]")
+  parser = OptionParser(usage="usage: %prog [options] [USER-ignored] [PASSWORD-ignored] [VERSION]")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string", 
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
@@ -235,38 +247,28 @@ def main():
 
   list = JiraIter(options.versions)
   version = maxVersion
-  outputs = Outputs("releasenotes.%(ver)s.html", 
-    "releasenotes.%(key)s.%(ver)s.html", 
+  outputs = Outputs("releasenotes.%(ver)s.md", 
+    "releasenotes.%(key)s.%(ver)s.md", 
     ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer})
 
-  head = '<META http-equiv="Content-Type" content="text/html; charset=UTF-8">\n' \
-    '<title>Hadoop %(key)s %(ver)s Release Notes</title>\n' \
-    '<STYLE type="text/css">\n' \
-    '	H1 {font-family: sans-serif}\n' \
-    '	H2 {font-family: sans-serif; margin-left: 7mm}\n' \
-    '	TABLE {margin-left: 7mm}\n' \
-    '</STYLE>\n' \
-    '</head>\n' \
-    '<body>\n' \
-    '<h1>Hadoop %(key)s %(ver)s Release Notes</h1>\n' \
-    'These release notes include new developer and user-facing incompatibilities, features, and major improvements. \n' \
-    '<a name="changes"/>\n' \
-    '<h2>Changes since Hadoop %(previousVer)s</h2>\n' \
-    '<ul>\n'
+  head = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
+    'These release notes include new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
+    '## Changes since Hadoop %(previousVer)s\n\n' \
+  
 
   outputs.writeAll(head)
 
   for jira in list:
-    line = '<li> <a href="https://issues.apache.org/jira/browse/%s">%s</a>.\n' \
-      '     %s %s reported by %s and fixed by %s %s<br>\n' \
-      '     <b>%s</b><br>\n' \
-      '     <blockquote>%s</blockquote></li>\n' \
-      % (quoteHtml(jira.getId()), quoteHtml(jira.getId()), clean(jira.getPriority()), clean(jira.getType()).lower(),
-         quoteHtml(jira.getReporter()), quoteHtml(jira.getAssignee()), formatComponents(jira.getComponents()),
-         quoteHtml(jira.getSummary()), quoteHtml(jira.getReleaseNote()))
-    outputs.writeKeyRaw(jira.getProject(), line)
+    if (len(jira.getReleaseNote())>0):
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
+        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
+           clean(jira.getSummary()))
+      outputs.writeKeyRaw(jira.getProject(), line)
+      line ='\n%s\n\n' % (clean(jira.getReleaseNote()))
+      outputs.writeKeyRaw(jira.getProject(), line)
+      
  
-  outputs.writeAll("</ul>\n</body></html>\n")
+  outputs.writeAll("\n\n")
   outputs.close()
 
 if __name__ == "__main__":
