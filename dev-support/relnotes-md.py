@@ -79,6 +79,8 @@ class Jira:
     self.fields = data['fields']
     self.parent = parent
     self.notes = None
+    self.incompat = None
+    self.reviewed = None
 
   def getId(self):
     return mstr(self.key)
@@ -148,6 +150,20 @@ class Jira:
       elif selfsplit[1] > othersplit[1]:
         return False
     return False
+
+  def getIncompatibleChange(self):
+    if (self.incompat == None):
+      field = self.parent.fieldIdMap['Hadoop Flags']
+      self.reviewed=False
+      self.incompat=False
+      if (self.fields.has_key(field)):
+        if self.fields[field]:
+          for hf in self.fields[field]:
+            if hf['value'] == "Incompatible change":
+              self.incompat=True
+            if hf['value'] == "Reviewed":
+              self.reviewed=True
+    return self.incompat
 
 class JiraIter:
   """An Iterator of JIRAs"""
@@ -259,6 +275,14 @@ def main():
   outputs.writeAll(head)
 
   for jira in list:
+    if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
+        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
+           clean(jira.getSummary()))
+      outputs.writeKeyRaw(jira.getProject(), line)
+      line ='\nNo release note provided for this incompatible change.\n\n'
+      outputs.writeKeyRaw(jira.getProject(), line)
+
     if (len(jira.getReleaseNote())>0):
       line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),

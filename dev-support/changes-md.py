@@ -326,12 +326,16 @@ def main():
   outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
   outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
   outputs.writeList(buglist)
+
+  outputs.writeAll("\n\n### TESTS:\n\n")
+  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  outputs.writeList(testlist)
   
   outputs.writeAll("\n\n### OTHER:\n\n")
   outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
   outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
   outputs.writeList(otherlist)
-  outputs.writeList(testlist)
   outputs.writeList(tasklist)
    
   outputs.writeAll("\n\n")
