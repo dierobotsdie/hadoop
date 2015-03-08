@@ -41,7 +41,6 @@ def clean(str):
   str=str.replace("\r","")
   str=str.rstrip()
   return str
-  #return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
 
 def mstr(obj):
   if (obj == None):
@@ -237,7 +236,7 @@ class Outputs:
       fd.close()
 
 def main():
-  parser = OptionParser(usage="usage: %prog [options] [USER-ignored] [PASSWORD-ignored] [VERSION]")
+  parser = OptionParser(usage="usage: %prog i[--previousVer VERSION] --version VERSION")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string", 
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
@@ -276,7 +275,7 @@ def main():
 
   outputs.writeAll(head)
 
-  for jira in list:
+  for jira in sorted(list):
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
       outputs.writeKeyRaw(jira.getProject(),"---\n\n")
       line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
