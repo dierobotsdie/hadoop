@@ -348,6 +348,8 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7656. Expose truncate API for HDFS httpfs. (yliu)
 
+    HDFS-6488. Support HDFS superuser in NFS gateway. (brandonli)
+
   IMPROVEMENTS
 
     HDFS-7752. Improve description for
@@ -714,6 +716,8 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11648. Set DomainSocketWatcher thread name explicitly.
     (Liang Xie via ozawa)
+
+    HDFS-7855. Separate class Packet from DFSOutputStream. (Li Bo bia jing9)
 
   OPTIMIZATIONS
 
@@ -1101,6 +1105,12 @@ Release 2.7.0 - UNRELEASED
     (Chris Nauroth via wheat9)
 
     HDFS-7434. DatanodeID hashCode should not be mutable. (daryn via kihwal)
+
+    HDFS-7885. Datanode should not trust the generation stamp provided by
+    client. (Tsz Wo Nicholas Sze via jing9)
+
+    HDFS-7818. OffsetParam should return the default value instead of throwing
+    NPE when the value is unspecified. (Eric Payne via wheat9)
 
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 

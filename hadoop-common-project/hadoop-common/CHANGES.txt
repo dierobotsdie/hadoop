@@ -414,6 +414,9 @@ Trunk (Unreleased)
 
     HADOOP-11602. Fix toUpperCase/toLowerCase to use Locale.ENGLISH. (ozawa)
 
+    HADOOP-11653. shellprofiles should require .sh extension
+    (Brahma Reddy Battula via aw)
+
   OPTIMIZATIONS
 
     HADOOP-7761. Improve the performance of raw comparisons. (todd)
@@ -649,6 +652,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11648. Set DomainSocketWatcher thread name explicitly.
     (Liang Xie via ozawa)
+
+    HADOOP-11642. Upgrade azure sdk version from 0.6.0 to 2.0.0.
+    (Shashank Khandelwal and Ivan Mitic via cnauroth)
 
   OPTIMIZATIONS
 
@@ -1043,6 +1049,8 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11674. oneByteBuf in CryptoInputStream and CryptoOutputStream
     should be non static. (Sean Busbey via yliu)
+
+    HADOOP-11670. Regression: s3a auth setup broken. (Adam Budde via stevel)
 
 Release 2.6.1 - UNRELEASED
 

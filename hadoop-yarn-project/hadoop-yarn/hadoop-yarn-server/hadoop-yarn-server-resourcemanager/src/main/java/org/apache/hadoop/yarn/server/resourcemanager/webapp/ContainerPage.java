@@ -15,40 +15,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hdfs.web.resources;
 
-/** Offset parameter. */
-public class OffsetParam extends LongParam {
-  /** Parameter name. */
-  public static final String NAME = "offset";
-  /** Default parameter value. */
-  public static final String DEFAULT = "0";
+package org.apache.hadoop.yarn.server.resourcemanager.webapp;
 
-  private static final Domain DOMAIN = new Domain(NAME);
+import static org.apache.hadoop.yarn.util.StringHelper.join;
 
-  /**
-   * Constructor.
-   * @param value the parameter value.
-   */
-  public OffsetParam(final Long value) {
-    super(DOMAIN, value, 0L, null);
-  }
+import org.apache.hadoop.yarn.server.webapp.ContainerBlock;
+import org.apache.hadoop.yarn.webapp.SubView;
+import org.apache.hadoop.yarn.webapp.YarnWebParams;
 
-  /**
-   * Constructor.
-   * @param str a string representation of the parameter value.
-   */
-  public OffsetParam(final String str) {
-    this(DOMAIN.parse(str));
+
+public class ContainerPage extends RmView {
+
+  @Override
+  protected void preHead(Page.HTML<_> html) {
+    commonPreHead(html);
+
+    String containerId = $(YarnWebParams.CONTAINER_ID);
+    set(TITLE, containerId.isEmpty() ? "Bad request: missing container ID"
+        : join("Container ", $(YarnWebParams.CONTAINER_ID)));
   }
 
   @Override
-  public String getName() {
-    return NAME;
+  protected Class<? extends SubView> content() {
+    return ContainerBlock.class;
   }
 
-  public Long getOffset() {
-    Long offset = getValue();
-    return (offset == null) ? Long.valueOf(0) : offset;
-  }
 }
