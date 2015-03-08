@@ -38,7 +38,10 @@ def formatComponents(str):
     
 def clean(str):
   str=str.replace("_","\_")
-  return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
+  str=str.replace("\r","")
+  str=str.rstrip()
+  return str
+  #return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
 
 def mstr(obj):
   if (obj == None):
@@ -268,14 +271,14 @@ def main():
     ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer})
 
   head = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
-    'These release notes include new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
-    '## Changes since Hadoop %(previousVer)s\n\n' \
-  
+    'These release notes cover  new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
+    '## Changes since Hadoop %(previousVer)s\n\n'
 
   outputs.writeAll(head)
 
   for jira in list:
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
+      outputs.writeKeyRaw(jira.getProject(),"---\n\n")
       line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
            clean(jira.getSummary()))
@@ -284,6 +287,7 @@ def main():
       outputs.writeKeyRaw(jira.getProject(), line)
 
     if (len(jira.getReleaseNote())>0):
+      outputs.writeKeyRaw(jira.getProject(),"---\n\n")
       line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
            clean(jira.getSummary()))

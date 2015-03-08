@@ -186,7 +186,6 @@ class JiraIter:
     while (at < end):
       params = urllib.urlencode({'jql': "project in (HADOOP,HDFS,MAPREDUCE,YARN) and fixVersion in ('"+"' , '".join(versions)+"') and resolution = Fixed", 'startAt':at, 'maxResults':count})
       resp = urllib.urlopen("https://issues.apache.org/jira/rest/api/2/search?%s"%params)
-      print "Fetching data"
       data = json.loads(resp.read())
       if (data.has_key('errorMessages')):
         raise Exception(data['errorMessages'])
