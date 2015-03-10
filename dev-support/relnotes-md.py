@@ -39,6 +39,7 @@ def formatComponents(str):
 def clean(str):
   str=str.replace("_","\_")
   str=str.replace("\r","")
+  str=str.replace("|","\|")
   str=str.rstrip()
   return str
 

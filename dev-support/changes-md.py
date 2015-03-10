@@ -38,6 +38,10 @@ def formatComponents(str):
   return quoteHtml(ret)
     
 def quoteHtml(str):
+  str=str.replace("_","\_")
+  str=str.replace("\r","")
+  str=str.replace("|","\|")
+  str=str.rstrip()
   return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
 
 def mstr(obj):
