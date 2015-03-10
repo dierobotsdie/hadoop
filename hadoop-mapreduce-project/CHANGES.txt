@@ -257,6 +257,8 @@ Release 2.8.0 - UNRELEASED
 
   BUG FIXES
 
+    MAPREDUCE-4742. Fix typo in nnbench#displayUsage. (Liang Xie via ozawa)
+
 Release 2.7.0 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -335,6 +337,9 @@ Release 2.7.0 - UNRELEASED
     MAPREDUCE-6267. Refactor JobSubmitter#copyAndConfigureFiles into it's own 
     class. (Chris Trezzo via kasha)
 
+    MAPREDUCE-6263. Configurable timeout between YARNRunner terminate the 
+    application and forcefully kill. (Eric Payne via junping_du)
+
   OPTIMIZATIONS
 
     MAPREDUCE-6169. MergeQueue should release reference to the current item 
@@ -342,6 +347,9 @@ Release 2.7.0 - UNRELEASED
     (Zhihai Xu via kasha)
 
     MAPREDUCE-6059. Speed up history server startup time (Siqi Li via aw)
+
+    MAPREDUCE-4815. Speed up FileOutputCommitter#commitJob for many output
+    files. (Siqi Li via gera)
 
   BUG FIXES
 
