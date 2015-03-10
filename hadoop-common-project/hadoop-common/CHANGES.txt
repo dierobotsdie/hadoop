@@ -184,6 +184,9 @@ Trunk (Unreleased)
     HADOOP-11593. Convert site documentation from apt to markdown (stragglers)
     (Masatake Iwasaki via aw)
 
+    HADOOP-11673. Skip using JUnit Assume in TestCodec. (Brahma Reddy Battula
+    via cdouglas)
+
   BUG FIXES
 
     HADOOP-11473. test-patch says "-1 overall" even when all checks are +1
@@ -423,6 +426,18 @@ Trunk (Unreleased)
 
     HADOOP-8589. ViewFs tests fail when tests and home dirs are nested (sanjay Radia)
 
+Release 2.8.0 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
 Release 2.7.0 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -655,6 +670,10 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11642. Upgrade azure sdk version from 0.6.0 to 2.0.0.
     (Shashank Khandelwal and Ivan Mitic via cnauroth)
+
+    HADOOP-11638. OpensslSecureRandom.c pthreads_thread_id should support
+    FreeBSD and Solaris in addition to Linux (Kiran Kumar M R via Colin P.
+    McCabe)
 
   OPTIMIZATIONS
 
@@ -1051,6 +1070,12 @@ Release 2.7.0 - UNRELEASED
     should be non static. (Sean Busbey via yliu)
 
     HADOOP-11670. Regression: s3a auth setup broken. (Adam Budde via stevel)
+
+    HADOOP-11686. MiniKDC cannot change ORG_NAME or ORG_DOMAIN.
+    (Duo Zhang via wheat9)
+
+    HADOOP-11692. Improve authentication failure WARN message to avoid user
+    confusion. (Yongjun Zhang)
 
 Release 2.6.1 - UNRELEASED
 
