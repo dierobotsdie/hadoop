@@ -187,6 +187,9 @@ Trunk (Unreleased)
     HADOOP-11673. Skip using JUnit Assume in TestCodec. (Brahma Reddy Battula
     via cdouglas)
 
+    HADOOP-10115. Exclude duplicate jars in hadoop package under different
+    component's lib (Vinayakumar B via aw)
+
   BUG FIXES
 
     HADOOP-11473. test-patch says "-1 overall" even when all checks are +1
@@ -420,6 +423,9 @@ Trunk (Unreleased)
     HADOOP-11653. shellprofiles should require .sh extension
     (Brahma Reddy Battula via aw)
 
+    HADOOP-11668. hadoop-daemons.sh bw compat broke with --slaves change
+    (Vinayakumar B via aw)
+
   OPTIMIZATIONS
 
     HADOOP-7761. Improve the performance of raw comparisons. (todd)
@@ -431,6 +437,9 @@ Release 2.8.0 - UNRELEASED
   INCOMPATIBLE CHANGES
 
   NEW FEATURES
+
+    HADOOP-11226. Add a configuration to set ipc.Client's traffic class with
+    IPTOS_LOWDELAY|IPTOS_RELIABILITY. (Gopal V via ozawa)
 
   IMPROVEMENTS
 
