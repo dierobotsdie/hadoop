@@ -278,16 +278,16 @@ def main():
   for jira in sorted(list):
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
       outputs.writeKeyRaw(jira.getProject(),"---\n\n")
-      line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
            clean(jira.getSummary()))
       outputs.writeKeyRaw(jira.getProject(), line)
-      line ='\nNo release note provided for this incompatible change.\n\n'
+      line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
       outputs.writeKeyRaw(jira.getProject(), line)
 
     if (len(jira.getReleaseNote())>0):
       outputs.writeKeyRaw(jira.getProject(),"---\n\n")
-      line = '* [%s](https://issues.apache.org/jira/browse/%s) | %s | %s\n' \
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
            clean(jira.getSummary()))
       outputs.writeKeyRaw(jira.getProject(), line)
