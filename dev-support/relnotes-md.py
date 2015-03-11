@@ -43,6 +43,12 @@ def clean(str):
   str=str.rstrip()
   return str
 
+def lessclean(str):
+  str=str.replace("_","\_")
+  str=str.replace("\r","")
+  str=str.rstrip()
+  return str
+
 def mstr(obj):
   if (obj == None):
     return ""
@@ -292,7 +298,7 @@ def main():
         % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
            clean(jira.getSummary()))
       outputs.writeKeyRaw(jira.getProject(), line)
-      line ='\n%s\n\n' % (clean(jira.getReleaseNote()))
+      line ='\n%s\n\n' % (lessclean(jira.getReleaseNote()))
       outputs.writeKeyRaw(jira.getProject(), line)
       
  
