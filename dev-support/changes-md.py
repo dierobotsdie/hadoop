@@ -37,9 +37,9 @@ def clean(str):
 def formatComponents(str):
   str = re.sub(namePattern, '', str).replace("'", "")
   if str != "":
-    ret = "(" + str + ")"
+    ret = str
   else:
-    ret = ""
+    ret = "."
   return clean(ret)
     
 def mstr(obj):
@@ -131,7 +131,7 @@ class Jira:
     if (len(self.fields['components'])>0):
       return ", ".join([ comp['name'] for comp in self.fields['components'] ])
     else:
-      return "."
+      return ""
 
   def getSummary(self):
     return self.fields['summary']
