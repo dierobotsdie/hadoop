@@ -131,7 +131,7 @@ class Jira:
     if (len(self.fields['components'])>0):
       return ", ".join([ comp['name'] for comp in self.fields['components'] ])
     else:
-      return "N/A"
+      return "."
 
   def getSummary(self):
     return self.fields['summary']
