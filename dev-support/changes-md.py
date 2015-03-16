@@ -27,7 +27,12 @@ except ImportError:
 namePattern = re.compile(r' \([0-9]+\)')
 
 def clean(str):
-  return quoteHtml(re.sub(namePattern, "", str))
+  str=str.replace("_","\_")
+  str=str.replace("\r","")
+  str=str.replace("|","\|")
+  str=str.rstrip()
+  str=str.encode('utf-8')
+  return str
 
 def formatComponents(str):
   str = re.sub(namePattern, '', str).replace("'", "")
@@ -35,15 +40,8 @@ def formatComponents(str):
     ret = "(" + str + ")"
   else:
     ret = ""
-  return quoteHtml(ret)
+  return clean(ret)
     
-def quoteHtml(str):
-  str=str.replace("_","\_")
-  str=str.replace("\r","")
-  str=str.replace("|","\|")
-  str=str.rstrip()
-  return cgi.escape(str).encode('ascii', 'xmlcharrefreplace')
-
 def mstr(obj):
   if (obj == None):
     return ""

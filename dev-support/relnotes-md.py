@@ -243,7 +243,7 @@ class Outputs:
       fd.close()
 
 def main():
-  parser = OptionParser(usage="usage: %prog i[--previousVer VERSION] --version VERSION")
+  parser = OptionParser(usage="usage: %prog [--previousVer VERSION] --version VERSION")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string", 
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
@@ -277,7 +277,7 @@ def main():
     ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer})
 
   head = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
-    'These release notes cover  new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
+    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
     '## Changes since Hadoop %(previousVer)s\n\n'
 
   outputs.writeAll(head)
