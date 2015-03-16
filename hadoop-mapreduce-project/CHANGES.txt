@@ -253,11 +253,15 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    MAPREDUCE-6105. Inconsistent configuration in property
+    mapreduce.reduce.shuffle.merge.percent. (Ray Chiang via harsh)
+
+    MAPREDUCE-4414. Add main methods to JobConf and YarnConfiguration,
+    for debug purposes. (Plamen Jeliazkov via harsh)
+
   OPTIMIZATIONS
 
   BUG FIXES
-
-    MAPREDUCE-4742. Fix typo in nnbench#displayUsage. (Liang Xie via ozawa)
 
 Release 2.7.0 - UNRELEASED
 
@@ -339,6 +343,9 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-6263. Configurable timeout between YARNRunner terminate the 
     application and forcefully kill. (Eric Payne via junping_du)
+
+    MAPREDUCE-6265. Make ContainerLauncherImpl.INITIAL_POOL_SIZE configurable 
+    to better control to launch/kill containers. (Zhihai Xu via ozawa)
 
   OPTIMIZATIONS
 
@@ -436,6 +443,8 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-5657. Fix Javadoc errors caused by incorrect or illegal tags in doc
     comments. (Akira AJISAKA and Andrew Purtell via ozawa)
+
+    MAPREDUCE-4742. Fix typo in nnbench#displayUsage. (Liang Xie via ozawa)
 
 Release 2.6.1 - UNRELEASED
 
