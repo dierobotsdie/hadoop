@@ -128,7 +128,10 @@ class Jira:
     return mstr(ret)
 
   def getComponents(self):
-    return " , ".join([ comp['name'] for comp in self.fields['components'] ])
+    if (len(self.fields['components'])>0):
+      return ", ".join([ comp['name'] for comp in self.fields['components'] ])
+    else:
+      return "N/A"
 
   def getSummary(self):
     return self.fields['summary']
