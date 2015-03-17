@@ -176,7 +176,7 @@ class Jira:
             if hf['value'] == "Reviewed":
               self.reviewed=True
     return self.incompat
-    
+
 class JiraIter:
   """An Iterator of JIRAs"""
 
@@ -244,7 +244,7 @@ class Outputs:
     self.base.close()
     for fd in self.others.values():
       fd.close()
-      
+
   def writeList(self, mylist):
     for jira in sorted(mylist):
       line = '| [%s](https://issues.apache.org/jira/browse/%s) | %s |  %s | %s | %s | %s |\n' \
@@ -284,7 +284,7 @@ def main():
           options.previousVer = str(versions[0].decBugFix())
           print >> sys.stderr, "WARNING: no previousVersion given, guessing it is "+options.previousVer
 
-  list = JiraIter(options.versions)
+  jlist = JiraIter(options.versions)
   today=datetime.date.today()
   version = maxVersion
   reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
@@ -314,8 +314,8 @@ def main():
   tasklist=[]
   testlist=[]
   otherlist=[]
-  
-  for jira in sorted(list):
+
+  for jira in sorted(jlist):
     if jira.getIncompatibleChange():
       incompatlist.append(jira)
     elif jira.getType() == "Bug":
@@ -332,7 +332,7 @@ def main():
       testlist.append(jira)
     else:
        otherlist.append(jira)
-     
+
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
       reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
       line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
@@ -341,6 +341,7 @@ def main():
       reloutputs.writeKeyRaw(jira.getProject(), line)
       line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
       reloutputs.writeKeyRaw(jira.getProject(), line)
+      print 'WARNING: incompatible change %s lacks release notes.' % (clean(jira.getId()))
 
     if (len(jira.getReleaseNote())>0):
       reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
@@ -353,7 +354,7 @@ def main():
 
   reloutputs.writeAll("\n\n")
   reloutputs.close()
-  
+
   choutputs.writeAll("### INCOMPATIBLE CHANGES:\n\n")
   choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
   choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
