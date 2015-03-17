@@ -321,9 +321,14 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    HDFS-2360. Ugly stacktrace when quota exceeds. (harsh)
+
   OPTIMIZATIONS
 
   BUG FIXES
+
+    HDFS-5356. MiniDFSCluster should close all open FileSystems when shutdown()
+    (Rakesh R via vinayakumarb)
 
 Release 2.7.0 - UNRELEASED
 
@@ -361,6 +366,8 @@ Release 2.7.0 - UNRELEASED
     HDFS-7656. Expose truncate API for HDFS httpfs. (yliu)
 
     HDFS-6488. Support HDFS superuser in NFS gateway. (brandonli)
+
+    HDFS-7838. Expose truncate API for libhdfs. (yliu)
 
   IMPROVEMENTS
 
@@ -748,6 +755,9 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-2605. Remove redundant "Release 0.21.1" section from CHANGES.txt.
     (Allen Wittenauer via shv)
+
+    HDFS-7940. Add tracing to DFSClient#setQuotaByStorageType (Rakesh R via
+    Colin P. McCabe)
 
   OPTIMIZATIONS
 
