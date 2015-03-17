@@ -15,9 +15,7 @@ import datetime
 import re
 import sys
 from optparse import OptionParser
-import httplib
 import urllib
-import cgi
 try:
   import json
 except ImportError:
@@ -27,21 +25,30 @@ except ImportError:
 namePattern = re.compile(r' \([0-9]+\)')
 
 def clean(str):
-  str=str.replace("_","\_")
-  str=str.replace("\r","")
-  str=str.replace("|","\|")
-  str=str.rstrip()
-  str=str.encode('utf-8')
-  return str
+  return clean(re.sub(namePattern, "", str))
 
 def formatComponents(str):
   str = re.sub(namePattern, '', str).replace("'", "")
   if str != "":
     ret = str
   else:
+    # some markdown parsers don't like empty tables
     ret = "."
   return clean(ret)
-    
+
+def lessclean(str):
+  str=str.encode('utf-8')
+  str=str.replace("_","\_")
+  str=str.replace("\r","")
+  str=str.rstrip()
+  return str
+
+def clean(str):
+  str=lessclean(str)
+  str=str.replace("|","\|")
+  str=str.rstrip()
+  return str
+
 def mstr(obj):
   if (obj == None):
     return ""
@@ -97,21 +104,7 @@ class Jira:
         self.notes=mstr(self.fields[field])
       else:
         self.notes=self.getDescription()
-    return self.notes     
-    
-  def getIncompatibleChange(self):
-    if (self.incompat == None):
-      field = self.parent.fieldIdMap['Hadoop Flags']
-      self.reviewed=False
-      self.incompat=False
-      if (self.fields.has_key(field)):
-        if self.fields[field]:
-          for hf in self.fields[field]:
-            if hf['value'] == "Incompatible change":
-              self.incompat=True
-            if hf['value'] == "Reviewed":
-              self.reviewed=True
-    return self.incompat
+    return self.notes
 
   def getPriority(self):
     ret = ""
@@ -156,7 +149,7 @@ class Jira:
     if(mid != None):
       ret = mid['key']
     return mstr(ret)
-    
+
   def __cmp__(self,other):
     selfsplit=self.getId().split('-')
     othersplit=other.getId().split('-')
@@ -170,7 +163,20 @@ class Jira:
         return False
     return False
 
-
+  def getIncompatibleChange(self):
+    if (self.incompat == None):
+      field = self.parent.fieldIdMap['Hadoop Flags']
+      self.reviewed=False
+      self.incompat=False
+      if (self.fields.has_key(field)):
+        if self.fields[field]:
+          for hf in self.fields[field]:
+            if hf['value'] == "Incompatible change":
+              self.incompat=True
+            if hf['value'] == "Reviewed":
+              self.reviewed=True
+    return self.incompat
+    
 class JiraIter:
   """An Iterator of JIRAs"""
 
@@ -233,28 +239,31 @@ class Outputs:
     self.base.write(str)
     if (self.others.has_key(key)):
       self.others[key].write(str)
+
+  def close(self):
+    self.base.close()
+    for fd in self.others.values():
+      fd.close()
       
   def writeList(self, mylist):
     for jira in sorted(mylist):
       line = '| [%s](https://issues.apache.org/jira/browse/%s) | %s |  %s | %s | %s | %s |\n' \
-        % (clean(jira.getId()), clean(jira.getId()), 
+        % (clean(jira.getId()), clean(jira.getId()),
            clean(jira.getSummary()),
            clean(jira.getPriority()),
            formatComponents(jira.getComponents()),
            clean(jira.getReporter()),
            clean(jira.getAssignee()))
       self.writeKeyRaw(jira.getProject(), line)
- 
-  def close(self):
-    self.base.close()
-    for fd in self.others.values():
-      fd.close()
 
 def main():
-  parser = OptionParser(usage="usage: %prog --version x.x.x")
+  parser = OptionParser(usage="usage: %prog [--previousVer VERSION] --versions VERSION [VERSION2 ...]")
   parser.add_option("-v", "--version", dest="versions",
-             action="append", type="string", 
-             help="versions in JIRA to include in changes", metavar="VERSION")
+             action="append", type="string",
+             help="versions in JIRA to include in releasenotes", metavar="VERSION")
+  parser.add_option("--previousVer", dest="previousVer",
+             action="store", type="string",
+             help="previous version to include in releasenotes", metavar="VERSION")
 
   (options, args) = parser.parse_args()
 
@@ -267,22 +276,35 @@ def main():
   if (len(options.versions) <= 0):
     parser.error("At least one version needs to be supplied")
 
-  versions = [ Version(v) for v in options.versions];
+  versions = [ Version(v) for v in options.versions ];
   versions.sort();
 
   maxVersion = str(versions[-1])
+  if(options.previousVer == None):
+          options.previousVer = str(versions[0].decBugFix())
+          print >> sys.stderr, "WARNING: no previousVersion given, guessing it is "+options.previousVer
 
-  jlist = JiraIter(options.versions)
+  list = JiraIter(options.versions)
   today=datetime.date.today()
-  outputs = Outputs("CHANGES.%(ver)s.md", 
-    "CHANGES.%(key)s.%(ver)s.md", 
-    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
+  version = maxVersion
+  reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
+    "RELEASENOTES.%(key)s.%(ver)s.md",
+    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer, "date":today.strftime("%F")})
 
-  head = '# Hadoop Changelog\n\n' \
+  choutputs = Outputs("CHANGES.%(ver)s.md",
+    "CHANGES.%(key)s.%(ver)s.md",
+    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer, "date":today.strftime("%F")})
+
+  relhead = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
+    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
+    '## Changes since Hadoop %(previousVer)s\n\n'
+
+  chhead = '# Hadoop Changelog\n\n' \
     '## Release %(ver)s - %(date)s\n'\
     '\n'
 
-  outputs.writeAll(head)
+  reloutputs.writeAll(relhead)
+  choutputs.writeAll(chhead)
 
   incompatlist=[]
   buglist=[]
@@ -292,8 +314,8 @@ def main():
   tasklist=[]
   testlist=[]
   otherlist=[]
-
-  for jira in jlist:
+  
+  for jira in sorted(list):
     if jira.getIncompatibleChange():
       incompatlist.append(jira)
     elif jira.getType() == "Bug":
@@ -305,46 +327,66 @@ def main():
     elif jira.getType() == "Sub-task":
       subtasklist.append(jira)
     elif jira.getType() == "Task":
-     tasklist.append(jira)  
+     tasklist.append(jira)
     elif jira.getType() == "Test":
       testlist.append(jira)
     else:
        otherlist.append(jira)
+     
+    if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
+      reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
+        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
+           clean(jira.getSummary()))
+      reloutputs.writeKeyRaw(jira.getProject(), line)
+      line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
+      reloutputs.writeKeyRaw(jira.getProject(), line)
 
-  outputs.writeAll("### INCOMPATIBLE CHANGES:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(incompatlist)
+    if (len(jira.getReleaseNote())>0):
+      reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
+      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
+        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
+           clean(jira.getSummary()))
+      reloutputs.writeKeyRaw(jira.getProject(), line)
+      line ='\n%s\n\n' % (lessclean(jira.getReleaseNote()))
+      reloutputs.writeKeyRaw(jira.getProject(), line)
 
-  outputs.writeAll("\n\n### NEW FEATURES:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(newfeaturelist)
-
-  outputs.writeAll("\n\n### IMPROVEMENTS:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(improvementlist)
-
-  outputs.writeAll("\n\n### BUG FIXES:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(buglist)
-
-  outputs.writeAll("\n\n### TESTS:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(testlist)
+  reloutputs.writeAll("\n\n")
+  reloutputs.close()
   
-  outputs.writeAll("\n\n### OTHER:\n\n")
-  outputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
-  outputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
-  outputs.writeList(otherlist)
-  outputs.writeList(tasklist)
-   
-  outputs.writeAll("\n\n")
-  outputs.close()
+  choutputs.writeAll("### INCOMPATIBLE CHANGES:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(incompatlist)
+
+  choutputs.writeAll("\n\n### NEW FEATURES:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(newfeaturelist)
+
+  choutputs.writeAll("\n\n### IMPROVEMENTS:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(improvementlist)
+
+  choutputs.writeAll("\n\n### BUG FIXES:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(buglist)
+
+  choutputs.writeAll("\n\n### TESTS:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(testlist)
+
+  choutputs.writeAll("\n\n### OTHER:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(otherlist)
+  choutputs.writeList(tasklist)
+
+  choutputs.writeAll("\n\n")
+  choutputs.close()
 
 if __name__ == "__main__":
   main()
-
