@@ -257,7 +257,7 @@ class Outputs:
       self.writeKeyRaw(jira.getProject(), line)
 
 def main():
-  parser = OptionParser(usage="usage: %prog [--previousVer VERSION] --versions VERSION [VERSION2 ...]")
+  parser = OptionParser(usage="usage: %prog [--previousVer VERSION] --version VERSION [--version VERSION2 ...]")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string",
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
