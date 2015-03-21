@@ -195,7 +195,7 @@ class JiraIter:
     end=1
     count=100
     while (at < end):
-      params = urllib.urlencode({'jql': "project in (HADOOP,HDFS,MAPREDUCE,YARN) and fixVersion in ('"+"' , '".join(versions)+"') and resolution = Fixed", 'startAt':at, 'maxResults':count})
+      params = urllib.urlencode({'jql': "project in (HADOOP,HDFS,MAPREDUCE,YARN) and fixVersion in ('"+"' , '".join([str(v).replace("-SNAPSHOT","") for v in versions])+"') and resolution = Fixed", 'startAt':at, 'maxResults':count})
       resp = urllib.urlopen("https://issues.apache.org/jira/rest/api/2/search?%s"%params)
       data = json.loads(resp.read())
       if (data.has_key('errorMessages')):
@@ -257,13 +257,12 @@ class Outputs:
       self.writeKeyRaw(jira.getProject(), line)
 
 def main():
-  parser = OptionParser(usage="usage: %prog [--previousVer VERSION] --version VERSION [--version VERSION2 ...]")
+  parser = OptionParser(usage="usage: %prog --version VERSION [--version VERSION2 ...]")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string",
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
-  parser.add_option("--previousVer", dest="previousVer",
-             action="store", type="string",
-             help="previous version to include in releasenotes", metavar="VERSION")
+  parser.add_option("-m","--master", dest="master", action="store_true",
+             help="only create the master files")
 
   (options, args) = parser.parse_args()
 
@@ -280,24 +279,27 @@ def main():
   versions.sort();
 
   maxVersion = str(versions[-1])
-  if(options.previousVer == None):
-          options.previousVer = str(versions[0].decBugFix())
-          print >> sys.stderr, "WARNING: no previousVersion given, guessing it is "+options.previousVer
 
-  jlist = JiraIter(options.versions)
+  jlist = JiraIter(versions)
   today=datetime.date.today()
   version = maxVersion
-  reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
-    "RELEASENOTES.%(key)s.%(ver)s.md",
-    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer, "date":today.strftime("%F")})
-
-  choutputs = Outputs("CHANGES.%(ver)s.md",
-    "CHANGES.%(key)s.%(ver)s.md",
-    ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "previousVer":options.previousVer, "date":today.strftime("%F")})
+  if options.master:
+    reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
+      "RELEASENOTES.%(key)s.%(ver)s.md",
+      [], {"ver":maxVersion, "date":today.strftime("%F")})
+    choutputs = Outputs("CHANGES.%(ver)s.md",
+      "CHANGES.%(key)s.%(ver)s.md",
+      [], {"ver":maxVersion, "date":today.strftime("%F")})
+  else:
+    reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
+      "RELEASENOTES.%(key)s.%(ver)s.md",
+      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
+    choutputs = Outputs("CHANGES.%(ver)s.md",
+      "CHANGES.%(key)s.%(ver)s.md",
+      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
 
   relhead = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
-    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n' \
-    '## Changes since Hadoop %(previousVer)s\n\n'
+    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n'
 
   chhead = '# Hadoop Changelog\n\n' \
     '## Release %(ver)s - %(date)s\n'\
