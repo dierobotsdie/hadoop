@@ -1149,6 +1149,43 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions>
+            <execution>
+                <id>releasedocs</id>
+                <phase>pre-site</phase>
+                <goals>
+                    <goal>exec</goal>
+                </goals>
+                <configuration>
+                    <executable>python</executable>
+                    <workingDirectory>src/site/markdown</workingDirectory>
+                    <arguments>
+                        <argument>${basedir}/../dev-support/releasemdmaker.py</argument>
+                        <argument>--version</argument>
+                        <argument>${project.version}</argument>
+                    </arguments>
+                </configuration>
+            </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>src/site/markdown</directory>
+                <includes>
+                  <include>CHANGES.*${project.version}*.md</include>
+                  <include>RELEASENOTES.*${project.version}*.md</include>
+                </includes>
+              <followSymlinks>false</followSymlinks>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 
