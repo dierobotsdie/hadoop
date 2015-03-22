@@ -256,6 +256,13 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    MAPREDUCE-5190. Unnecessary condition test in RandomSampler.
+    (Jingguo Yao via harsh)
+
+    MAPREDUCE-6239. Consolidate TestJobConf classes in
+    hadoop-mapreduce-client-jobclient and hadoop-mapreduce-client-core
+    (Varun Saxena via harsh)
+
     MAPREDUCE-5807. Print usage by TeraSort job. (Rohith via harsh)
 
     MAPREDUCE-4653. TestRandomAlgorithm has an unused "import" statement.
@@ -281,6 +288,12 @@ Release 2.8.0 - UNRELEASED
   OPTIMIZATIONS
 
   BUG FIXES
+
+    MAPREDUCE-5448. MapFileOutputFormat#getReaders bug with hidden
+    files/folders. (Maysam Yabandeh via harsh)
+
+    MAPREDUCE-6213. NullPointerException caused by job history server addr not
+    resolvable. (Peng Zhang via harsh)
 
     MAPREDUCE-6281. Fix javadoc in Terasort. (Albert Chu via ozawa)
 
@@ -380,6 +393,10 @@ Release 2.7.0 - UNRELEASED
     files. (Siqi Li via gera)
 
   BUG FIXES
+
+    MAPREDUCE-6286. A typo in HistoryViewer makes some code useless, which
+    causes counter limits are not reset correctly.
+    (Zhihai Xu via harsh)
 
     MAPREDUCE-6210. Use getApplicationAttemptId() instead of getApplicationId()
     for logging AttemptId in RMContainerAllocator.java (Leitao Guo via aajisaka)
