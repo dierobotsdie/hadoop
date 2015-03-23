@@ -970,7 +970,7 @@ public class INodeFile extends INodeWithAdditionalFields
    * @return the quota usage delta (not considering replication factor)
    */
   long computeQuotaDeltaForTruncate(final long newLength) {
-    final BlockInfoContiguous[] blocks = getBlocks();
+    final BlockInfo[] blocks = getBlocks();
     if (blocks == null || blocks.length == 0) {
       return 0;
     }
