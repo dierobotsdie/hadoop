@@ -148,7 +148,7 @@ class ShellFunction:
   def getusage(self):
     line="%s %s" % (self.name, self.getparams())
     return line
-    
+
   def headerbuild(self):
     if self.getreplace() == "Yes":
       replacetext="Replaceable"
@@ -229,7 +229,7 @@ def main():
     outfile.write(line)
 
   outfile.write("\n------\n\n")
-  
+
   header=[]
   for funcs in allfuncs:
     if header != funcs.getinter():
