@@ -25,8 +25,13 @@ def docstrip(key,string):
 
 def toc(list):
   tocout=[]
+  header=()
   for i in list:
-    line="  * [%s](#%s)\n" % (i.getname(),i.getname())
+    if header != i.getinter():
+      header=i.getinter()
+      line="  * %s\n" % (i.headerbuild())
+      tocout.append(line)
+    line="    * [%s](#%s)\n" % (i.getname().replace("_","\_"),i.getname())
     tocout.append(line)
   return tocout
 
@@ -104,6 +109,9 @@ class ShellFunction:
     else:
       return self.replaceb
 
+  def getinter(self):
+    return( (self.getaudience(), self.getstability(), self.getreplace()))
+
   def addreturn(self,text):
     if (self.returnt is None):
       self.returnt = []
@@ -140,6 +148,14 @@ class ShellFunction:
   def getusage(self):
     line="%s %s" % (self.name, self.getparams())
     return line
+    
+  def headerbuild(self):
+    if self.getreplace() == "Yes":
+      replacetext="Replaceable"
+    else:
+      replacetext="Not Replaceable"
+    line="%s/%s/%s" % (self.getaudience(), self.getstability(), replacetext)
+    return(line)
 
   def getdocpage(self):
     line="### `%s`\n\n"\
@@ -213,8 +229,14 @@ def main():
     outfile.write(line)
 
   outfile.write("\n------\n\n")
-  for funcdef in allfuncs:
-    outfile.write(funcdef.getdocpage())
+  
+  header=[]
+  for funcs in allfuncs:
+    if header != funcs.getinter():
+      header=funcs.getinter()
+      line="## %s\n" % (funcs.headerbuild())
+      outfile.write(line)
+    outfile.write(funcs.getdocpage())
   outfile.close()
 
 if __name__ == "__main__":

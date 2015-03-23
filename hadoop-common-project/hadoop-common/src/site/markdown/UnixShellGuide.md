@@ -12,12 +12,9 @@
   limitations under the License. See accompanying LICENSE file.
 -->
 
-
 # Unix Shell Guide
 
-
-
-Much of Hadoop's functionality is controlled via [the shell](CommandsManula.html).  There are several ways to modify the default behavior of how these commands execute.
+Much of Hadoop's functionality is controlled via [the shell](CommandsManual.html).  There are several ways to modify the default behavior of how these commands execute.
 
 ## Important End-User Environment Variables
 
