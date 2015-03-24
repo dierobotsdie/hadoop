@@ -24,7 +24,7 @@ function hadoop_error
   echo "$*" 1>&2
 }
 
-## @description  Print a message to stderr if --debug is turuned on
+## @description  Print a message to stderr if --debug is turned on
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
@@ -1600,7 +1600,7 @@ function hadoop_verify_user
   fi
 }
 
-## @description  Perform the classpath subcommand with the given
+## @description  Perform the 'hadoop classpath', etc subcommand with the given
 ## @description  parameters
 ## @audience     private
 ## @stability    evolving

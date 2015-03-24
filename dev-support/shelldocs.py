@@ -171,7 +171,6 @@ class ShellFunction:
          "| Audience | %s |\n" \
          "| Stability | %s |\n" \
          "| Replaceable | %s |\n\n" \
-         "----\n" \
          % (self.getname(),
             self.getusage(),
             self.getdesc(),
