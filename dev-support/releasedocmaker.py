@@ -11,10 +11,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-import datetime
+from glob import glob
+from optparse import OptionParser
+import os
 import re
 import sys
-from optparse import OptionParser
 import urllib
 try:
   import json
@@ -53,6 +54,23 @@ def mstr(obj):
   if (obj == None):
     return ""
   return unicode(obj)
+
+def buildindex(master):
+  versions=glob("[0-9]*.[0-9]*.[0-9]*")
+  with open("index.md","w") as indexfile:
+    for v in versions:
+      indexfile.write("  * Apache Hadoop v%s\n" % (v))
+      for k in ("Changes","Release Notes"):
+        indexfile.write("    *  %s\n" %(k))
+        indexfile.write("      * [Combined %s](%s.%s.html)\n" \
+          % (k,k.upper().replace(" ",""),v))
+        if not master:
+          indexfile.write("      * [Hadoop Common %s](%s.HADOOP.%s.html)\n" \
+            % (k,k.upper().replace(" ",""),v))
+          for p in ("HDFS","MapReduce","YARN"):
+            indexfile.write("      * [%s %s](%s.%s.%s.html)\n" \
+              % (p,k,k.upper().replace(" ",""),p.upper(),v))
+  indexfile.close()
 
 class Version:
   """Represents a version number"""
@@ -282,6 +300,8 @@ def main():
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
   parser.add_option("-m","--master", dest="master", action="store_true",
              help="only create the master files")
+  parser.add_option("-i","--index", dest="index", action="store_true",
+             help="build an index file")
 
   (options, args) = parser.parse_args()
 
@@ -307,19 +327,22 @@ def main():
   else:
     reldate="Unreleased"
 
+  if not os.path.exists(version):
+    os.mkdir(version)
+
   if options.master:
-    reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
-      "RELEASENOTES.%(key)s.%(ver)s.md",
+    reloutputs = Outputs("%(ver)s/RELEASENOTES.%(ver)s.md",
+      "%(ver)s/RELEASENOTES.%(key)s.%(ver)s.md",
       [], {"ver":maxVersion, "date":reldate})
-    choutputs = Outputs("CHANGES.%(ver)s.md",
-      "CHANGES.%(key)s.%(ver)s.md",
+    choutputs = Outputs("%(ver)s/CHANGES.%(ver)s.md",
+      "%(ver)s/CHANGES.%(key)s.%(ver)s.md",
       [], {"ver":maxVersion, "date":reldate})
   else:
-    reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
-      "RELEASENOTES.%(key)s.%(ver)s.md",
+    reloutputs = Outputs("%(ver)s/RELEASENOTES.%(ver)s.md",
+      "%(ver)s/RELEASENOTES.%(key)s.%(ver)s.md",
       ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":reldate})
-    choutputs = Outputs("CHANGES.%(ver)s.md",
-      "CHANGES.%(key)s.%(ver)s.md",
+    choutputs = Outputs("%(ver)s/CHANGES.%(ver)s.md",
+      "%(ver)s/CHANGES.%(key)s.%(ver)s.md",
       ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":reldate})
 
   relhead = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
@@ -412,6 +435,9 @@ def main():
 
   choutputs.writeAll("\n\n")
   choutputs.close()
+
+  if options.index:
+    buildindex(options.master)
 
 if __name__ == "__main__":
   main()

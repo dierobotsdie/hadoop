@@ -875,13 +875,13 @@
                     </goals>
                     <configuration>
                         <executable>python</executable>
-                        <workingDirectory>src/site/markdown/release</workingDirectory>
+                        <workingDirectory>src/site/markdown/release/</workingDirectory>
                         <requiresOnline>true</requiresOnline>
                         <arguments>
-                            <argument>${basedir}/../../dev-support/releasdocdmaker.py</argument>
-                            <argument>--master</argument>
+                            <argument>${basedir}/../../dev-support/releasedocmaker.py</argument>
                             <argument>--version</argument>
                             <argument>${project.version}</argument>
+                            <argument>--index</argument>
                         </arguments>
                     </configuration>
                 </execution>
@@ -894,8 +894,8 @@
                 <fileset>
                   <directory>src/site/markdown/release</directory>
                     <includes>
-                      <include>CHANGES.*${project.version}*.md</include>
-                      <include>RELEASENOTES.*${project.version}*.md</include>
+                      <include>${project.version}/CHANGES.*${project.version}*.md</include>
+                      <include>${project.version}/RELEASENOTES.*${project.version}*.md</include>
                     </includes>
                   <followSymlinks>false</followSymlinks>
                 </fileset>
@@ -905,7 +905,7 @@
         </plugins>
       </build>
     </profile>
-      
+
   </profiles>
 </project>
 

@@ -158,9 +158,8 @@
     </menu>
 
     <menu name="Reference" inherit="top">
-      <item name="Release Notes" href="hadoop-project-dist/hadoop-common/RELEASENOTES.${project.version}.html"/>
+      <item name="Changelog and Release Notes" href="hadoop-project-dist/hadoop-common/index.html"/>
       <item name="API docs" href="api/index.html"/>
-      <item name="Changelog" href="hadoop-project-dist/hadoop-common/CHANGES.${project.version}.html"/>
       <item name="Metrics" href="hadoop-project-dist/hadoop-common/Metrics.html"/>
     </menu>
     
