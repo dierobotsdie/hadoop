@@ -524,6 +524,7 @@
                     <workingDirectory>src/site/markdown</workingDirectory>
                     <arguments>
                         <argument>${basedir}/../../dev-support/shelldocs.py</argument>
+                        <argument>--skipprnorep</argument>
                         <argument>--output</argument>
                         <argument>${basedir}/src/site/markdown/UnixShellAPI.md</argument>
                         <argument>--input</argument>

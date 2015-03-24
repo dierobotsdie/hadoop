@@ -189,13 +189,15 @@ class ShellFunction:
     return line
 
 def main():
-  parser=OptionParser(usage="usage: %prog --output OUTFILE --input INFILE [--input INFILE ...]")
+  parser=OptionParser(usage="usage: %prog --skipprnorep --output OUTFILE --input INFILE [--input INFILE ...]")
   parser.add_option("-o","--output", dest="outfile",
      action="store", type="string",
      help="file to create", metavar="OUTFILE")
   parser.add_option("-i","--input", dest="infile",
      action="append", type="string",
      help="file to read", metavar="INFILE")
+  parser.add_option("--skipprnorep", dest="skipprnorep",
+     action="store_true", help="Skip Private & Not Replaceable")
 
   (options, args)=parser.parse_args()
 
@@ -218,7 +220,12 @@ def main():
           funcdef.addreturn(line)
         elif line.startswith('function'):
           funcdef.setname(line)
-          allfuncs.append(funcdef)
+          if options.skipprnorep:
+            if funcdef.getaudience() == "Private" and \
+               funcdef.getreplace() == "No":
+               pass
+            else:
+              allfuncs.append(funcdef)
           funcdef=ShellFunction()
 
   allfuncs=sorted(allfuncs)

@@ -627,9 +627,14 @@ function hadoop_add_classpath
 ## @description  Add a file system object (directory, file,
 ## @description  wildcard, ...) to the colonpath.  Optionally provide
 ## @description  a hint as to where in the colonpath it should go.
+## @description  Prior to adding, objects are checked for duplication
+## @description  and check for existence.  Many other functions use
+## @description  this function as their base implementation
+## @description  including `hadoop_add_javalibpath` and `hadoop_add_ldlibpath`.
 ## @audience     public
 ## @stability    stable
 ## @replaceable  yes
+## @param        envvar
 ## @param        object
 ## @param        [before|after]
 ## @return       0 = success (added or duplicate)
