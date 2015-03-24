@@ -58,6 +58,9 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    YARN-1880. Cleanup TestApplicationClientProtocolOnHA
+    (ozawa via harsh)
+
     YARN-3243. CapacityScheduler should pass headroom from parent to children
     to make sure ParentQueue obey its capacity limits. (Wangda Tan via jianhe)
 
@@ -99,6 +102,9 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3241. FairScheduler handles "invalid" queue names inconsistently. 
     (Zhihai Xu via kasha)
+
+    YARN-3383. AdminService should use "warn" instead of "info" to log exception 
+    when operation fails. (Li Lu via wangda)
 
 Release 2.7.0 - UNRELEASED
 
