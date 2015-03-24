@@ -415,8 +415,6 @@ Trunk (Unreleased)
     HADOOP-10774. Update KerberosTestUtils for hadoop-auth tests when using
     IBM Java (sangamesh via aw)
 
-    HADOOP-11602. Fix toUpperCase/toLowerCase to use Locale.ENGLISH. (ozawa)
-
     HADOOP-11653. shellprofiles should require .sh extension
     (Brahma Reddy Battula via aw)
 
@@ -457,6 +455,9 @@ Release 2.8.0 - UNRELEASED
 
     HADOOP-11447. Add a more meaningful toString method to SampleStat and 
     MutableStat. (kasha)
+
+    HADOOP-11737. mockito's version in hadoop-nfs’ pom.xml shouldn't be
+    specified. (Kengo Seki via ozawa)
 
   OPTIMIZATIONS
 
@@ -1102,6 +1103,8 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11670. Regression: s3a auth setup broken. (Adam Budde via stevel)
 
+    HADOOP-11602. Fix toUpperCase/toLowerCase to use Locale.ENGLISH. (ozawa)
+
     HADOOP-11686. MiniKDC cannot change ORG_NAME or ORG_DOMAIN.
     (Duo Zhang via wheat9)
 
@@ -1132,6 +1135,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11729. Fix link to cgroups doc in site.xml. (Masatake Iwasaki via
     ozawa)
+
+    HADOOP-11609. Correct credential commands info in
+    CommandsManual.html#credential. (Varun Saxena via ozawa)
 
 Release 2.6.1 - UNRELEASED
 
