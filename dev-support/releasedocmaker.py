@@ -59,16 +59,16 @@ def buildindex(master):
   versions=glob("[0-9]*.[0-9]*.[0-9]*")
   with open("index.md","w") as indexfile:
     for v in versions:
-      indexfile.write("  * Apache Hadoop v%s\n" % (v))
+      indexfile.write("* Apache Hadoop v%s\n" % (v))
       for k in ("Changes","Release Notes"):
         indexfile.write("    *  %s\n" %(k))
-        indexfile.write("      * [Combined %s](%s.%s.html)\n" \
+        indexfile.write("        * [Combined %s](%s.%s.html)\n" \
           % (k,k.upper().replace(" ",""),v))
         if not master:
-          indexfile.write("      * [Hadoop Common %s](%s.HADOOP.%s.html)\n" \
+          indexfile.write("        * [Hadoop Common %s](%s.HADOOP.%s.html)\n" \
             % (k,k.upper().replace(" ",""),v))
           for p in ("HDFS","MapReduce","YARN"):
-            indexfile.write("      * [%s %s](%s.%s.%s.html)\n" \
+            indexfile.write("        * [%s %s](%s.%s.%s.html)\n" \
               % (p,k,k.upper().replace(" ",""),p.upper(),v))
   indexfile.close()
 
