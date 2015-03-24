@@ -774,6 +774,9 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7962. Remove duplicated logs in BlockManager. (yliu)
 
+    HDFS-7917. Use file to replace data dirs in test to simulate a disk failure.
+    (Lei (Eddy) Xu via cnauroth)
+
   OPTIMIZATIONS
 
     HDFS-7454. Reduce memory footprint for AclEntries in NameNode.
@@ -1231,6 +1234,8 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-6841. Use Time.monotonicNow() wherever applicable instead of Time.now()
     (Vinayakumar B via kihwal)
+
+    HDFS-7942. NFS: support regexp grouping in nfs.exports.allowed.hosts (brandonli)
 
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 

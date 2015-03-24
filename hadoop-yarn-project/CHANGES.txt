@@ -73,6 +73,9 @@ Release 2.8.0 - UNRELEASED
     YARN-3350. YARN RackResolver spams logs with messages at info level. 
     (Wilfred Spiegelenburg via junping_du)
 
+    YARN-2868. FairScheduler: Metric for latency to allocate first container 
+    for an application. (Ray Chiang via kasha)
+
   OPTIMIZATIONS
 
     YARN-3339. TestDockerContainerExecutor should pull a single image and not
@@ -93,6 +96,9 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3269. Yarn.nodemanager.remote-app-log-dir could not be configured to 
     fully qualified path. (Xuan Gong via junping_du)
+
+    YARN-3241. FairScheduler handles "invalid" queue names inconsistently. 
+    (Zhihai Xu via kasha)
 
 Release 2.7.0 - UNRELEASED
 
@@ -815,6 +821,15 @@ Release 2.7.0 - UNRELEASED
 
     YARN-3369. Missing NullPointer check in AppSchedulingInfo causes RM to die.
     (Brahma Reddy Battula via wangda)
+
+    YARN-3384. TestLogAggregationService.verifyContainerLogs fails after
+    YARN-2777. (Naganarasimha G R via ozawa)
+
+    YARN-3336. FileSystem memory leak in DelegationTokenRenewer.
+    (Zhihai Xu via cnauroth)
+
+    YARN-3393. Getting application(s) goes wrong when app finishes before
+    starting the attempt. (Zhijie Shen via xgong)
 
 Release 2.6.0 - 2014-11-18
 
