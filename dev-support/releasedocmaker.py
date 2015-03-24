@@ -364,12 +364,14 @@ def main():
            clean(jira.getSummary()))
 
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
-      reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
-      reloutputs.writeKeyRaw(jira.getProject(), line)      
+      reloutputs.writeKeyRaw(jira.getProject(),"\n---\n\n")
+      reloutputs.writeKeyRaw(jira.getProject(), line)
       line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
       print 'WARNING: incompatible change %s lacks release notes.' % (clean(jira.getId()))
+      reloutputs.writeKeyRaw(jira.getProject(), line)
+
     if (len(jira.getReleaseNote())>0):
-      reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
+      reloutputs.writeKeyRaw(jira.getProject(),"\n---\n\n")
       reloutputs.writeKeyRaw(jira.getProject(), line)
       line ='\n%s\n\n' % (lessclean(jira.getReleaseNote()))
       reloutputs.writeKeyRaw(jira.getProject(), line)
