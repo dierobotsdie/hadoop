@@ -21,7 +21,7 @@ try:
 except ImportError:
   import simplejson as json
 
-
+releaseVersion={}
 namePattern = re.compile(r' \([0-9]+\)')
 
 def clean(str):
@@ -177,6 +177,12 @@ class Jira:
               self.reviewed=True
     return self.incompat
 
+  def getReleaseDate(self,version):
+    for j in range(len(self.fields['fixVersions'])):
+      if self.fields['fixVersions'][j]==version:
+        return(self.fields['fixVersions'][j]['releaseDate'])
+    return None
+
 class JiraIter:
   """An Iterator of JIRAs"""
 
@@ -203,6 +209,19 @@ class JiraIter:
       at = data['startAt'] + data['maxResults']
       end = data['total']
       self.jiras.extend(data['issues'])
+
+      needaversion=False
+      for j in versions:
+        v=str(j).replace("-SNAPSHOT","")
+        if v not in releaseVersion:
+          needaversion=True
+
+      if needaversion is True:
+        for i in range(len(data['issues'])):
+          for j in range(len(data['issues'][i]['fields']['fixVersions'])):
+            if 'releaseDate' in data['issues'][i]['fields']['fixVersions'][j]:
+              releaseVersion[data['issues'][i]['fields']['fixVersions'][j]['name']]=\
+                             data['issues'][i]['fields']['fixVersions'][j]['releaseDate']
 
     self.iter = self.jiras.__iter__()
 
@@ -281,25 +300,30 @@ def main():
   maxVersion = str(versions[-1])
 
   jlist = JiraIter(versions)
-  today=datetime.date.today()
   version = maxVersion
+
+  if version in releaseVersion:
+    reldate=releaseVersion[version]
+  else:
+    reldate="Unreleased"
+
   if options.master:
     reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
       "RELEASENOTES.%(key)s.%(ver)s.md",
-      [], {"ver":maxVersion, "date":today.strftime("%F")})
+      [], {"ver":maxVersion, "date":reldate})
     choutputs = Outputs("CHANGES.%(ver)s.md",
       "CHANGES.%(key)s.%(ver)s.md",
-      [], {"ver":maxVersion, "date":today.strftime("%F")})
+      [], {"ver":maxVersion, "date":reldate})
   else:
     reloutputs = Outputs("RELEASENOTES.%(ver)s.md",
       "RELEASENOTES.%(key)s.%(ver)s.md",
-      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
+      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":reldate})
     choutputs = Outputs("CHANGES.%(ver)s.md",
       "CHANGES.%(key)s.%(ver)s.md",
-      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":today.strftime("%F")})
+      ["HADOOP","HDFS","MAPREDUCE","YARN"], {"ver":maxVersion, "date":reldate})
 
   relhead = '# Hadoop %(key)s %(ver)s Release Notes\n\n' \
-    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n' 
+    'These release notes cover new developer and user-facing incompatibilities, features, and major improvements.\n\n'
 
   chhead = '# Hadoop Changelog\n\n' \
     '## Release %(ver)s - %(date)s\n'\
@@ -335,21 +359,17 @@ def main():
     else:
        otherlist.append(jira)
 
+    line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
+        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
+           clean(jira.getSummary()))
+
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
       reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
-      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
-        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
-           clean(jira.getSummary()))
-      reloutputs.writeKeyRaw(jira.getProject(), line)
+      reloutputs.writeKeyRaw(jira.getProject(), line)      
       line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
-      reloutputs.writeKeyRaw(jira.getProject(), line)
       print 'WARNING: incompatible change %s lacks release notes.' % (clean(jira.getId()))
-
     if (len(jira.getReleaseNote())>0):
       reloutputs.writeKeyRaw(jira.getProject(),"---\n\n")
-      line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
-        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
-           clean(jira.getSummary()))
       reloutputs.writeKeyRaw(jira.getProject(), line)
       line ='\n%s\n\n' % (lessclean(jira.getReleaseNote()))
       reloutputs.writeKeyRaw(jira.getProject(), line)
