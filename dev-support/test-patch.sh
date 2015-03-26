@@ -12,6 +12,9 @@
 #   limitations under the License.
 
 
+#
+# We'll want to set these up at some point...
+#
 #set -euo pipefail
 #IFS=$'\n\t'
 
@@ -22,7 +25,7 @@ this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 
 # Defaults
-if [[ -z "${MAVEN_HOME}" ]]; then
+if [[ -z "${MAVEN_HOME:-}" ]]; then
   MVN=mvn
 else
   MVN=${MAVEN_HOME}/bin/mvn
@@ -42,9 +45,42 @@ GREP=${GREP:-grep}
 PATCH=${PATCH:-patch}
 DIFF=${DIFF:-diff}
 JIRACLI=${JIRA:-jira}
-FINDBUGS_HOME=${FINDBUGS_HOME}
-ECLIPSE_HOME=${ECLIPSE_HOME}
+FINDBUGS_HOME=${FINDBUGS_HOME:-}
+ECLIPSE_HOME=${ECLIPSE_HOME:-}
 BUILD_NATIVE=${BUILD_NATIVE:-true}
+CHANGED_MODULES=""
+
+declare -a JIRA_COMMENT_TABLE
+declare -a JIRA_FOOTER_TABLE
+
+JFC=0
+JTC=0
+
+function find_java_home
+{
+  if [[ -z ${JAVA_HOME:-} ]]; then
+    case $(uname -s) in
+      Darwin)
+        if [[ -z "${JAVA_HOME}" ]]; then
+          if [[ -x /usr/libexec/java_home ]]; then
+            export JAVA_HOME="$(/usr/libexec/java_home)"
+          else
+            export JAVA_HOME=/Library/Java/Home
+          fi
+        fi
+      ;;
+      *)
+      ;;
+    esac
+  fi
+  
+  if [[ -z ${JAVA_HOME:-} ]]; then
+    echo "JAVA_HOME is not defined."
+    add_jira_table -1 pre-patch "JAVA_HOME is not defined."
+    return 1
+  fi
+  return 0
+}
 
 function colorstripper
 {
@@ -57,11 +93,11 @@ function colorstripper
   local blue=""
   
   echo "${string}" | \
-    sed -e "s,{color:red},${red},g" \
-        -e "s,{color:green},${green},g" \
-        -e "s,{color:blue},${blue},g" \
-        -e "s,{color},${white},g" 
-
+  sed -e "s,{color:red},${red},g" \
+  -e "s,{color:green},${green},g" \
+  -e "s,{color:blue},${blue},g" \
+  -e "s,{color},${white},g"
+  
 }
 
 function findlargest
@@ -71,7 +107,7 @@ function findlargest
   local a=("$@")
   local sizeofa=${#a[@]}
   local i=0
-   
+  
   until [[ ${i} -gt ${sizeofa} ]]; do
     string=$( echo ${a[$i]} | cut -f$((column + 1)) -d\| )
     if [[ ${#string} -gt $maxlen ]]; then
@@ -84,43 +120,43 @@ function findlargest
 
 function add_jira_table
 {
-   local value=$1
-   local subsystem=$2
-   shift 2
-
-   local color
-
-   case ${value} in
-     1|+1)
-       value="+1"
-       color="green"
-       ;;
-     -1)
-       color="red"
-       ;;
-     0)
-       color="blue"
-     ;;
-     null)
-     ;;
-   esac
-
-   if [[ -z ${color} ]]; then
-     JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | $* |"
-     JTC=$(( JTC+1 ))
-   else
-     JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | $* |"
-     JTC=$(( JTC+1 ))
-   fi
+  local value=$1
+  local subsystem=$2
+  shift 2
+  
+  local color
+  
+  case ${value} in
+    1|+1)
+      value="+1"
+      color="green"
+    ;;
+    -1)
+      color="red"
+    ;;
+    0)
+      color="blue"
+    ;;
+    null)
+    ;;
+  esac
+  
+  if [[ -z ${color} ]]; then
+    JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | $* |"
+    JTC=$(( JTC+1 ))
+  else
+    JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | $* |"
+    JTC=$(( JTC+1 ))
+  fi
 }
 
 function add_jira_footer
 {
-   local subsystem=$1
-   shift 1
-   
-   JIRA_FOOTER_TABLE[${JFC}]="| ${subsystem} | $* |"
-   JFC=$(( JFC+1 ))
+  local subsystem=$1
+  shift 1
+  
+  JIRA_FOOTER_TABLE[${JFC}]="| ${subsystem} | $* |"
+  JFC=$(( JFC+1 ))
 }
 
 function big_console_header
@@ -140,15 +176,15 @@ function big_console_header
 # Find the maven module containing the given file.
 function findModule
 {
- local dir=$(dirname "$1")
- 
+  local dir=$(dirname "$1")
+  
   while builtin true; do
-   if [[ -f "${dir}/pom.xml" ]];then
-     echo "${dir}"
-     return
-   else
-     dir=$(dirname "${dir}")
-   fi
+    if [[ -f "${dir}/pom.xml" ]];then
+      echo "${dir}"
+      return
+    else
+      dir=$(dirname "${dir}")
+    fi
   done
 }
 
@@ -162,20 +198,20 @@ function findChangedModules
   local changed_modules=""
   
   ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
-
+  
   # if all of the lines start with a/ or b/, then this is a git patch that
   # was generated without --no-prefix
   if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths} ; then
     ${SED} -i -e 's,^[ab]/,,' ${tmp_paths}
   fi
-
+  
   # Now find all the modules that were changed
   
   while read file; do
     findModule "${file}" >> ${tmp_modules}
   done < <(cut -f 1 "${tmp_paths}" | sort -u)
   rm ${tmp_paths}
-
+  
   # Filter out modules without code
   while read module; do
     ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
@@ -219,70 +255,73 @@ function printUsage
   echo "--eclipse-home=<path>  Eclipse home directory (default ECLIPSE_HOME environment variable)"
 }
 
-function parseArgs 
+function parseArgs
 {
   for i in "$@"
   do
     case $i in
-    --jenkins)
-      JENKINS=true
+      --java-home)
+        JAVA_HOME=${i#*=}
       ;;
-    --patch-dir=*)
-      PATCH_DIR=${i#*=}
+      --jenkins)
+        JENKINS=true
       ;;
-    --support-dir=*)
-      SUPPORT_DIR=${i#*=}
+      --patch-dir=*)
+        PATCH_DIR=${i#*=}
       ;;
-    --basedir=*)
-      BASEDIR=${i#*=}
+      --support-dir=*)
+        SUPPORT_DIR=${i#*=}
       ;;
-    --mvn-cmd=*)
-      MVN=${i#*=}
+      --basedir=*)
+        BASEDIR=${i#*=}
       ;;
-    --ps-cmd=*)
-      PS=${i#*=}
+      --mvn-cmd=*)
+        MVN=${i#*=}
       ;;
-    --awk-cmd=*)
-      AWK=${i#*=}
+      --ps-cmd=*)
+        PS=${i#*=}
       ;;
-    --wget-cmd=*)
-      WGET=${i#*=}
+      --awk-cmd=*)
+        AWK=${i#*=}
       ;;
-    --git-cmd=*)
-      GIT=${i#*=}
+      --wget-cmd=*)
+        WGET=${i#*=}
       ;;
-    --grep-cmd=*)
-      GREP=${i#*=}
+      --git-cmd=*)
+        GIT=${i#*=}
       ;;
-    --patch-cmd=*)
-      PATCH=${i#*=}
+      --grep-cmd=*)
+        GREP=${i#*=}
       ;;
-    --diff-cmd=*)
-      DIFF=${i#*=}
+      --patch-cmd=*)
+        PATCH=${i#*=}
       ;;
-    --jira-cmd=*)
-      JIRACLI=${i#*=}
+      --diff-cmd=*)
+        DIFF=${i#*=}
       ;;
-    --jira-password=*)
-      JIRA_PASSWD=${i#*=}
+      --jira-cmd=*)
+        JIRACLI=${i#*=}
       ;;
-    --findbugs-home=*)
-      FINDBUGS_HOME=${i#*=}
+      --jira-password=*)
+        JIRA_PASSWD=${i#*=}
       ;;
-    --eclipse-home=*)
-      ECLIPSE_HOME=${i#*=}
+      --findbugs-home=*)
+        FINDBUGS_HOME=${i#*=}
       ;;
-    --dirty-workspace)
-      DIRTY_WORKSPACE=true
+      --eclipse-home=*)
+        ECLIPSE_HOME=${i#*=}
       ;;
-    --run-tests)
-      RUN_TESTS=true
+      --dirty-workspace)
+        DIRTY_WORKSPACE=true
       ;;
-    --build-native=*)
-      BUILD_NATIVE=${i#*=}
+      --run-tests)
+        RUN_TESTS=true
       ;;
-    *)
-      PATCH_OR_DEFECT=$i
+      --build-native=*)
+        BUILD_NATIVE=${i#*=}
+      ;;
+      *)
+        PATCH_OR_DEFECT=$i
       ;;
     esac
   done
@@ -323,10 +362,10 @@ function parseArgs
   fi
 }
 
-function checkout 
+function checkout
 {
   big_console_header "Testing patch for ${defect}."
-
+  
   ### When run by a developer, if the workspace contains modifications, do not continue
   ### unless the --dirty-workspace option was set
   status=$(${GIT} status --porcelain)
@@ -351,7 +390,7 @@ function checkout
 function prebuildWithoutPatch
 {
   local mypwd
- 
+  
   big_console_header "Pre-build trunk to verify trunk stability and javac warnings"
   if [[ ! -d hadoop-common-project ]]; then
     pushd "${BINDIR}/.." >/dev/null
@@ -378,7 +417,7 @@ function prebuildWithoutPatch
     add_jira_table -1 pre-patch "Trunk compilation may be broken."
     return 1
   fi
-
+  
   echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/trunkJavadocWarnings.txt 2>&1"
   ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/trunkJavadocWarnings.txt" 2>&1
   if [[ $? != 0 ]] ; then
@@ -386,7 +425,7 @@ function prebuildWithoutPatch
     add_jira_table -1 pre-patch "Trunk JavaDoc compilation may be broken."
     return 1
   fi
-
+  
   add_jira_table 0 pre-patch "Trunk compiliation is healthy."
   return 0
 }
@@ -410,9 +449,9 @@ function downloadPatch
     # shellcheck disable=SC2034
     VERSION=${GIT_REVISION}_${defect}_PATCH-${patchNum}
     add_jira_header "Test results for " \
-      "${patchURL}" \
-      " against trunk revision ${GIT_REVISION}."
-
+    "${patchURL}" \
+    " against trunk revision ${GIT_REVISION}."
+    
     ### Copy in any supporting files needed by this process
     cp -r "${SUPPORT_DIR}"/lib/* ./lib
     #PENDING: cp -f ${SUPPORT_DIR}/etc/checkstyle* ./src/test
@@ -444,7 +483,7 @@ function verifyPatch
   fi
 }
 
-function applyPatch 
+function applyPatch
 {
   big_console_header "Applye patch."
   
@@ -461,15 +500,15 @@ function applyPatch
 function checkAuthor
 {
   local authorTags
-
+  
   big_console_header "Checking there are no @author tags in the patch."
-
+  
   authorTags=$("${GREP}" -c -i '@author' "${PATCH_DIR}/patch")
   echo "There appear to be ${authorTags} @author tags in the patch."
   if [[ $authorTags != 0 ]] ; then
     add_jira_table -1 @author \
-      "The patch appears to contain $authorTags @author tags which the Hadoop" \
-      " community has agreed to not allow in code contributions."
+    "The patch appears to contain $authorTags @author tags which the Hadoop" \
+    " community has agreed to not allow in code contributions."
     return 1
   fi
   add_jira_table +1 @author "The patch does not contain any @author tags."
@@ -493,19 +532,19 @@ function checkTests
       if [[ ${patchIsDoc} != 0 ]] ; then
         echo "The patch appears to be a documentation patch that doesn't require tests."
         add_jira_table 0 "tests included" \
-          "The patch appears to be a documentation patch that doesn't require tests."
+        "The patch appears to be a documentation patch that doesn't require tests."
         return 0
       fi
     fi
-
+    
     add_jira_table -1 "tests included" \
-      "The patch doesn't appear to include any new or modified tests. " \
-      "Please justify why no new tests are needed for this patch." \
-      "Also please list what manual steps were performed to verify this patch."
+    "The patch doesn't appear to include any new or modified tests. " \
+    "Please justify why no new tests are needed for this patch." \
+    "Also please list what manual steps were performed to verify this patch."
     return 1
   fi
   add_jira_table +1 "tests included" \
-    "The patch appears to include ${testReferences} new or modified test files."
+  "The patch appears to include ${testReferences} new or modified test files."
   return 0
 }
 
@@ -515,29 +554,29 @@ function cleanUpXml
   
   cd "${BASEDIR}/conf"
   for file in *.xml.template
-    do
-      rm -f "$(basename "${file}" .template)"
-    done
+  do
+    rm -f "$(basename "${file}" .template)"
+  done
   cd "${BASEDIR}"
 }
 
 
-function calculateJavadocWarnings 
+function calculateJavadocWarnings
 {
   local warningfile=$1
-    
+  
   #shellcheck disable=SC2016,SC2046
   return $(${EGREP} "^[0-9]+ warnings$" "${warningfile}" | ${AWK} '{sum+=$1} END {print sum}')
 }
 
 ### Check there are no javadoc warnings
-function checkJavadocWarnings 
+function checkJavadocWarnings
 {
   local numTrunkJavadocWarnings
   local numPatchJavadocWarnings
   
   big_console_header "Determining number of patched javadoc warnings."
-
+  
   echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchJavadocWarnings.txt 2>&1"
   if [[ -d hadoop-project ]]; then
     (cd hadoop-project; ${MVN} install > /dev/null 2>&1)
@@ -550,7 +589,7 @@ function checkJavadocWarnings
   numTrunkJavadocWarnings=$?
   calculateJavadocWarnings "${PATCH_DIR}/patchJavadocWarnings.txt"
   numPatchJavadocWarnings=$?
-
+  
   echo "There appear to be ${numTrunkJavadocWarnings} javadoc warnings before the patch and ${numPatchJavadocWarnings} javadoc warnings after applying the patch."
   if [[ ${numTrunkJavadocWarnings} != "" && ${numPatchJavadocWarnings} != "" ]] ; then
     if [[ ${numPatchJavadocWarnings} -gt ${numTrunkJavadocWarnings} ]] ; then
@@ -558,13 +597,13 @@ function checkJavadocWarnings
       ${GREP} -i warning "${PATCH_DIR}/trunkJavadocWarnings.txt" > "${PATCH_DIR}/trunkJavadocWarningsFiltered.txt"
       ${GREP} -i warning "${PATCH_DIR}/patchJavadocWarnings.txt" > "${PATCH_DIR}/patchJavadocWarningsFiltered.txt"
       ${DIFF} -u "${PATCH_DIR}/trunkJavadocWarningsFiltered.txt" \
-              "${PATCH_DIR}/patchJavadocWarningsFiltered.txt" \
-              > "${PATCH_DIR}/diffJavadocWarnings.txt"
+      "${PATCH_DIR}/patchJavadocWarningsFiltered.txt" \
+      > "${PATCH_DIR}/diffJavadocWarnings.txt"
       rm -f "${PATCH_DIR}/trunkJavadocWarningsFiltered.txt" "${PATCH_DIR}/patchJavadocWarningsFiltered.txt"
       
       add_jira_table -1 javadoc "The applied patch generated "\
-        "$((numPatchJavadocWarnings-numTrunkJavadocWarnings))" \
-        " additional warning messages. See ${BUILD_URL}/artifact/patchprocess/diffJavadocWarnings.txt for details."
+      "$((numPatchJavadocWarnings-numTrunkJavadocWarnings))" \
+      " additional warning messages. See ${BUILD_URL}/artifact/patchprocess/diffJavadocWarnings.txt for details."
       add_jira_footer javadoc "${BUILD_URL}/artifact/patchprocess/diffJavadocWarnings.txt"
       return 1
     fi
@@ -586,7 +625,7 @@ function checkJavacWarnings
   local patchJavacWarnings
   
   big_console_header "Determining number of patched javac warnings."
-
+  
   echo "${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess ${NATIVE_PROFILE} -Ptest-patch > ${PATCH_DIR}/patchJavacWarnings.txt 2>&1"
   ${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess ${NATIVE_PROFILE} -Ptest-patch > "${PATCH_DIR}/patchJavacWarnings.txt" 2>&1
   if [[ $? != 0 ]] ; then
@@ -608,15 +647,15 @@ function checkJavacWarnings
       if [[ $patchJavacWarnings -gt $trunkJavacWarnings ]] ; then
         
         ${DIFF} "${PATCH_DIR}/filteredTrunkJavacWarnings.txt" \
-          "${PATCH_DIR}/filteredPatchJavacWarnings.txt" \
-          > "${PATCH_DIR}/diffJavacWarnings.txt"
+        "${PATCH_DIR}/filteredPatchJavacWarnings.txt" \
+        > "${PATCH_DIR}/diffJavacWarnings.txt"
         
         add_jira_table -1 javac "The applied patch generated "\
-          "$((patchJavacWarnings-trunkJavacWarnings))" \
-          " additional warning messages. See ${BUILD_URL}/artifact/patchprocess/diffJavacWarnings.txt for details."
-
+        "$((patchJavacWarnings-trunkJavacWarnings))" \
+        " additional warning messages. See ${BUILD_URL}/artifact/patchprocess/diffJavacWarnings.txt for details."
+        
         add_jira_footer javac "${BUILD_URL}/artifact/patchprocess/diffJavacWarnings.txt"
-
+        
         return 1
       fi
     fi
@@ -630,14 +669,14 @@ function checkJavacWarnings
 ### Check there are no changes in the number of release audit (RAT) warnings
 function checkReleaseAuditWarnings
 {
-
+  
   big_console_header "Determining number of patched release audit warnings."
-
+  
   echo "${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchReleaseAuditOutput.txt 2>&1"
   ${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchReleaseAuditOutput.txt" 2>&1
   #shellcheck disable=SC2038
   find "${BASEDIR}" -name rat.txt | xargs cat > "${PATCH_DIR}/patchReleaseAuditWarnings.txt"
-
+  
   ### Compare trunk and patch release audit warning numbers
   if [[ -f ${PATCH_DIR}/patchReleaseAuditWarnings.txt ]] ; then
     patchReleaseAuditWarnings=$("${GREP}" -c '\!?????' "${PATCH_DIR}/patchReleaseAuditWarnings.txt")
@@ -649,12 +688,12 @@ function checkReleaseAuditWarnings
         add_jira_table -1 "release audit" "The applied patch generated ${patchReleaseAuditWarnings} release audit warnings."
         
         ${GREP} '\!?????' "${PATCH_DIR}/patchReleaseAuditWarnings.txt" \
-             >  "${PATCH_DIR}/patchReleaseAuditProblems.txt"
+        >  "${PATCH_DIR}/patchReleaseAuditProblems.txt"
         
         echo "Lines that start with ????? in the release audit report indicate files that do not have an Apache license header." >> "${PATCH_DIR}/patchReleaseAuditProblems.txt"
         
         add_jira_footer "Release Audit" "${BUILD_URL}/artifact/patchprocess/diffJavacWarnings.txt"
-
+        
         return 1
       fi
     fi
@@ -665,12 +704,12 @@ function checkReleaseAuditWarnings
 
 ###############################################################################
 ### Check there are no changes in the number of Checkstyle warnings
-function checkStyle 
+function checkStyle
 {
   return 0
   
   big_console_header "Determining number of patched checkstyle warnings."
-
+  
   echo "THIS IS NOT IMPLEMENTED YET"
   echo ""
   echo ""
@@ -678,19 +717,19 @@ function checkStyle
   ${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess
   
   add_jira_footer "Checkstyle" "${BUILD_URL}/artifact/trunk/build/test/checkstyle-errors.html"
-
-
+  
+  
   ### TODO: calculate actual patchStyleErrors
-#  patchStyleErrors=0
-#  if [[ $patchStyleErrors != 0 ]] ; then
-#    JIRA_COMMENT="${JIRA_COMMENT}
-#
-#    {color:red}-1 checkstyle{color}.  The patch generated $patchStyleErrors code style errors."
-#    return 1
-#  fi
-#  JIRA_COMMENT="${JIRA_COMMENT}
-#
-#    {color:green}+1 checkstyle{color}.  The patch generated 0 code style errors."
+  #  patchStyleErrors=0
+  #  if [[ $patchStyleErrors != 0 ]] ; then
+  #    JIRA_COMMENT="${JIRA_COMMENT}
+  #
+  #    {color:red}-1 checkstyle{color}.  The patch generated $patchStyleErrors code style errors."
+  #    return 1
+  #  fi
+  #  JIRA_COMMENT="${JIRA_COMMENT}
+  #
+  #    {color:green}+1 checkstyle{color}.  The patch generated 0 code style errors."
   return 0
 }
 
@@ -698,9 +737,9 @@ function checkStyle
 ### Install the new jars so tests and findbugs can find all of the updated jars
 function buildAndInstall
 {
-
+  
   big_console_header "Installing all of the jars"
-
+  
   echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess"
   ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess
   return $?
@@ -709,13 +748,13 @@ function buildAndInstall
 
 ###############################################################################
 ### Check there are no changes in the number of Findbugs warnings
-function checkFindbugsWarnings 
+function checkFindbugsWarnings
 {
-
+  
   big_console_header "Determining number of patched Findbugs warnings."
-
+  
   local findbugs_version=$("${FINDBUGS_HOME}/bin/findbugs" -version)
-  local modules=$(findChangedModules)
+  local modules=${CHANGED_MODULES}
   local rc=0
   local module_suffix
   local findbugsWarnings=0
@@ -730,17 +769,17 @@ function checkFindbugsWarnings
     module_suffix=$(basename "${module}")
     echo "${MVN} clean test findbugs:findbugs -DskipTests -D${PROJECT_NAME}PatchProcess < /dev/null > ${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt 2>&1"
     ${MVN} clean test findbugs:findbugs -DskipTests -D${PROJECT_NAME}PatchProcess \
-        < /dev/null \
-        > "${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt" 2>&1
+    < /dev/null \
+    > "${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt" 2>&1
     (( rc = rc + $? ))
     popd >/dev/null
   done
-
+  
   if [[ ${rc} -ne 0 ]]; then
     add_jira_table -1 findbugs "The patch appears to cause Findbugs (version ${findbugs_version}) to fail."
     return 1
   fi
-
+  
   while read file
   do
     relative_file=${file#${BASEDIR}/} # strip leading ${BASEDIR} prefix
@@ -748,31 +787,31 @@ function checkFindbugsWarnings
       module_suffix=${relative_file%/target/findbugsXml.xml} # strip trailing path
       module_suffix=$(basename "${module_suffix}")
     fi
-
+    
     cp "${file}" "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
     
     "${FINDBUGS_HOME}/bin/setBugDatabaseInfo" -timestamp "01/01/2000" \
-      "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
-      "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
+    "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
+    "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
     
     newFindbugsWarnings=$("${FINDBUGS_HOME}/bin/filterBugs" \
       -first "01/01/2000" "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
       "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
-        | ${AWK} '{print $1}') 
+    | ${AWK} '{print $1}')
     
     echo "Found $newFindbugsWarnings Findbugs warnings ($file)"
     
     findbugsWarnings=$((findbugsWarnings+newFindbugsWarnings))
     
     "${FINDBUGS_HOME}/bin/convertXmlToText" -html \
-      "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
-      "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
+    "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
+    "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
     
     if [[ ${newFindbugsWarnings} -gt 0 ]] ; then
       add_jira_footer "Findbugs warnings" "${BUILD_URL}/artifact/patchprocess/newPatchFindbugsWarnings${module_suffix}.html"
     fi
   done < <(find "${BASEDIR}" -name findbugsXml.xml)
-
+  
   if [[ ${findbugsWarnings} -gt 0 ]] ; then
     add_jira_table -1 findbugs "The patch appears to introduce $findbugsWarnings new Findbugs (version ${findbugs_version}) warnings."
     return 1
@@ -786,13 +825,13 @@ function checkFindbugsWarnings
 ### Verify eclipse:eclipse works
 function checkEclipseGeneration
 {
-
+  
   big_console_header "Running mvn eclipse:eclipse."
-
+  
   echo "${MVN} eclipse:eclipse -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchEclipseOutput.txt 2>&1"
   ${MVN} eclipse:eclipse -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchEclipseOutput.txt" 2>&1
   if [[ $? != 0 ]] ; then
-      add_jira_table -1 eclipse:eclipse "The patch failed to build with eclipse:eclipse."
+    add_jira_table -1 eclipse:eclipse "The patch failed to build with eclipse:eclipse."
     return 1
   fi
   add_jira_table +1 eclipse:eclipse "The patch built with eclipse:eclipse."
@@ -805,10 +844,10 @@ function checkEclipseGeneration
 function runTests
 {
   big_console_header "Running tests."
-
-
+  
+  
   local failed_tests=""
-  local modules=$(findChangedModules)
+  local modules=${CHANGED_MODULES}
   local building_common=0
   local hdfs_modules
   local ordered_modules
@@ -829,29 +868,29 @@ function runTests
   # explicitly insert a mvn compile -Pnative of common, to ensure that the
   # native libraries show up where we need them.
   #
-
+  
   for module in ${modules}; do
-      if [[ ${module} == hadoop-hdfs-project* ]]; then
-          hdfs_modules="${hdfs_modules} ${module}"
-      elif [[ ${module} == hadoop-common-project* ]]; then
-          ordered_modules="${ordered_modules} ${module}"
-          building_common=1
-      else
-          ordered_modules="${ordered_modules} ${module}"
-      fi
+    if [[ ${module} == hadoop-hdfs-project* ]]; then
+      hdfs_modules="${hdfs_modules} ${module}"
+    elif [[ ${module} == hadoop-common-project* ]]; then
+      ordered_modules="${ordered_modules} ${module}"
+      building_common=1
+    else
+      ordered_modules="${ordered_modules} ${module}"
+    fi
   done
   
   if [[ -n "${hdfs_modules}" ]]; then
-      ordered_modules="${ordered_modules} ${hdfs_modules}"
-      if [[ ${building_common} -eq 0 ]]; then
-          echo "  Building hadoop-common with -Pnative in order to provide libhadoop.so to the hadoop-hdfs unit tests."
-          echo "  ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess"
-          if ! ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess; then
-            add_jira_table -1 "core tests" "Failed to build the native portion " \
-               "of hadoop-common prior to running the unit tests in ${ordered_modules}"
-            return 1
-          fi
+    ordered_modules="${ordered_modules} ${hdfs_modules}"
+    if [[ ${building_common} -eq 0 ]]; then
+      echo "  Building hadoop-common with -Pnative in order to provide libhadoop.so to the hadoop-hdfs unit tests."
+      echo "  ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess"
+      if ! ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess; then
+        add_jira_table -1 "core tests" "Failed to build the native portion " \
+        "of hadoop-common prior to running the unit tests in ${ordered_modules}"
+        return 1
       fi
+    fi
   fi
   
   result=0
@@ -904,7 +943,7 @@ function giveConsoleReport
 {
   local result=$1
   shift
-  local i  
+  local i
   local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
   
   if [[ ${result} == 0 ]]; then
@@ -920,12 +959,12 @@ function giveConsoleReport
   seccoladj=$((seccoladj + 2 ))
   i=0
   until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
-    printf "%s\n" "${JIRA_HEADER[${i}]}" 
+    printf "%s\n" "${JIRA_HEADER[${i}]}"
     i=$((i+1))
   done
   
   printf "| %s | %*s | %s\n" "Vote" ${seccoladj} Subsystem "Comment"
-
+  
   i=0
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     vote=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f2 -d\|)
@@ -940,7 +979,7 @@ function giveConsoleReport
       done
     else
       printf "| %4s | %*s | %s\n" "${vote}" ${seccoladj} \
-        "${subs}" "${comment}" 
+      "${subs}" "${comment}"
     fi
     i=$((i+1))
   done
@@ -955,9 +994,9 @@ function submitJiraComment
   if [[ ${JENKINS} != "true" ]] ; then
     return 0
   fi
-
-  add_jira_footer "Console output" "${BUILD_URL}/console"  
-
+  
+  add_jira_footer "Console output" "${BUILD_URL}/console"
+  
   if [[ ${result} == 0 ]]; then
     printf "{color:green}+1 overall{color}\n\n" > /tmp/cf.$$
   else
@@ -969,9 +1008,9 @@ function submitJiraComment
     printf "%s\n" "${JIRA_HEADER[${i}]}" >> /tmp/cf.$$
     i=$((i+1))
   done
-
+  
   printf "|| Vote || Subsystem || Comment ||\n" >> /tmp/cf.$$
-
+  
   i=0
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> /tmp/cf.$$
@@ -988,11 +1027,11 @@ function submitJiraComment
   printf "\n\nThis message was automatically generated.\n\n" >> /tmp/cf.$$
   
   big_console_header "Adding comment to JIRA"
-
+  
   export USER=hudson
   ${JIRACLI} -s https://issues.apache.org/jira -a addcomment -u hadoopqa -p "${JIRA_PASSWD}" --comment "$(cat ${commentfile})" --issue "${defect}"
   ${JIRACLI} -s https://issues.apache.org/jira -a logout -u hadoopqa -p "${JIRA_PASSWD}"
-    
+  
   rm ${commentfile}
 }
 
@@ -1006,7 +1045,7 @@ function cleanupAndExit
     fi
   fi
   big_console_header "Finished build."
-
+  
   # shellcheck disable=SC2086
   exit ${result}
 }
@@ -1020,6 +1059,13 @@ function cleanupAndExit
 parseArgs "$@"
 cd "${BASEDIR}"
 
+find_java_home
+(( RESULT = RESULT + $? ))
+if [[ ${RESULT} != 0 ]] ; then
+  submitJiraComment 1
+  giveConsoleReport 1
+  cleanupAndExit 1
+fi
 
 checkout
 RESULT=$?
@@ -1030,6 +1076,7 @@ if [[ ${JENKINS} == "true" ]] ; then
 fi
 
 downloadPatch
+
 verifyPatch
 (( RESULT = RESULT + $? ))
 if [[ ${RESULT} != 0 ]] ; then
@@ -1045,12 +1092,16 @@ if [[ ${RESULT} != 0 ]] ; then
   giveConsoleReport 1
   cleanupAndExit 1
 fi
+
 checkAuthor
 (( RESULT = RESULT + $? ))
 
 if [[ ${JENKINS} == "true" ]] ; then
   cleanUpXml
 fi
+
+CHANGED_MODULES=$(findChangedModules)
+
 checkTests
 (( RESULT = RESULT + $? ))
 applyPatch
