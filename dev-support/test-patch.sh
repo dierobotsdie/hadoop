@@ -33,7 +33,7 @@ fi
 
 PROJECT_NAME=Hadoop
 JENKINS=false
-PATCH_DIR=/tmp/$$
+PATCH_DIR=/tmp/${PROJECT_NAME}-test-patch/$$
 SUPPORT_DIR=/tmp
 BASEDIR=$(pwd)
 PS=${PS:-ps}
@@ -72,7 +72,7 @@ function stop_clock
   local elapsed=$((stoptime-TIMER))
   
   echo "Stop elapsed: ${elapsed}"
-  
+    
   return ${elapsed}
 }
 
@@ -146,12 +146,14 @@ function add_jira_table
 
   local color
   local calctime=0
-  local elapsed=$(stop_clock)
+  
+  stop_clock
+  local elapsed=$?
 
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
   else
-    calctime="$((elapsed/60))m $((elapsed%60))s"
+    printf -v calctime "%*sm %*ss" 2 $((elapsed/60)) 2 $((elapsed%60))
   fi
 
   case ${value} in
@@ -224,6 +226,8 @@ function findChangedModules
 
   local module
   local changed_modules=""
+  
+  big_console_header "Discoverying changed modules"
 
   ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
 
@@ -246,7 +250,7 @@ function findChangedModules
     if [[ "$?" != 0 ]]; then
       changed_modules="${changed_modules} ${module}"
     fi
-  done < <(sort -u "${changed_modules}")
+  done < <(sort -u "${tmp_modules}")
   rm ${tmp_modules}
   echo "${changed_modules}"
 }
@@ -652,7 +656,7 @@ function calculateJavacWarnings
 {
   local warningfile=$1
   #shellcheck disable=SC2016,SC2046
-  return $(${AWK} 'BEGIN {total = 0} {total += 1} END {print total} ${warningfile}')
+  return $(${AWK} 'BEGIN {total = 0} {total += 1} END {print total}' ${warningfile})
 }
 
 function checkJavacWarnings
@@ -1042,7 +1046,7 @@ function submitJiraComment
 {
   local result=$1
   local i
-  local commentfile=/tmp/cf.$$
+  local commentfile=${PATCH_DIR}/commentfile
 
   if [[ ${JENKINS} != "true" ]] ; then
     return 0
@@ -1051,41 +1055,39 @@ function submitJiraComment
   add_jira_footer "Console output" "${BUILD_URL}/console"
 
   if [[ ${result} == 0 ]]; then
-    printf "{color:green}+1 overall{color}\n\n" > /tmp/cf.$$
+    printf "{color:green}+1 overall{color}\n\n" > ${commentfile}
   else
-    printf "{color:red}-1 overall{color}\n\n" > /tmp/cf.$$
+    printf "{color:red}-1 overall{color}\n\n" > ${commentfile}
   fi
 
   i=0
   until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
-    printf "%s\n" "${JIRA_HEADER[${i}]}" >> /tmp/cf.$$
+    printf "%s\n" "${JIRA_HEADER[${i}]}" >> ${commentfile}
     i=$((i+1))
   done
 
-  printf "|| Vote || Subsystem || Comment ||\n" >> /tmp/cf.$$
+  printf "|| Vote || Subsystem || Comment ||\n" >> ${commentfile}
 
   i=0
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
-    printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> /tmp/cf.$$
+    printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> ${commentfile}
     i=$((i+1))
   done
 
-  printf "|| Subsystem || Report ||" >> /tmp/cf.$$
+  printf "|| Subsystem || Report ||" >> ${commentfile}
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
-    printf "%s\n" "${JIRA_FOOTER_TABLE[${i}]}" >> /tmp/cf.$$
+    printf "%s\n" "${JIRA_FOOTER_TABLE[${i}]}" >> ${commentfile}
     i=$((i+1))
   done
 
-  printf "\n\nThis message was automatically generated.\n\n" >> /tmp/cf.$$
+  printf "\n\nThis message was automatically generated.\n\n" >> ${commentfile}
 
   big_console_header "Adding comment to JIRA"
 
   export USER=hudson
   ${JIRACLI} -s https://issues.apache.org/jira -a addcomment -u hadoopqa -p "${JIRA_PASSWD}" --comment "$(cat ${commentfile})" --issue "${defect}"
   ${JIRACLI} -s https://issues.apache.org/jira -a logout -u hadoopqa -p "${JIRA_PASSWD}"
-
-  rm ${commentfile}
 }
 
 function cleanupAndExit
