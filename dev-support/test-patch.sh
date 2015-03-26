@@ -907,26 +907,33 @@ function giveConsoleReport
   local i  
   local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
   
-  if [[ ${seccoladj} -lt 9 ]]; then
-    seccoladj=9
+  if [[ ${result} == 0 ]]; then
+    printf "\n\n+1 overall\n\n"
+  else
+    printf "\n\n-1 overall\n\n"
   fi
   
-  seccoladj=$((secoladj + 2 ))
+  if [[ ${seccoladj} -lt 10 ]]; then
+    seccoladj=10
+  fi
+  
+  seccoladj=$((seccoladj + 2 ))
   i=0
-  until [[ $i -gt ${#JIRA_HEADER[@]} ]]; do
+  until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
     printf "%s\n" "${JIRA_HEADER[${i}]}" 
     i=$((i+1))
   done
   
-  printf "| %s | %*s | %s\n" "Vote" ${seccoladj} Subsystem "Comment" >> /tmp/cf.$$
+  printf "| %s | %*s | %s\n" "Vote" ${seccoladj} Subsystem "Comment"
 
   i=0
-  until [[ $i -gt ${#JIRA_COMMENT_TABLE[@]} ]]; do
+  until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     vote=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f2 -d\|)
+    vote=$(colorstripper "${vote}")
     subs=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f3 -d\|)
     comment=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f4- -d\|)
     
-    if [[ -n ${vote} ]]; then
+    if [[ -z ${vote} ]]; then
       printf "|      | %*s | " ${seccoladj} "${subs}"
       for j in ${comment}; do
         printf "|      | %*s | %s\n" ${seccoladj} " " "${j}"
@@ -937,8 +944,6 @@ function giveConsoleReport
     fi
     i=$((i+1))
   done
-  
-    
 }
 
 function submitJiraComment
@@ -960,7 +965,7 @@ function submitJiraComment
   fi
   
   i=0
-  until [[ $i -gt ${#JIRA_HEADER[@]} ]]; do
+  until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
     printf "%s\n" "${JIRA_HEADER[${i}]}" >> /tmp/cf.$$
     i=$((i+1))
   done
@@ -968,14 +973,14 @@ function submitJiraComment
   printf "|| Vote || Subsystem || Comment ||\n" >> /tmp/cf.$$
 
   i=0
-  until [[ $i -gt ${#JIRA_COMMENT_TABLE[@]} ]]; do
+  until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> /tmp/cf.$$
     i=$((i+1))
   done
   
   printf "|| Subsystem || Report ||" >> /tmp/cf.$$
   i=0
-  until [[ $i -gt ${#JIRA_FOOTER_TABLE[@]} ]]; do
+  until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     printf "%s\n" "${JIRA_FOOTER_TABLE[${i}]}" >> /tmp/cf.$$
     i=$((i+1))
   done
