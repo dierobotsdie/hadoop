@@ -1,3 +1,4 @@
+<<<<<<< Local Changes
 #!/usr/bin/env bash
 #   Licensed under the Apache License, Version 2.0 (the "License");
 #   you may not use this file except in compliance with the License.
@@ -902,9 +903,66 @@ $comment"
   fi
 }
 
-###############################################################################
-### Cleanup files
-cleanupAndExit () {
+function colorstripper
+{
+  local string=$1
+  shift $1
+  
+  local green="\[\e[1;32m\]"
+  local white="\[\e[0m\]"
+  local red="\[\e[1;31m\]"
+  local blue=""
+  
+  echo "${string}" | \
+    sed -e "s,{color:red},${red},g" \
+        -e "s,{color:green},${green},g" \
+        -e "s,{color:blue},${blue},g" \
+        -e "s,{color},${white},g" 
+
+}
+
+function giveConsoleReport
+{
+  functions submitJiraComment
+  {
+    local result=$1
+    local i
+    local commentfile=/tmp/cf.$$
+
+
+    if [[ ${result} == 0 ]]; then
+      printf "{color:green}+1 overall{color}\n\n" > /tmp/cf.$$
+    else
+      printf "{color:red}-1 overall{color}\n\n" > /tmp/cf.$$
+    fi
+  
+    i=0
+    until [[ $i -gt ${#JIRA_HEADER[@]} ]]; do
+      printf "%s\n" "${JIRA_HEADER[${i}]}" >> /tmp/cf.$$
+      i=$((i+1))
+    done
+
+    printf "|| Vote || Subsystem || Comment ||\n" >> /tmp/cf.$$
+
+    i=0
+    until [[ $i -gt ${#JIRA_COMMENT_TABLE[@]} ]]; do
+      printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> /tmp/cf.$$
+      i=$((i+1))
+    done
+  
+    printf "|| Subsystem || Report ||" >> /tmp/cf.$$
+    i=0
+    until [[ $i -gt ${#JIRA_FOOTER_TABLE[@]} ]]; do
+      printf "%s\n" "${JIRA_FOOTER_TABLE[${i}]}" >> /tmp/cf.$$
+      i=$((i+1))
+    done
+  
+    printf "\n\nThis message was automatically generated.\n\n" >> /tmp/cf.$$
+  
+}
+
+function cleanupAndExit
+{
   local result=$1
   if [[ $JENKINS == "true" ]] ; then
     if [ -e "$PATCH_DIR" ] ; then
@@ -999,5 +1057,7 @@ fi
 JIRA_COMMENT_FOOTER="Test results: $BUILD_URL/testReport/
 $JIRA_COMMENT_FOOTER"
 
-submitJiraComment $RESULT
-cleanupAndExit $RESULT
+submitJiraComment ${RESULT}
+giveConsoleReport ${RESULT}
+cleanupAndExit ${RESULT}
+
