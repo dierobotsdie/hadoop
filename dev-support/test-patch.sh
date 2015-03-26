@@ -15,7 +15,7 @@
 #
 # We'll want to set these up at some point...
 #
-set -uo pipefail
+#set -uo pipefail
 #IFS=$'\n\t'
 
 ### Setup some variables.
@@ -146,7 +146,7 @@ function add_jira_table
 
   local color
   local calctime=0
-  local elapsed=${$(stop_clock):-0}
+  local elapsed=$(stop_clock)
 
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
