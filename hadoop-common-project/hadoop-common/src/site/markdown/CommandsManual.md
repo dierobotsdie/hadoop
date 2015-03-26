@@ -64,13 +64,14 @@ All of the shell commands will accept a common set of options. For some commands
 | SHELL\_OPTION | Description |
 |:---- |:---- |
 | `--buildpaths` | Enables developer versions of jars. |
-| `--config confdir` | Overwrites the default Configuration directory. Default is `$HADOOP_PREFIX/conf`. |
+| `--config confdir` | Overwrites the default Configuration directory. Default is `$HADOOP_PREFIX/etc/hadoop`. |
 | `--daemon mode` | If the command supports daemonization (e.g., `hdfs namenode`), execute in the appropriate mode. Supported modes are `start` to start the process in daemon mode, `stop` to stop the process, and `status` to determine the active status of the process. `status` will return an [LSB-compliant](http://refspecs.linuxbase.org/LSB_3.0.0/LSB-generic/LSB-generic/iniscrptact.html) result code. If no option is provided, commands that support daemonization will run in the foreground. |
 | `--debug` | Enables shell level configuration debugging information |
 | `--help` | Shell script usage information. |
-| `--hostnames` | A space delimited list of hostnames where to execute a multi-host subcommand. By default, the content of the `slaves` file is used. |
-| `--hosts` | A file that contains a list of hostnames where to execute a multi-host subcommand. By default, the content of the `slaves` file is used. |
+| `--hostnames` | When `--slaves` is used, a space delimited list of hostnames where to execute a multi-host subcommand. |
+| `--hosts` | When `--slaves` is used, a file that contains a list of hostnames where to execute a multi-host subcommand. |
 | `--loglevel loglevel` | Overrides the log level. Valid log levels are FATAL, ERROR, WARN, INFO, DEBUG, and TRACE. Default is INFO. |
+| `--slaves` | If possible, execute this command on all hosts in the `slaves` file. |
 
 ### Generic Options
 
