@@ -46,6 +46,41 @@ FINDBUGS_HOME=${FINDBUGS_HOME}
 ECLIPSE_HOME=${ECLIPSE_HOME}
 BUILD_NATIVE=${BUILD_NATIVE:-true}
 
+function colorstripper
+{
+  local string=$1
+  shift 1
+  
+  local green=""
+  local white=""
+  local red=""
+  local blue=""
+  
+  echo "${string}" | \
+    sed -e "s,{color:red},${red},g" \
+        -e "s,{color:green},${green},g" \
+        -e "s,{color:blue},${blue},g" \
+        -e "s,{color},${white},g" 
+
+}
+
+function findlargest
+{
+  local column=$1
+  shift
+  local a=("$@")
+  local sizeofa=${#a[@]}
+  local i=0
+   
+  until [[ ${i} -gt ${sizeofa} ]]; do
+    string=$( echo ${a[$i]} | cut -f$((column + 1)) -d\| )
+    if [[ ${#string} -gt $maxlen ]]; then
+      maxlen=${#string}
+    fi
+    i=$((i+1))
+  done
+  echo "${maxlen}"
+}
 
 function add_jira_table
 {
@@ -865,10 +900,48 @@ function runTests
   return ${result}
 }
 
+function giveConsoleReport
+{
+  local result=$1
+  shift
+  local i  
+  local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
+  
+  if [[ ${seccoladj} -lt 9 ]]; then
+    seccoladj=9
+  fi
+  
+  seccoladj=$((secoladj + 2 ))
+  i=0
+  until [[ $i -gt ${#JIRA_HEADER[@]} ]]; do
+    printf "%s\n" "${JIRA_HEADER[${i}]}" 
+    i=$((i+1))
+  done
+  
+  printf "| %s | %*s | %s\n" "Vote" ${seccoladj} Subsystem "Comment" >> /tmp/cf.$$
 
-###############################################################################
-### Submit a comment to the defect's Jira
-functions submitJiraComment
+  i=0
+  until [[ $i -gt ${#JIRA_COMMENT_TABLE[@]} ]]; do
+    vote=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f2 -d\|)
+    subs=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f3 -d\|)
+    comment=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f4- -d\|)
+    
+    if [[ -n ${vote} ]]; then
+      printf "|      | %*s | " ${seccoladj} "${subs}"
+      for j in ${comment}; do
+        printf "|      | %*s | %s\n" ${seccoladj} " " "${j}"
+      done
+    else
+      printf "| %4s | %*s | %s\n" "${vote}" ${seccoladj} \
+        "${subs}" "${comment}" 
+    fi
+    i=$((i+1))
+  done
+  
+    
+}
+
+function submitJiraComment
 {
   local result=$1
   local i
@@ -918,8 +991,6 @@ functions submitJiraComment
   rm ${commentfile}
 }
 
-###############################################################################
-### Cleanup files
 function cleanupAndExit
 {
   local result=$1
