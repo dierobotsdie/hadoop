@@ -38,6 +38,7 @@ SUPPORT_DIR=/tmp
 BASEDIR=$(pwd)
 PS=${PS:-ps}
 AWK=${AWK:-awk}
+SED=${SED:-sed}
 WGET=${WGET:-wget}
 GIT=${GIT:-git}
 EGREP=${EGREP:-egrep}
@@ -52,6 +53,7 @@ CHANGED_MODULES=""
 
 declare -a JIRA_COMMENT_TABLE
 declare -a JIRA_FOOTER_TABLE
+declare -a JIRA_HEADER
 
 JFC=0
 JTC=0
@@ -61,12 +63,15 @@ TIMER=0
 function start_clock
 {
   TIMER=$(date +"%s") 
+  echo "Start: ${TIMER}"
 }
 
 function stop_clock
 { 
   local stoptime=$(date +"%s")
   local elapsed=$((stoptime-TIMER))
+  
+  echo "Stop elapsed: ${elapsed}"
   
   return ${elapsed}
 }
@@ -140,13 +145,13 @@ function add_jira_table
   shift 2
 
   local color
-
-  local elapsed=$(stop_clock)
+  local calctime=0
+  local elapsed=${$(stop_clock):-0}
 
   if [[ ${elapsed} -lt 0 ]]; then
-    elapsed="N/A"
+    calctime="N/A"
   else
-    elapsed="$((elapsed/60))m $((elapsed%60))s"
+    calctime="$((elapsed/60))m $((elapsed%60))s"
   fi
 
   case ${value} in
@@ -168,7 +173,7 @@ function add_jira_table
     JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | | ${*:-} |"
     JTC=$(( JTC+1 ))
   else
-    JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | ${elapsed} | $* |"
+    JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | ${calctime} | $* |"
     JTC=$(( JTC+1 ))
   fi
 }
