@@ -32,7 +32,7 @@ will increase the memory and send this command via a SOCKS proxy server.
 
 ### `HADOOP_USER_CLASSPATH`
 
-The Hadoop scripts have the capability to inject more content into the classpath of the running command by setting this environment variable.  It should be a colon delimited list of dictories, files, or wildcard locatons.
+The Hadoop scripts have the capability to inject more content into the classpath of the running command by setting this environment variable.  It should be a colon delimited list of directories, files, or wildcard locations.
 
 ```bash
 HADOOP_USER_CLASSPATH=${HOME}/lib/myjars/*.jar hadoop classpath
