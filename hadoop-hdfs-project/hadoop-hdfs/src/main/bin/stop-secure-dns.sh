@@ -15,11 +15,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Run as root to stop secure datanodes in a security-enabled cluster.
+# Run as root to start secure datanodes in a security-enabled cluster.
 
 
 function hadoop_usage {
-  echo "Usage: stop-secure-dns.sh"
+  echo "Usage (run as root in order to stop secure datanodes): stop-secure-dns.sh"
 }
 
 this="${BASH_SOURCE-$0}"
@@ -43,11 +43,7 @@ else
 fi
 
 if [[ "${EUID}" -eq 0 ]] && [[ -n "${HADOOP_SECURE_DN_USER}" ]]; then
-  exec "${HADOOP_HDFS_HOME}/bin/hdfs" \
-     --config "${HADOOP_CONF_DIR}" \
-     --slaves \
-     --daemon stop \
-     datanode
+  "${bin}/hadoop-daemons.sh" --config "${HADOOP_CONF_DIR}" stop datanode
 else
-  echo hadoop_usage_and_exit 1
+  hadoop_exit_with_usage 1
 fi

@@ -64,7 +64,7 @@ fi
 
 
 #Add other possible options
-nameStartOpt="$nameStartOpt $*"
+nameStartOpt="$nameStartOpt $@"
 
 #---------------------------------------------------------
 # namenodes
@@ -75,32 +75,28 @@ if [[ -z "${NAMENODES}" ]]; then
   NAMENODES=$(hostname)
 fi
 
-echo "Starting namenodes on [${NAMENODES}]"
+echo "Starting namenodes on [$NAMENODES]"
 
-"${HADOOP_HDFS_HOME}/bin/hdfs" \
-    --slaves \
-    --config "${HADOOP_CONF_DIR}" \
-    --hostnames "${NAMENODES}" \
-    --daemon start \
-    namenode ${nameStartOpt}
+"${bin}/hadoop-daemons.sh" \
+--config "${HADOOP_CONF_DIR}" \
+--hostnames "${NAMENODES}" \
+start namenode ${nameStartOpt}
 
 #---------------------------------------------------------
 # datanodes (using default slaves file)
 
 if [[ -n "${HADOOP_SECURE_DN_USER}" ]] &&
-   [[ -z "${HADOOP_SECURE_COMMAND}" ]]; then
-    hadoop_error "ERROR: Attempting to start secure cluster, skipping datanodes. "
-    hadoop_error "ERROR: Run start-secure-dns.sh as root or configure "
-    hadoop_error "ERROR: \${HADOOP_SECURE_COMMAND} to complete startup."
+[[ -z "${HADOOP_SECURE_COMMAND}" ]]; then
+  echo "ERROR: Attempting to start secure cluster, skipping datanodes. "
+  echo "Run start-secure-dns.sh as root or configure "
+  echo "\${HADOOP_SECURE_COMMAND} to complete startup."
 else
-
+  
   echo "Starting datanodes"
-
-  "${HADOOP_HDFS_HOME}/bin/hdfs" \
-    --slaves \
-    --config "${HADOOP_CONF_DIR}" \
-    --daemon start \
-    datanode ${dataStartOpt}
+  
+  "${bin}/hadoop-daemons.sh" \
+  --config "${HADOOP_CONF_DIR}" \
+  start datanode ${dataStartOpt}
 fi
 
 #---------------------------------------------------------
@@ -108,30 +104,17 @@ fi
 
 SECONDARY_NAMENODES=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -secondarynamenodes 2>/dev/null)
 
+if [[ "${SECONDARY_NAMENODES}" == "0.0.0.0" ]]; then
+  SECONDARY_NAMENODES=$(hostname)
+fi
+
 if [[ -n "${SECONDARY_NAMENODES}" ]]; then
-
-  if [[ "${NAMENODES}" =~ , ]]; then
-
-    hadoop_error "ERROR: Highly available NameNode is configured."
-    hadoop_error "ERROR: Skipping SecondaryNameNode."
-
-  else
-
-    SECONDARY_NAMENODES=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -secondarynamenodes 2>/dev/null)
-
-    if [[ "${SECONDARY_NAMENODES}" == "0.0.0.0" ]]; then
-      SECONDARY_NAMENODES=$(hostname)
-    fi
-
-    echo "Starting secondary namenodes [${SECONDARY_NAMENODES}]"
-
-    "${HADOOP_HDFS_HOME}/bin/hdfs" \
-      --slaves \
-      --config "${HADOOP_CONF_DIR}" \
-      --hostnames "${SECONDARY_NAMENODES}" \
-      --daemon start \
-      secondarynamenode
-  fi
+  echo "Starting secondary namenodes [${SECONDARY_NAMENODES}]"
+  
+  "${bin}/hadoop-daemons.sh" \
+  --config "${HADOOP_CONF_DIR}" \
+  --hostnames "${SECONDARY_NAMENODES}" \
+  start secondarynamenode
 fi
 
 #---------------------------------------------------------
@@ -143,13 +126,10 @@ case "${SHARED_EDITS_DIR}" in
   qjournal://*)
     JOURNAL_NODES=$(echo "${SHARED_EDITS_DIR}" | sed 's,qjournal://\([^/]*\)/.*,\1,g; s/;/ /g; s/:[0-9]*//g')
     echo "Starting journal nodes [${JOURNAL_NODES}]"
-
-    "${HADOOP_HDFS_HOME}/bin/hdfs" \
-      --slaves \
-      --config "${HADOOP_CONF_DIR}" \
-      --hostnames "${JOURNAL_NODES}" \
-      --daemon start \
-      journalnode
+    "${bin}/hadoop-daemons.sh" \
+    --config "${HADOOP_CONF_DIR}" \
+    --hostnames "${JOURNAL_NODES}" \
+    start journalnode
   ;;
 esac
 
@@ -158,13 +138,10 @@ esac
 AUTOHA_ENABLED=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -confKey dfs.ha.automatic-failover.enabled | tr '[:upper:]' '[:lower:]')
 if [[ "${AUTOHA_ENABLED}" = "true" ]]; then
   echo "Starting ZK Failover Controllers on NN hosts [${NAMENODES}]"
-
-  "${HADOOP_HDFS_HOME}/bin/hdfs" \
-    --slaves \
-    --config "${HADOOP_CONF_DIR}" \
-    --hostnames "${NAMENODES}" \
-    --daemon start \
-    zkfc
+  "${bin}/hadoop-daemons.sh" \
+  --config "${HADOOP_CONF_DIR}" \
+  --hostnames "${NAMENODES}" \
+  start zkfc
 fi
 
 # eof

@@ -33,7 +33,7 @@ fi
 
 PROJECT_NAME=Hadoop
 JENKINS=false
-PATCH_DIR=/tmp/$$
+PATCH_DIR=/tmp
 SUPPORT_DIR=/tmp
 BASEDIR=$(pwd)
 PS=${PS:-ps}
@@ -55,21 +55,6 @@ declare -a JIRA_FOOTER_TABLE
 
 JFC=0
 JTC=0
-
-TIMER=0
-
-function start_clock
-{
-  TIMER=$(date +"%s") 
-}
-
-function stop_clock
-{ 
-  local stoptime=$(date +"%s")
-  local elapsed=$((stoptime-TIMER))
-  
-  echo "$((elapsed/60))m $((elapsed%60))s"
-}
 
 function find_java_home
 {
@@ -141,12 +126,6 @@ function add_jira_table
 
   local color
 
-  local elapsed=$(stop_clock)
-
-  if [[ ${elapsed} -lt 0 ]]; then
-    elapsed="N/A"
-  fi
-
   case ${value} in
     1|+1)
       value="+1"
@@ -163,10 +142,10 @@ function add_jira_table
   esac
 
   if [[ -z ${color} ]]; then
-    JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | | $* |"
+    JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | $* |"
     JTC=$(( JTC+1 ))
   else
-    JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | ${elapsed} | $* |"
+    JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | $* |"
     JTC=$(( JTC+1 ))
   fi
 }
@@ -370,7 +349,7 @@ function parseArgs
     fi
     ### Check if ${PATCH_DIR} exists. If it does not exist, create a new directory
     if [[ ! -e "${PATCH_DIR}" ]] ; then
-      mkdir -p "${PATCH_DIR}"
+      mkdir "${PATCH_DIR}"
       if [[ $? == 0 ]] ; then
         echo "${PATCH_DIR} has been created"
       else
@@ -413,8 +392,6 @@ function prebuildWithoutPatch
   local mypwd
 
   big_console_header "Pre-build trunk to verify trunk stability and javac warnings"
-
-  start_clock
   if [[ ! -d hadoop-common-project ]]; then
     pushd "${BINDIR}/.." >/dev/null
     mypwd=$(pwd)
@@ -423,7 +400,7 @@ function prebuildWithoutPatch
     ${MVN} clean test -DskipTests > "${PATCH_DIR}/trunkCompile.txt" 2>&1
     if [[ $? != 0 ]] ; then
       echo "Top-level trunk compilation is broken?"
-      add_jira_table -1 pre-build ${elapsed} "Top-level trunk compilation may be broken."
+      add_jira_table -1 pre-patch "Top-level trunk compilation may be broken."
       return 1
     fi
     popd >/dev/null
@@ -444,7 +421,6 @@ function prebuildWithoutPatch
   echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/trunkJavadocWarnings.txt 2>&1"
   ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/trunkJavadocWarnings.txt" 2>&1
   if [[ $? != 0 ]] ; then
-    elapsed=$(stop_clock)
     echo "Trunk javadoc compilation is broken?"
     add_jira_table -1 pre-patch "Trunk JavaDoc compilation may be broken."
     return 1
@@ -473,8 +449,8 @@ function downloadPatch
     # shellcheck disable=SC2034
     VERSION=${GIT_REVISION}_${defect}_PATCH-${patchNum}
     add_jira_header "Test results for " \
-      "${patchURL}" \
-      " against trunk revision ${GIT_REVISION}."
+    "${patchURL}" \
+    " against trunk revision ${GIT_REVISION}."
 
     ### Copy in any supporting files needed by this process
     cp -r "${SUPPORT_DIR}"/lib/* ./lib
@@ -509,7 +485,7 @@ function verifyPatch
 
 function applyPatch
 {
-  big_console_header "Applying patch"
+  big_console_header "Applye patch."
 
   export PATCH
   "${BINDIR}/smart-apply-patch.sh" "${PATCH_DIR}/patch"
@@ -527,14 +503,12 @@ function checkAuthor
 
   big_console_header "Checking there are no @author tags in the patch."
 
-  start_clock
-
   authorTags=$("${GREP}" -c -i '@author' "${PATCH_DIR}/patch")
   echo "There appear to be ${authorTags} @author tags in the patch."
   if [[ $authorTags != 0 ]] ; then
     add_jira_table -1 @author \
-      "The patch appears to contain $authorTags @author tags which the Hadoop" \
-      " community has agreed to not allow in code contributions."
+    "The patch appears to contain $authorTags @author tags which the Hadoop" \
+    " community has agreed to not allow in code contributions."
     return 1
   fi
   add_jira_table +1 @author "The patch does not contain any @author tags."
@@ -547,8 +521,6 @@ function checkTests
   local patchIsDoc
 
   big_console_header "Checking there are new or changed tests in the patch."
-
-  start_clock
 
   testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
   echo "There appear to be ${testReferences} test files referenced in the patch."
@@ -566,13 +538,13 @@ function checkTests
     fi
 
     add_jira_table -1 "tests included" \
-      "The patch doesn't appear to include any new or modified tests. " \
-      "Please justify why no new tests are needed for this patch." \
-      "Also please list what manual steps were performed to verify this patch."
+    "The patch doesn't appear to include any new or modified tests. " \
+    "Please justify why no new tests are needed for this patch." \
+    "Also please list what manual steps were performed to verify this patch."
     return 1
   fi
   add_jira_table +1 "tests included" \
-    "The patch appears to include ${testReferences} new or modified test files."
+  "The patch appears to include ${testReferences} new or modified test files."
   return 0
 }
 
@@ -603,9 +575,7 @@ function checkJavadocWarnings
   local numTrunkJavadocWarnings
   local numPatchJavadocWarnings
 
-  big_console_header "Determining number of patched javadoc warnings"
-
-  start_clock
+  big_console_header "Determining number of patched javadoc warnings."
 
   echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchJavadocWarnings.txt 2>&1"
   if [[ -d hadoop-project ]]; then
@@ -642,7 +612,7 @@ function checkJavadocWarnings
   return 0
 }
 
-function calculateJavacWarnings
+function calcuateJavacWarnings
 {
   local warningfile=$1
   #shellcheck disable=SC2016,SC2046
@@ -655,8 +625,6 @@ function checkJavacWarnings
   local patchJavacWarnings
 
   big_console_header "Determining number of patched javac warnings."
-
-  start_clock
 
   echo "${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess ${NATIVE_PROFILE} -Ptest-patch > ${PATCH_DIR}/patchJavacWarnings.txt 2>&1"
   ${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess ${NATIVE_PROFILE} -Ptest-patch > "${PATCH_DIR}/patchJavacWarnings.txt" 2>&1
@@ -693,7 +661,7 @@ function checkJavacWarnings
     fi
   fi
 
-  add_jira_table +1 javac "There were no new javac warning messages."
+  add_jira_table +1 javadoc "There were no new javac warning messages."
   return 0
 }
 
@@ -703,8 +671,6 @@ function checkReleaseAuditWarnings
 {
 
   big_console_header "Determining number of patched release audit warnings."
-
-  start_clock
 
   echo "${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchReleaseAuditOutput.txt 2>&1"
   ${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchReleaseAuditOutput.txt" 2>&1
@@ -744,8 +710,6 @@ function checkStyle
 
   big_console_header "Determining number of patched checkstyle warnings."
 
-  start_clock
-
   echo "THIS IS NOT IMPLEMENTED YET"
   echo ""
   echo ""
@@ -776,8 +740,8 @@ function buildAndInstall
 
   big_console_header "Installing all of the jars"
 
-  echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
-  ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
+  echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess"
+  ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess
   return $?
 }
 
@@ -788,13 +752,6 @@ function checkFindbugsWarnings
 {
 
   big_console_header "Determining number of patched Findbugs warnings."
-
-  if [[ ! -e "${FINDBUGS_HOME}/bin/findbugs" ]]; then
-    printf "\n\n%s is not executable.\n\n" "${FINDBUGS_HOME}/bin/findbugs"
-    return 1
-  fi
-
-  start_clock
 
   local findbugs_version=$("${FINDBUGS_HOME}/bin/findbugs" -version)
   local modules=${CHANGED_MODULES}
@@ -812,8 +769,8 @@ function checkFindbugsWarnings
     module_suffix=$(basename "${module}")
     echo "${MVN} clean test findbugs:findbugs -DskipTests -D${PROJECT_NAME}PatchProcess < /dev/null > ${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt 2>&1"
     ${MVN} clean test findbugs:findbugs -DskipTests -D${PROJECT_NAME}PatchProcess \
-      < /dev/null \
-      > "${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt" 2>&1
+    < /dev/null \
+    > "${PATCH_DIR}/patchFindBugsOutput${module_suffix}.txt" 2>&1
     (( rc = rc + $? ))
     popd >/dev/null
   done
@@ -840,7 +797,7 @@ function checkFindbugsWarnings
     newFindbugsWarnings=$("${FINDBUGS_HOME}/bin/filterBugs" \
       -first "01/01/2000" "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
       "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
-      | ${AWK} '{print $1}')
+    | ${AWK} '{print $1}')
 
     echo "Found $newFindbugsWarnings Findbugs warnings ($file)"
 
@@ -871,8 +828,6 @@ function checkEclipseGeneration
 
   big_console_header "Running mvn eclipse:eclipse."
 
-  start_clock
-
   echo "${MVN} eclipse:eclipse -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchEclipseOutput.txt 2>&1"
   ${MVN} eclipse:eclipse -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchEclipseOutput.txt" 2>&1
   if [[ $? != 0 ]] ; then
@@ -890,8 +845,6 @@ function runTests
 {
   big_console_header "Running tests."
 
-
-  start_clock
 
   local failed_tests=""
   local modules=${CHANGED_MODULES}
@@ -934,7 +887,7 @@ function runTests
       echo "  ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess"
       if ! ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess; then
         add_jira_table -1 "core tests" "Failed to build the native portion " \
-          "of hadoop-common prior to running the unit tests in ${ordered_modules}"
+        "of hadoop-common prior to running the unit tests in ${ordered_modules}"
         return 1
       fi
     fi
