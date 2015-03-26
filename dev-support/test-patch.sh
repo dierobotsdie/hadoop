@@ -15,7 +15,7 @@
 #
 # We'll want to set these up at some point...
 #
-#set -euo pipefail
+set -uo pipefail
 #IFS=$'\n\t'
 
 ### Setup some variables.
