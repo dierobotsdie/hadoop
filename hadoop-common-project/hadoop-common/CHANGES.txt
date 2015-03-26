@@ -187,6 +187,9 @@ Trunk (Unreleased)
     HADOOP-10115. Exclude duplicate jars in hadoop package under different
     component's lib (Vinayakumar B via aw)
 
+    HADOOP-11524. hadoop_do_classpath_subcommand throws a shellcheck warning.
+    (cnauroth)
+
   BUG FIXES
 
     HADOOP-11473. test-patch says "-1 overall" even when all checks are +1
@@ -444,6 +447,10 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    HADOOP-11719. [Fsshell] Remove bin/hadoop reference from
+    GenericOptionsParser default help text.
+    (Brahma Reddy Battula via harsh)
+
     HADOOP-11692. Improve authentication failure WARN message to avoid user
     confusion. (Yongjun Zhang)
 
@@ -459,12 +466,18 @@ Release 2.8.0 - UNRELEASED
     HADOOP-11737. mockito's version in hadoop-nfs’ pom.xml shouldn't be
     specified. (Kengo Seki via ozawa)
 
+    HADOOP-11741. Add LOG.isDebugEnabled() guard for some LOG.debug().
+    (Walter Su via ozawa)
+
   OPTIMIZATIONS
 
   BUG FIXES
 
     HADOOP-10027. *Compressor_deflateBytesDirect passes instance instead of
     jclass to GetStaticObjectField. (Hui Zheng via cnauroth)
+
+    HADOOP-11724. DistCp throws NPE when the target directory is root.
+    (Lei Eddy Xu via Yongjun Zhang) 
 
 Release 2.7.0 - UNRELEASED
 
@@ -706,6 +719,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-9329. document native build dependencies in BUILDING.txt (Vijay Bhat
     via Colin P. McCabe)
+
+    HADOOP-10670. Allow AuthenticationFilters to load secret from signature
+    secret files. (Kai Zheng via wheat9)
 
   OPTIMIZATIONS
 
@@ -1138,6 +1154,12 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11609. Correct credential commands info in
     CommandsManual.html#credential. (Varun Saxena via ozawa)
+
+    HADOOP-11014. Potential resource leak in JavaKeyStoreProvider due to
+    unclosed stream. (ozawa)
+
+    HADOOP-11738. Fix a link of Protocol Buffers 2.5 for download in BUILDING.txt.
+    (ozawa)
 
 Release 2.6.1 - UNRELEASED
 

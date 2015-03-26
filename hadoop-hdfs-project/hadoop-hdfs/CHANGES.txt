@@ -18,11 +18,11 @@ Trunk (Unreleased)
     option since it may incorrectly finalize an ongoing rolling upgrade.
     (Kai Sasaki via szetszwo)
 
+    HDFS-7985. WebHDFS should be always enabled. (Li Lu via wheat9)
+
   NEW FEATURES
 
     HDFS-3125. Add JournalService to enable Journal Daemon. (suresh)
-
-    HDFS-3689. Add support for variable length block. (jing9)
 
   IMPROVEMENTS
 
@@ -146,6 +146,8 @@ Trunk (Unreleased)
     Iwasaki via aw)
 
     HDFS-7460. Rewrite httpfs to use new shell framework (John Smith via aw)
+
+    HDFS-6353. Check and make checkpoint before stopping the NameNode. (jing9)
 
   OPTIMIZATIONS
 
@@ -335,6 +337,11 @@ Release 2.8.0 - UNRELEASED
     HDFS-7854. Separate class DataStreamer out of DFSOutputStream. (Li Bo via
     jing9)
 
+    HDFS-7713. Implement mkdirs in the HDFS Web UI. (Ravi Prakash via wheat9)
+
+    HDFS-7928. Scanning blocks from disk during rolling upgrade startup takes
+    a lot of time if disks are busy (Rushabh S Shah via kihwal)
+
   OPTIMIZATIONS
 
   BUG FIXES
@@ -379,6 +386,8 @@ Release 2.7.0 - UNRELEASED
     HDFS-6133. Add a feature for replica pinning so that a pinned replica
     will not be moved by Balancer/Mover.  (zhaoyunjiong via szetszwo)
 
+    HDFS-3689. Add support for variable length block. (jing9)
+
     HDFS-7584. Enable Quota Support for Storage Types (See breakdown of
     tasks below)
 
@@ -387,6 +396,9 @@ Release 2.7.0 - UNRELEASED
     HDFS-6488. Support HDFS superuser in NFS gateway. (brandonli)
 
     HDFS-7838. Expose truncate API for libhdfs. (yliu)
+
+    HDFS-6826. Plugin interface to enable delegation of HDFS authorization 
+    assertions. (Arun Suresh via jitendra)
 
   IMPROVEMENTS
 
@@ -1265,6 +1277,9 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7977. NFS couldn't take percentile intervals (brandonli)
 
+    HDFS-7963. Fix expected tracing spans in TestTracing along with HDFS-7054.
+    (Masatake Iwasaki via kihwal)
+
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 
       HDFS-7720. Quota by Storage Type API, tools and ClientNameNode
@@ -1284,6 +1299,9 @@ Release 2.7.0 - UNRELEASED
 
       HDFS-7806. Refactor: move StorageType from hadoop-hdfs to
       hadoop-common. (Xiaoyu Yao via Arpit Agarwal)
+
+      HDFS-7824. GetContentSummary API and its namenode implementation for
+      Storage Type Quota/Usage. (Xiaoyu Yao via Arpit Agarwal)
 
 Release 2.6.1 - UNRELEASED
 
