@@ -55,7 +55,7 @@ declare -a JIRA_FOOTER_TABLE
 
 JFC=0
 JTC=0
-
+RESULT=0
 TIMER=0
 
 function start_clock
@@ -68,7 +68,7 @@ function stop_clock
   local stoptime=$(date +"%s")
   local elapsed=$((stoptime-TIMER))
   
-  echo "$((elapsed/60))m $((elapsed%60))s"
+  return ${elapsed}
 }
 
 function find_java_home
@@ -145,6 +145,8 @@ function add_jira_table
 
   if [[ ${elapsed} -lt 0 ]]; then
     elapsed="N/A"
+  else
+    elapsed="$((elapsed/60))m $((elapsed%60))s"
   fi
 
   case ${value} in
@@ -163,7 +165,7 @@ function add_jira_table
   esac
 
   if [[ -z ${color} ]]; then
-    JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | | $* |"
+    JIRA_COMMENT_TABLE[${JTC}]="|  | ${subsystem} | | ${*:-} |"
     JTC=$(( JTC+1 ))
   else
     JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | ${elapsed} | $* |"
@@ -222,7 +224,7 @@ function findChangedModules
 
   # if all of the lines start with a/ or b/, then this is a git patch that
   # was generated without --no-prefix
-  if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths} ; then
+  if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths}; then
     ${SED} -i -e 's,^[ab]/,,' ${tmp_paths}
   fi
 
@@ -423,7 +425,7 @@ function prebuildWithoutPatch
     ${MVN} clean test -DskipTests > "${PATCH_DIR}/trunkCompile.txt" 2>&1
     if [[ $? != 0 ]] ; then
       echo "Top-level trunk compilation is broken?"
-      add_jira_table -1 pre-build ${elapsed} "Top-level trunk compilation may be broken."
+      add_jira_table -1 pre-build "Top-level trunk compilation may be broken."
       return 1
     fi
     popd >/dev/null
@@ -444,7 +446,6 @@ function prebuildWithoutPatch
   echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/trunkJavadocWarnings.txt 2>&1"
   ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/trunkJavadocWarnings.txt" 2>&1
   if [[ $? != 0 ]] ; then
-    elapsed=$(stop_clock)
     echo "Trunk javadoc compilation is broken?"
     add_jira_table -1 pre-patch "Trunk JavaDoc compilation may be broken."
     return 1
