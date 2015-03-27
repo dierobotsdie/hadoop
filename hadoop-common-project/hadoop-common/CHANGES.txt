@@ -19,6 +19,8 @@ Trunk (Unreleased)
     HADOOP-11657. Align the output of `hadoop fs -du` to be more Unix-like.
     (aajisaka)
 
+    HADOOP-11553. Formalize the shell API (aw)
+
   NEW FEATURES
 
     HADOOP-6590. Add a username check for hadoop sub-commands (John Smith via aw)
@@ -186,6 +188,9 @@ Trunk (Unreleased)
 
     HADOOP-10115. Exclude duplicate jars in hadoop package under different
     component's lib (Vinayakumar B via aw)
+
+    HADOOP-11524. hadoop_do_classpath_subcommand throws a shellcheck warning.
+    (cnauroth)
 
   BUG FIXES
 
@@ -443,6 +448,10 @@ Release 2.8.0 - UNRELEASED
     (Dapeng Sun via Yongjun Zhang)
 
   IMPROVEMENTS
+
+    HADOOP-11719. [Fsshell] Remove bin/hadoop reference from
+    GenericOptionsParser default help text.
+    (Brahma Reddy Battula via harsh)
 
     HADOOP-11692. Improve authentication failure WARN message to avoid user
     confusion. (Yongjun Zhang)
@@ -1153,6 +1162,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11738. Fix a link of Protocol Buffers 2.5 for download in BUILDING.txt.
     (ozawa)
+
+    HADOOP-11748. The secrets of auth cookies should not be specified in
+    configuration in clear text. (Li Lu and Haohui Mai via wheat9)
 
 Release 2.6.1 - UNRELEASED
 

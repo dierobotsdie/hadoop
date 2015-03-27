@@ -806,6 +806,9 @@ Release 2.7.0 - UNRELEASED
     HDFS-7976. Update NFS user guide for mount option "sync" to minimize or
     avoid reordered writes. (brandonli)
 
+    HDFS-7410. Support CreateFlags with append() to support hsync() for
+    appending streams (Vinayakumar B via Colin P. McCabe)
+
   OPTIMIZATIONS
 
     HDFS-7454. Reduce memory footprint for AclEntries in NameNode.
@@ -1277,6 +1280,9 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7977. NFS couldn't take percentile intervals (brandonli)
 
+    HDFS-7963. Fix expected tracing spans in TestTracing along with HDFS-7054.
+    (Masatake Iwasaki via kihwal)
+
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 
       HDFS-7720. Quota by Storage Type API, tools and ClientNameNode
@@ -1296,6 +1302,9 @@ Release 2.7.0 - UNRELEASED
 
       HDFS-7806. Refactor: move StorageType from hadoop-hdfs to
       hadoop-common. (Xiaoyu Yao via Arpit Agarwal)
+
+      HDFS-7824. GetContentSummary API and its namenode implementation for
+      Storage Type Quota/Usage. (Xiaoyu Yao via Arpit Agarwal)
 
 Release 2.6.1 - UNRELEASED
 
