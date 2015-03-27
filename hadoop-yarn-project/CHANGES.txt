@@ -79,6 +79,8 @@ Release 2.8.0 - UNRELEASED
     YARN-2868. FairScheduler: Metric for latency to allocate first container 
     for an application. (Ray Chiang via kasha)
 
+    YARN-3397. yarn rmadmin should skip -failover. (J.Andreina via kasha)
+
   OPTIMIZATIONS
 
     YARN-3339. TestDockerContainerExecutor should pull a single image and not
@@ -105,6 +107,9 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3383. AdminService should use "warn" instead of "info" to log exception 
     when operation fails. (Li Lu via wangda)
+
+    YARN-3400. [JDK 8] Build Failure due to unreported exceptions in
+    RPCUtil (rkanter)
 
 Release 2.7.0 - UNRELEASED
 
@@ -836,6 +841,9 @@ Release 2.7.0 - UNRELEASED
 
     YARN-3393. Getting application(s) goes wrong when app finishes before
     starting the attempt. (Zhijie Shen via xgong)
+
+    YARN-2213. Change proxy-user cookie log in AmIpFilter to DEBUG.
+    (Varun Saxena via xgong)
 
 Release 2.6.0 - 2014-11-18
 

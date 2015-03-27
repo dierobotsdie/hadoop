@@ -256,6 +256,8 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    MAPREDUCE-579. Streaming "slowmatch" documentation. (harsh)
+
     MAPREDUCE-6287. Deprecated methods in org.apache.hadoop.examples.Sort
     (Chao Zhang via harsh)
 
@@ -386,6 +388,9 @@ Release 2.7.0 - UNRELEASED
 
     MAPREDUCE-6265. Make ContainerLauncherImpl.INITIAL_POOL_SIZE configurable 
     to better control to launch/kill containers. (Zhihai Xu via ozawa)
+
+    MAPREDUCE-6292. Use org.junit package instead of junit.framework in
+    TestCombineFileInputFormat. (aajisaka)
 
   OPTIMIZATIONS
 

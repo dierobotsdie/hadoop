@@ -1827,10 +1827,10 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     try {
       LastBlockWithStatus blkWithStatus = namenode.append(src, clientName,
           new EnumSetWritable<>(flag, CreateFlag.class));
-      return DFSOutputStream.newStreamForAppend(this, src,
-          flag.contains(CreateFlag.NEW_BLOCK),
-          buffersize, progress, blkWithStatus.getLastBlock(),
-          blkWithStatus.getFileStatus(), dfsClientConf.createChecksum(), favoredNodes);
+      return DFSOutputStream.newStreamForAppend(this, src, flag, buffersize,
+          progress, blkWithStatus.getLastBlock(),
+          blkWithStatus.getFileStatus(), dfsClientConf.createChecksum(),
+          favoredNodes);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class,
                                      FileNotFoundException.class,
@@ -2840,12 +2840,12 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
   /**
    * Save namespace image.
    * 
-   * @see ClientProtocol#saveNamespace()
+   * @see ClientProtocol#saveNamespace(long, long)
    */
-  void saveNamespace() throws AccessControlException, IOException {
+  boolean saveNamespace(long timeWindow, long txGap) throws IOException {
     TraceScope scope = Trace.startSpan("saveNamespace", traceSampler);
     try {
-      namenode.saveNamespace();
+      return namenode.saveNamespace(timeWindow, txGap);
     } catch(RemoteException re) {
       throw re.unwrapRemoteException(AccessControlException.class);
     } finally {

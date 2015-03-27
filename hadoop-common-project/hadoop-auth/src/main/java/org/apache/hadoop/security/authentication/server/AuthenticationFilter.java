@@ -18,12 +18,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.security.authentication.client.AuthenticatedURL;
 import org.apache.hadoop.security.authentication.client.AuthenticationException;
 import org.apache.hadoop.security.authentication.client.KerberosAuthenticator;
-import org.apache.hadoop.security.authentication.util.Signer;
-import org.apache.hadoop.security.authentication.util.SignerException;
-import org.apache.hadoop.security.authentication.util.RandomSignerSecretProvider;
-import org.apache.hadoop.security.authentication.util.SignerSecretProvider;
-import org.apache.hadoop.security.authentication.util.StringSignerSecretProvider;
-import org.apache.hadoop.security.authentication.util.ZKSignerSecretProvider;
+import org.apache.hadoop.security.authentication.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,6 +141,8 @@ public class AuthenticationFilter implements Filter {
    * Constant for the property that specifies the secret to use for signing the HTTP Cookies.
    */
   public static final String SIGNATURE_SECRET = "signature.secret";
+
+  public static final String SIGNATURE_SECRET_FILE = SIGNATURE_SECRET + ".file";
 
   /**
    * Constant for the configuration property that indicates the validity of the generated token.
@@ -282,9 +279,11 @@ public class AuthenticationFilter implements Filter {
             = config.getProperty(SIGNER_SECRET_PROVIDER, null);
     // fallback to old behavior
     if (signerSecretProviderName == null) {
-      String signatureSecret = config.getProperty(SIGNATURE_SECRET, null);
-      if (signatureSecret != null) {
-        providerClassName = StringSignerSecretProvider.class.getName();
+      String signatureSecretFile = config.getProperty(
+          SIGNATURE_SECRET_FILE, null);
+      // The precedence from high to low : file, random
+      if (signatureSecretFile != null) {
+        providerClassName = FileSignerSecretProvider.class.getName();
       } else {
         providerClassName = RandomSignerSecretProvider.class.getName();
         randomSecret = true;
@@ -293,8 +292,8 @@ public class AuthenticationFilter implements Filter {
       if ("random".equals(signerSecretProviderName)) {
         providerClassName = RandomSignerSecretProvider.class.getName();
         randomSecret = true;
-      } else if ("string".equals(signerSecretProviderName)) {
-        providerClassName = StringSignerSecretProvider.class.getName();
+      } else if ("file".equals(signerSecretProviderName)) {
+        providerClassName = FileSignerSecretProvider.class.getName();
       } else if ("zookeeper".equals(signerSecretProviderName)) {
         providerClassName = ZKSignerSecretProvider.class.getName();
       } else {
