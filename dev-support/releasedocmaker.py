@@ -1,15 +1,20 @@
-#!/usr/bin/python
-#   Licensed under the Apache License, Version 2.0 (the "License");
-#   you may not use this file except in compliance with the License.
-#   You may obtain a copy of the License at
+#!/usr/bin/env python
 #
-#       http://www.apache.org/licenses/LICENSE-2.0
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-#   Unless required by applicable law or agreed to in writing, software
-#   distributed under the License is distributed on an "AS IS" BASIS,
-#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-#   See the License for the specific language governing permissions and
-#   limitations under the License.
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from glob import glob
 from optparse import OptionParser
@@ -26,7 +31,7 @@ releaseVersion={}
 namePattern = re.compile(r' \([0-9]+\)')
 
 def clean(str):
-  return clean(re.sub(namePattern, "", str))
+  return tableclean(re.sub(namePattern, "", str))
 
 def formatComponents(str):
   str = re.sub(namePattern, '', str).replace("'", "")
@@ -37,15 +42,20 @@ def formatComponents(str):
     ret = "."
   return clean(ret)
 
-def lessclean(str):
+# convert to utf-8
+# protect some known md metachars
+def tableclean(str):
   str=str.encode('utf-8')
   str=str.replace("_","\_")
   str=str.replace("\r","")
   str=str.rstrip()
   return str
 
-def clean(str):
-  str=lessclean(str)
+# same thing as tableclean,
+# except table metachars are also 
+# escaped
+def notableclean(str):
+  str=tableclean(str)
   str=str.replace("|","\|")
   str=str.rstrip()
   return str
@@ -285,24 +295,26 @@ class Outputs:
   def writeList(self, mylist):
     for jira in sorted(mylist):
       line = '| [%s](https://issues.apache.org/jira/browse/%s) | %s |  %s | %s | %s | %s |\n' \
-        % (clean(jira.getId()), clean(jira.getId()),
-           clean(jira.getSummary()),
-           clean(jira.getPriority()),
+        % (notableclean(jira.getId()), notableclean(jira.getId()),
+           notableclean(jira.getSummary()),
+           notableclean(jira.getPriority()),
            formatComponents(jira.getComponents()),
-           clean(jira.getReporter()),
-           clean(jira.getAssignee()))
+           notableclean(jira.getReporter()),
+           notableclean(jira.getAssignee()))
       self.writeKeyRaw(jira.getProject(), line)
 
 def main():
-  parser = OptionParser(usage="usage: %prog --version VERSION [--version VERSION2 ...]")
+  parser = OptionParser(usage="usage: %prog --version VERSION [--version VERSION2 ...]",
+		epilog=
+               "Markdown-formatted CHANGES and RELEASENOTES files will be stored in a directory"
+               " named after the highest version provided.")
   parser.add_option("-v", "--version", dest="versions",
              action="append", type="string",
              help="versions in JIRA to include in releasenotes", metavar="VERSION")
   parser.add_option("-m","--master", dest="master", action="store_true",
-             help="only create the master files")
+             help="only create the master, merged project files")
   parser.add_option("-i","--index", dest="index", action="store_true",
              help="build an index file")
-
   (options, args) = parser.parse_args()
 
   if (options.versions == None):
@@ -383,20 +395,20 @@ def main():
        otherlist.append(jira)
 
     line = '* [%s](https://issues.apache.org/jira/browse/%s) | *%s* | **%s**\n' \
-        % (clean(jira.getId()), clean(jira.getId()), clean(jira.getPriority()),
-           clean(jira.getSummary()))
+        % (notableclean(jira.getId()), notableclean(jira.getId()), notableclean(jira.getPriority()),
+           notableclean(jira.getSummary()))
 
     if (jira.getIncompatibleChange()) and (len(jira.getReleaseNote())==0):
       reloutputs.writeKeyRaw(jira.getProject(),"\n---\n\n")
       reloutputs.writeKeyRaw(jira.getProject(), line)
       line ='\n**WARNING: No release note provided for this incompatible change.**\n\n'
-      print 'WARNING: incompatible change %s lacks release notes.' % (clean(jira.getId()))
+      print 'WARNING: incompatible change %s lacks release notes.' % (notableclean(jira.getId()))
       reloutputs.writeKeyRaw(jira.getProject(), line)
 
     if (len(jira.getReleaseNote())>0):
       reloutputs.writeKeyRaw(jira.getProject(),"\n---\n\n")
       reloutputs.writeKeyRaw(jira.getProject(), line)
-      line ='\n%s\n\n' % (lessclean(jira.getReleaseNote()))
+      line ='\n%s\n\n' % (tableclean(jira.getReleaseNote()))
       reloutputs.writeKeyRaw(jira.getProject(), line)
 
   reloutputs.writeAll("\n\n")
