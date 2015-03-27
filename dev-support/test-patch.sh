@@ -152,6 +152,8 @@ function add_jira_table
   else
     printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
+  
+  echo "Elapsed time: ${calctime}"
 
   case ${value} in
     1|+1)
@@ -1027,7 +1029,7 @@ function giveConsoleReport
     ela=$(echo "${ourstring}" | cut -f4 -d\|)
     comment=$(echo "${ourstring}"  | cut -f5 -d\|)
     foldedcomment=$(echo ${comment} | fold -s -w $((78-${seccoladj}-21)) > ${PATCH_DIR}/comment.1 )
-    normaltop=$(head -1 /tmp/3)
+    normaltop=$(head -1 ${PATCH_DIR}/comment.1)
     restcomment=$(${SED} -e '1d' ${PATCH_DIR}/comment.1  > ${PATCH_DIR}/comment.2)
 
     if [[ -z ${vote} ]]; then
