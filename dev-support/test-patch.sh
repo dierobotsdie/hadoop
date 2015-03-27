@@ -63,17 +63,15 @@ TIMER=0
 function start_clock
 {
   TIMER=$(date +"%s") 
-  echo "Start: ${TIMER}"
+  echo "Start: ${TIMER}" $(date)
 }
 
 function stop_clock
 { 
   local stoptime=$(date +"%s")
   local elapsed=$((stoptime-TIMER))
-  
-  echo "Stop elapsed: ${elapsed}"
-    
-  return ${elapsed}
+      
+  echo ${elapsed}
 }
 
 function find_java_home
@@ -147,13 +145,12 @@ function add_jira_table
   local color
   local calctime=0
   
-  stop_clock
-  local elapsed=$?
+  local elapsed=$(stop_clock)
 
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
   else
-    printf -v calctime "%*sm %*ss" 2 $((elapsed/60)) 2 $((elapsed%60))
+    printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
 
   case ${value} in
@@ -227,7 +224,7 @@ function findChangedModules
   local module
   local changed_modules=""
   
-  big_console_header "Discoverying changed modules"
+  big_console_header "Discovering changed modules"
 
   ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
 
@@ -900,7 +897,6 @@ function runTests
 {
   big_console_header "Running tests."
 
-
   start_clock
 
   local failed_tests=""
@@ -1022,23 +1018,32 @@ function giveConsoleReport
 
   printf "| %s | %*s | %s\n" "Vote" ${seccoladj} Subsystem "Comment"
 
-  i=0
+  i=1
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
-    vote=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f2 -d\|)
+    ourstring=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | tr -s ' ')
+    vote=$(echo "${ourstring}" | cut -f2 -d\|)
     vote=$(colorstripper "${vote}")
-    subs=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f3 -d\|)
-    comment=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | cut -f4- -d\|)
+    subs=$(echo "${ourstring}"  | cut -f3 -d\|)
+    ela=$(echo "${ourstring}" | cut -f4 -d\|)
+    comment=$(echo "${ourstring}"  | cut -f5 -d\|)
+    foldedcomment=$(echo ${comment} | fold -s -w $((78-${seccoladj}-21)) > ${PATCH_DIR}/comment.1 )
+    normaltop=$(head -1 /tmp/3)
+    restcomment=$(${SED} -e '1d' ${PATCH_DIR}/comment.1  > ${PATCH_DIR}/comment.2)
 
     if [[ -z ${vote} ]]; then
-      printf "|      | %*s | " ${seccoladj} "${subs}"
+      printf "|      | %*s | %7s | " ${seccoladj} "${subs}" " "
       for j in ${comment}; do
-        printf "|      | %*s | %s\n" ${seccoladj} " " "${j}"
+        printf "         %*s             | %s\n" ${seccoladj} " " "${j}"
       done
     else
-      printf "| %4s | %*s | %s\n" "${vote}" ${seccoladj} \
-      "${subs}" "${comment}"
+      printf "| %4s | %*s | %-7s | %s\n" "${vote}" ${seccoladj} \
+      "${subs}" "${ela}" "${normaltop}"
+      while read line; do
+        printf "%*s | %s\n" $((78-${seccoladj}-19)) " " "${line}"
+      done < ${PATCH_DIR}/comment.2
     fi
     i=$((i+1))
+    rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1"
   done
 }
 
