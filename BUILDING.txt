@@ -73,7 +73,7 @@ Where to run Maven from?
 ----------------------------------------------------------------------------------
 Maven build goals:
 
- * Clean                     : mvn clean
+ * Clean                     : mvn clean [-Preleasedocs]
  * Compile                   : mvn compile [-Pnative]
  * Run tests                 : mvn test [-Pnative]
  * Create JAR                : mvn package
@@ -204,7 +204,7 @@ Create source and binary distributions with native code and documentation:
 
 Create a local staging version of the website (in /tmp/hadoop-site)
 
-  $ mvn clean site; mvn site:stage -Preleasedocs -DstagingDirectory=/tmp/hadoop-site
+  $ mvn clean site -Preleasedocs; mvn site:stage -DstagingDirectory=/tmp/hadoop-site
 
 ----------------------------------------------------------------------------------
 Installing Hadoop

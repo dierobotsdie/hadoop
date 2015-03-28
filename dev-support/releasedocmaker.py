@@ -44,6 +44,7 @@ def formatComponents(str):
 
 # convert to utf-8
 # protect some known md metachars
+# or chars that screw up doxia
 def tableclean(str):
   str=str.encode('utf-8')
   str=str.replace("_","\_")
@@ -52,8 +53,10 @@ def tableclean(str):
   return str
 
 # same thing as tableclean,
-# except table metachars are also 
-# escaped
+# except table metachars are also
+# escaped as well as more
+# things we don't want doxia to
+# screw up
 def notableclean(str):
   str=tableclean(str)
   str=str.replace("|","\|")
