@@ -256,6 +256,9 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    MAPREDUCE-6291. Correct mapred queue usage command.
+    (Brahma Reddu Battula via harsh)
+
     MAPREDUCE-579. Streaming "slowmatch" documentation. (harsh)
 
     MAPREDUCE-6287. Deprecated methods in org.apache.hadoop.examples.Sort
@@ -304,6 +307,9 @@ Release 2.8.0 - UNRELEASED
 
     MAPREDUCE-6242. Progress report log is incredibly excessive in 
     application master. (Varun Saxena via devaraj)
+
+    MAPREDUCE-6294. Remove an extra parameter described in Javadoc of
+    TockenCache. (Brahma Reddy Battula via ozawa)
 
 Release 2.7.0 - UNRELEASED
 
