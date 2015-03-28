@@ -941,8 +941,7 @@
                 <fileset>
                   <directory>src/site/markdown/release</directory>
                     <includes>
-                      <include>${project.version}/CHANGES.*${project.version}*.md</include>
-                      <include>${project.version}/RELEASENOTES.*${project.version}*.md</include>
+                      <include>${project.version}</include>
                     </includes>
                   <followSymlinks>false</followSymlinks>
                 </fileset>
