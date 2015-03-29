@@ -1121,8 +1121,8 @@ function submitJiraComment
     printf "(x) *{color:red}-1 overall{color}*\n" > "${commentfile}"
   fi
 
-  printf "\\\\" >>  "${commentfile}"
-  printf "\\\\" >>  "${commentfile}"
+  printf "\\\\\n" >>  "${commentfile}"
+  printf "\\\\\n" >>  "${commentfile}"
 
   i=0
   until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
@@ -1138,7 +1138,8 @@ function submitJiraComment
     ((i=i+1))
   done
 
-  printf "\\\\" >>  "${commentfile}"
+  printf "\\\\\n" >>  "${commentfile}"
+  printf "\\\\\n" >>  "${commentfile}"
 
   echo "|| Subsystem || Report ||" >> "${commentfile}"
   i=0
