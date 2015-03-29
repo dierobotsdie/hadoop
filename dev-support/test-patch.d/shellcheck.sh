@@ -4,6 +4,8 @@ add_plugin shellcheck
 
 SHELLCHECK_TIMER=0
 
+SHELLCHECK=${SHELLCHECK:-shellcheck}
+
 function shellcheck_private_findbash
 {
   local i

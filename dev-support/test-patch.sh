@@ -682,8 +682,8 @@ function checkJavadocWarnings
       ${GREP} -i warning "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt" > "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarningsFiltered.txt"
       ${GREP} -i warning "${PATCH_DIR}/patchJavadocWarnings.txt" > "${PATCH_DIR}/patchJavadocWarningsFiltered.txt"
       ${DIFF} -u "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarningsFiltered.txt" \
-      "${PATCH_DIR}/patchJavadocWarningsFiltered.txt" \
-      > "${PATCH_DIR}/diffJavadocWarnings.txt"
+        "${PATCH_DIR}/patchJavadocWarningsFiltered.txt" \
+        > "${PATCH_DIR}/diffJavadocWarnings.txt"
       rm -f "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarningsFiltered.txt" "${PATCH_DIR}/patchJavadocWarningsFiltered.txt"
 
       add_jira_table -1 javadoc "The applied patch generated "\
@@ -1202,7 +1202,7 @@ function post_checkout
   done
 
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_postcheckout; then
+    if declare -f ${plugin}_postcheckout >/dev/null 2>&1; then
       
       hadoop_debug "Running ${plugin}_postcheckout"
       #shellcheck disable=SC2086
@@ -1238,7 +1238,7 @@ function preapply
   done
 
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_preapply; then
+    if declare -f ${plugin}_preapply >/dev/null 2>&1; then
       
       hadoop_debug "Running ${plugin}_preapply"
       #shellcheck disable=SC2086
@@ -1275,7 +1275,7 @@ function postapply
   done
 
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_postapply; then
+    if declare -f ${plugin}_postapply >/dev/null 2>&1; then
       
       hadoop_debug "Running ${plugin}_postapply"
       #shellcheck disable=SC2086
@@ -1298,7 +1298,7 @@ function postbuild
   done
   
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_postbuild; then
+    if declare -f ${plugin}_postbuild >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_postbuild"
       #shellcheck disable=SC2086
       ${plugin}_postbuild
@@ -1321,7 +1321,7 @@ function runtests
   fi
   
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_tests; then
+    if declare -f ${plugin}_tests >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_tests"
       #shellcheck disable=SC2086
       ${plugin}_tests
