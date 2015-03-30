@@ -18,7 +18,7 @@ add_plugin shellcheck
 
 SHELLCHECK_TIMER=0
 
-SHELLCHECK=${SHELLCHECK:-shellcheck}
+SHELLCHECK=${SHELLCHECK:-$(which shellcheck)}
 
 function shellcheck_private_findbash
 {
@@ -35,18 +35,16 @@ function shellcheck_preapply
 
   big_console_header "shellcheck plugin: prepatch"
 
+  if [[ -z "${SHELLCHECK}" ]]; then
+    hadoop_error "shellcheck is not available."
+  fi
+
   start_clock
 
   for i in $(shellcheck_private_findbash | sort); do
     ${SHELLCHECK} -f gcc ${i} >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
   done
     
-  if [[ $? != 0 ]] ; then
-    echo "Pre-patch ${PATCH_BRANCH} shellcheck check is broken?"
-    add_jira_table 0 shellcheck "Pre-patch ${PATCH_BRANCH} shellcheck is broken."
-    return 1
-  fi
-
   # keep track of how much as elapsed for us already
   SHELLCHECK_TIMER=$(stop_clock)
   return 0
@@ -58,22 +56,20 @@ function shellcheck_postapply
 
   big_console_header "shellcheck plugin: postpatch"
 
+  if [[ -z "${SHELLCHECK}" ]]; then
+    hadoop_error "shellcheck is not available."
+  fi
+
   start_clock
 
   # add our previous elapsed to our new timer
   # by setting the clock back
-  ((TIMER=TIMER-SHELLCHECK_TIMER))
+  offset_clock ${SHELLCHECK_TIMER}
 
   # we re-check this in case one has been added
   for i in $(shellcheck_private_findbash | sort); do
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
-
-  if [[ $? != 0 ]] ; then
-    echo "Post-patch shellcheck compilation is broken."
-    add_jira_table -1 shellcheck "Post-patch shellcheck compilation is broken."
-    return 1
-  fi
 
   numPrepatch=$(wc -l "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" | ${AWK} '{print $1}')
   numPostpatch=$(wc -l "${PATCH_DIR}/patchshellcheck-result.txt" | ${AWK} '{print $1}')

@@ -14,7 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_plugin checkstyle
+# this really doesn't work
+#add_plugin checkstyle
 
 CHECKSTYLE_TIMER=0
 
@@ -48,7 +49,7 @@ function checkstyle_postapply
 
   # add our previous elapsed to our new timer
   # by setting the clock back
-  ((TIMER=TIMER-CHECKSTYLE_TIMER))
+  offset_clock ${CHECKSTYLE_TIMER}
 
   echo "${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchcheckstyle.txt 2>&1"
   ${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1

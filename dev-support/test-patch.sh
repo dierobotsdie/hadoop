@@ -68,6 +68,7 @@ function setup_defaults
   PATCH_BRANCH=""
   CHANGED_MODULES=""
   ISSUE=""
+  ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
 
   PS=${PS:-ps}
   AWK=${AWK:-awk}
@@ -103,6 +104,11 @@ function stop_clock
   hadoop_debug "Stop clock"
   
   echo ${elapsed}
+}
+
+function offset_clock
+{
+  ((TIMER=TIMER-$1))
 }
 
 function find_java_home
@@ -255,10 +261,7 @@ function findChangedModules
   local tmp_modules="${PATCH_DIR}/tmp.modules.$$"
 
   local module
-  local changed_modules=""
-  
-  big_console_header "Discovering changed modules"
-  
+    
   ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
 
   # if all of the lines start with a/ or b/, then this is a git patch that
@@ -278,10 +281,9 @@ function findChangedModules
   while read module; do
     ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
     if [[ "$?" != 0 ]]; then
-      changed_modules="${changed_modules} ${module}"
+      CHANGED_MODULES="${CHANGED_MODULES} ${module}"
     fi
   done < <(sort -u "${tmp_modules}")
-  echo "${changed_modules}"
 }
 
 function printUsage
@@ -410,52 +412,65 @@ function parseArgs
   else
     echo "Running in developer mode"
     JENKINS=false
-    ### PATCH_FILE contains the location of the patchfile
-    PATCH_FILE=${PATCH_OR_ISSUE}
-    if [[ ! -e "${PATCH_FILE}" ]] ; then
-      echo "Unable to locate the patch file ${PATCH_FILE}"
+  fi
+  if [[ ! -d ${PATCH_DIR} ]]; then
+    mkdir -p "${PATCH_DIR}"
+    if [[ $? == 0 ]] ; then
+      echo "${PATCH_DIR} has been created"
+    else
+      echo "Unable to create ${PATCH_DIR}"
       cleanupAndExit 0
     fi
-    ### Check if ${PATCH_DIR} exists. If it does not exist, create a new directory
-    if [[ ! -e "${PATCH_DIR}" ]] ; then
-      mkdir -p "${PATCH_DIR}"
-      if [[ $? == 0 ]] ; then
-        echo "${PATCH_DIR} has been created"
-      else
-        echo "Unable to create ${PATCH_DIR}"
-        cleanupAndExit 0
-      fi
-    fi
-    ### Obtain the patch filename to append it to the version number
-    ISSUE=$(basename "${PATCH_FILE}")
   fi
 }
 
 function checkout
 {
-  big_console_header "Testing patch for ${ISSUE}."
+  local currentbranch
 
-  ### When run by a developer, if the workspace contains modifications, do not continue
-  ### unless the --dirty-workspace option was set
-  status=$(${GIT} status --porcelain)
-  if [[ ${JENKINS} == "false" ]] ; then
-    if [[ "${status}" != "" && -z ${DIRTY_WORKSPACE} ]] ; then
-      echo "ERROR: can't run in a workspace that contains the following modifications"
-      echo "${status}"
-      cleanupAndExit 1
-    fi
-    echo
-  else
-    hadoop_debug "Checkout: ${PATCH_BRANCH}"
+  big_console_header "Confirming git environment"
 
+  hadoop_debug "Checkout: ${PATCH_BRANCH}"
+  if [[ ${JENKINS} == "true" ]] ; then
     cd "${BASEDIR}"
     ${GIT} reset --hard
     ${GIT} clean -xdf
     ${GIT} checkout "${PATCH_BRANCH}"
     ${GIT} pull --rebase
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git is failing"
+      return $?
+    fi
+    ### Copy in any supporting files needed by this process
+    cp -r "${SUPPORT_DIR}"/lib/* ./lib
+  else
+    status=$(${GIT} status --porcelain)
+    if [[ "${status}" != "" && -z ${DIRTY_WORKSPACE} ]] ; then
+      hadoop_error "ERROR: --dirty-workspace option not provided."
+      hadoop_error "ERROR: can't run in a workspace that contains the following modifications"
+      hadoop_error "${status}"
+      cleanupAndExit 1
+    fi
+    currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
+    if [[ "${currentbranch}" != "${PATCH_BRANCH}" ]];then
+      echo "WARNING: Current git branch is ${currentbranch} but patch is built for ${PATCH_BRANCH}."
+      echo "WARNING: Continuing anyway..."
+      PATCH_BRANCH=${currentbranch}
+    fi
   fi
-  GIT_REVISION=$(${GIT} rev-parse --verify --short HEAD)
-  return $?
+  
+  GIT_REVISION=$(${GIT} rev-parse --verify --short HEAD)  
+  # shellcheck disable=SC2034
+  VERSION=${GIT_REVISION}_${ISSUE}_PATCH-${patchNum}
+  
+  if [[ "${ISSUE}" = 'Unknown' ]]; then
+    echo "Testing patch on ${PATCH_BRANCH}."
+  else
+    echo "Testing ${ISSUE} patch on ${PATCH_BRANCH}."
+  fi
+  
+  add_jira_footer "git revision" "${GIT_REVISION}"
+  return 0
 }
 
 function prebuildWithoutPatch
@@ -504,57 +519,146 @@ function prebuildWithoutPatch
 }
 
 
+function checkagainstbranches
+{
+  local branches=$1
+  local check=$2
+  local i
+    
+  for i in ${branches}; do
+    if [[ "${i}" = "${check}" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+function determineIssue
+{
+  local patchnamechunk
+  local maybeissue
+  
+  # we can shortcut jenkins
+  if [[ ${JENKINS} = true ]]; then
+    ISSUE=${PATCH_OR_ISSUE}
+  fi
+  
+  # shellcheck disable=SC2016
+  patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
+  
+  maybeissue=$(echo "${patchnamechunk}" | cut -f1,2 -d-)
+  
+  if [[ ${maybeissue} =~ ${ISSUE_RE} ]]; then
+    ISSUE=${maybeissue}
+    return 0
+  fi
+  
+  ISSUE="Unknown"
+  return 1
+}
+
+function determineBranch
+{
+  local allbranches
+  local patchnamechunk
+  
+  # something has already set this, so move on
+  if [[ -n ${PATCH_BRANCH} ]]; then
+    return
+  fi
+  
+  # developer mode, existing checkout, whatever
+  if [[ "${DIRTY_WORKSPACE}" = true ]];then
+    PATCH_BRANCH=$(${GIT} rev-parse --abbrev-ref HEAD)
+    echo "dirty workspace mode; applying against existing branch"
+    return
+  fi
+  
+  allbranches=$(${GIT} branch -r | tr -d ' ' | ${SED} -e s,origin/,,g)
+  
+  # shellcheck disable=SC2016
+  patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
+  
+  # ISSUE.branch.##.patch
+  PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f2 -d. )
+  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  if [[ $? = 0 ]]; then
+    return
+  fi
+  
+  # ISSUE-branch-##.patch
+  PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | cut -f1,2 -d-)
+  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  if [[ $? = 0 ]]; then
+    return
+  fi
+
+  # ISSUE-##.patch.branch 
+  # shellcheck disable=SC2016
+  PATCH_BRANCH=$(echo "${patchnamechunk}" | ${AWK} -F. '{print $NF}')
+  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  if [[ $? = 0 ]]; then
+    return
+  fi
+  
+  # ISSUE-branch.##.patch
+  # shellcheck disable=SC2016
+  PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | ${AWK} -F. '{print $(NF-2)}' 2>/dev/null)
+  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  if [[ $? = 0 ]]; then
+    return
+  fi
+
+  PATCH_BRANCH=trunk
+}
+
 function downloadPatch
 {
-  ### Download latest patch file (ignoring .htm and .html) when run from patch process
   
-  # See https://wiki.apache.org/hadoop/HowToContribute#Naming_your_patch
-  if [[ ${JENKINS} == "true" ]] ; then
-    ${WGET} -q -O "${PATCH_DIR}/jira" "http://issues.apache.org/jira/browse/${ISSUE}"
-    if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
-      echo "${ISSUE} is not \"Patch Available\".  Exiting."
+  if [[ -f ${PATCH_OR_ISSUE} ]]; then
+    PATCH_FILE="${PATCH_OR_ISSUE}"
+  else
+    if [[ ${PATCH_OR_ISSUE} =~ /^http/ ]]; then
+      echo "Patch is being downloaded at $(date) from"
+      patchURL="${PATCH_OR_ISSUE}"
+    else
+      ${WGET} -q -O "${PATCH_DIR}/jira" "http://issues.apache.org/jira/browse/${PATCH_OR_ISSUE}"
+      
+      if [[ $? != 0 ]];then
+        hadoop_error "Unable to determine what ${PATCH_OR_ISSUE} may reference."
+        cleanupAndExit 0
+      fi
+      
+      if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
+        hadoop_error "${PATCH_OR_ISSUE} is not \"Patch Available\".  Exiting."
+        cleanupAndExit 0
+      fi
+      
+      relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
+      patchURL="http://issues.apache.org${relativePatchURL}"
+      patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
+      echo "${ISSUE} patch is being downloaded at $(date) from"
+    fi
+    echo "${patchURL}"
+    add_jira_footer "Patch URL" "${patchURL}"
+    ${WGET} -q -O "${PATCH_DIR}/patch" "${patchURL}"
+    if [[ $? != 0 ]];then
+      hadoop_error "${PATCH_OR_ISSUE} could not be downloaded."
       cleanupAndExit 0
     fi
-    relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
-    patchURL="http://issues.apache.org${relativePatchURL}"
-    patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
-    echo "${ISSUE} patch is being downloaded at $(date) from"
-    echo "${patchURL}"
-    ${WGET} -q -O "${PATCH_DIR}/patch" "${patchURL}"
+    PATCH_FILE="${PATCH_DIR}/patch"
+  fi
+  
+  determineBranch
+  
+  determineIssue
     
-    if [[ -z ${PATCH_BRANCH} ]]; then
-      PATCH_BRANCH=$(echo ${PATCH_OR_ISSUE} | ${SED} -e "s,${ISSUE}",,g | cut -f1 -d. | cut -f2- -d-)
-      if [[ -z ${PATCH_BRANCH} ]];then
-        PATCH_BRANCH=trunk
-      fi
-    fi  
-        
-    # shellcheck disable=SC2034
-    VERSION=${GIT_REVISION}_${ISSUE}_PATCH-${patchNum}
-    add_jira_header "Test results for " \
-      "${patchURL}" \
-      " against ${PATCH_BRANCH} revision ${GIT_REVISION}."
-
-    ### Copy in any supporting files needed by this process
-    cp -r "${SUPPORT_DIR}"/lib/* ./lib
-    #PENDING: cp -f ${SUPPORT_DIR}/etc/checkstyle* ./src/test
-    ### Copy the patch file to ${PATCH_DIR}
-  else
-    
-    if [[ -z ${PATCH_BRANCH} ]]; then
-      PATCH_BRANCH=$(echo ${PATCH_OR_ISSUE} | ${SED} -e "s,${ISSUE}",,g | cut -f1 -d. | cut -f2- -d-)
-      if [[ "${DIRTY_WORKSPACE}" = true ]];then
-        PATCH_BRANCH=$(${GIT} rev-parse --abbrev-ref HEAD)
-      fi
-    fi
-    
-    # shellcheck disable=SC2034
-    VERSION=PATCH-${ISSUE}
+  if [[ ! -f "${PATCH_DIR}/patch" ]]; then
     cp "${PATCH_FILE}" "${PATCH_DIR}/patch"
     if [[ $? == 0 ]] ; then
       echo "Patch file ${PATCH_FILE} copied to ${PATCH_DIR}"
     else
-      echo "Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
+      hadoop_error "Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
       cleanupAndExit 0
     fi
   fi
@@ -654,7 +758,6 @@ function calculateJavadocWarnings
   return $(${EGREP} "^[0-9]+ warnings$" "${warningfile}" | ${AWK} '{sum+=$1} END {print sum}')
 }
 
-### Check there are no javadoc warnings
 function checkJavadocWarnings
 {
   local numBranchJavadocWarnings
@@ -754,8 +857,6 @@ function checkJavacWarnings
   return 0
 }
 
-###############################################################################
-### Check there are no changes in the number of release audit (RAT) warnings
 function checkReleaseAuditWarnings
 {
 
@@ -763,7 +864,7 @@ function checkReleaseAuditWarnings
 
   start_clock
 
-  echo "${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchReleaseAuditOutput.txt 2>&1"
+  echo "${MVN} clean apache-rat:check -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchReleaseAuditOutput.txt 2>&1"
   ${MVN} apache-rat:check -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchReleaseAuditOutput.txt" 2>&1
   #shellcheck disable=SC2038
   find "${BASEDIR}" -name rat.txt | xargs cat > "${PATCH_DIR}/patchReleaseAuditWarnings.txt"
@@ -781,7 +882,9 @@ function checkReleaseAuditWarnings
         ${GREP} '\!?????' "${PATCH_DIR}/patchReleaseAuditWarnings.txt" \
         >  "${PATCH_DIR}/patchReleaseAuditProblems.txt"
 
-        echo "Lines that start with ????? in the release audit Report indicate files that do not have an Apache license header." >> "${PATCH_DIR}/patchReleaseAuditProblems.txt"
+        echo "Lines that start with ????? in the release audit "\
+            "report indicate files that do not have an Apache license header." \
+            >> "${PATCH_DIR}/patchReleaseAuditProblems.txt"
 
         add_jira_footer "Release Audit" "@@BASE@@/patchReleaseAuditProblems.txt"
 
@@ -790,37 +893,6 @@ function checkReleaseAuditWarnings
     fi
   fi
   add_jira_table 1 "release audit" "The applied patch does not increase the total number of release audit warnings."
-  return 0
-}
-
-function checkStyle
-{
-  return 0
-
-  big_console_header "Determining number of patched checkstyle warnings."
-
-  start_clock
-
-  echo "THIS IS NOT IMPLEMENTED YET"
-  echo ""
-  echo ""
-  echo "${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess"
-  ${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess
-
-  add_jira_footer "Checkstyle" "@@BASE@@/${PATCH_BRANCH}/build/test/checkstyle-errors.html"
-
-
-  ### TODO: calculate actual patchStyleErrors
-  #  patchStyleErrors=0
-  #  if [[ $patchStyleErrors != 0 ]] ; then
-  #    JIRA_COMMENT="${JIRA_COMMENT}
-  #
-  #    {color:red}-1 checkstyle{color}.  The patch generated $patchStyleErrors code style errors."
-  #    return 1
-  #  fi
-  #  JIRA_COMMENT="${JIRA_COMMENT}
-  #
-  #    {color:green}+1 checkstyle{color}.  The patch generated 0 code style errors."
   return 0
 }
 
@@ -1000,7 +1072,9 @@ function unitTests
     echo "  ${MVN} clean install -fn ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess"
     ${MVN} clean install -fae ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
     test_build_result=$?
-    cat "${test_logfile}"
+    
+    add_jira_footer "${module} test log" "@@BASE@@/${test_logfile}"
+    
     # shellcheck disable=2016
     module_test_timeouts=$(${AWK} '/^Running / { if (last) { print last } last=$2 } /^Tests run: / { last="" }' "${test_logfile}")
     if [[ -n "${module_test_timeouts}" ]] ; then
@@ -1086,10 +1160,9 @@ function giveConsoleReport
       normaltop=$(head -1 "${PATCH_DIR}/comment.1")
       ${SED} -e '1d' "${PATCH_DIR}/comment.1"  > "${PATCH_DIR}/comment.2"
       
-      printf "| %4s | %*s | %-7s | %-s\n" "${vote}" ${seccoladj} \
+      printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
       "${subs}" "${ela}" "${normaltop}"
       while read line; do
-        line=$(echo "${line}" | ${SED} -e 's,^ ,,g')
         printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${line}"
       done < "${PATCH_DIR}/comment.2"
     fi
@@ -1097,7 +1170,7 @@ function giveConsoleReport
     rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1" 2>/dev/null
   done
     
-  printf "\n\n|| Subsystem || Report ||\n"
+  printf "\n\n|| Subsystem || Report/Notes ||\n"
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" | 
@@ -1112,6 +1185,10 @@ function submitJiraComment
   local result=$1
   local i
   local commentfile=${PATCH_DIR}/commentfile
+
+  if [[ ${JENKINS} != "true" ]] ; then
+    return 0
+  fi
 
   add_jira_footer "Console output" "@@BASE@@/console"
 
@@ -1141,7 +1218,7 @@ function submitJiraComment
   printf "\\\\\n" >>  "${commentfile}"
   printf "\\\\\n" >>  "${commentfile}"
 
-  echo "|| Subsystem || Report ||" >> "${commentfile}"
+  echo "|| Subsystem || Report/Notes ||" >> "${commentfile}"
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" | 
@@ -1153,11 +1230,6 @@ function submitJiraComment
   printf "\n\nThis message was automatically generated.\n\n" >> "${commentfile}"
 
   big_console_header "Adding comment to JIRA"
-
-
-  if [[ ${JENKINS} != "true" ]] ; then
-    return 0
-  fi
   
   export USER=hudson
   ${JIRACLI} -s https://issues.apache.org/jira \
@@ -1219,10 +1291,7 @@ function post_checkout
         cleanupAndExit 1
       fi
     fi
-  done
-  
-  CHANGED_MODULES=$(findChangedModules)
-  
+  done  
 }
 
 function preapply
@@ -1316,7 +1385,7 @@ function runtests
   local plugin
   
   ### Run tests for Jenkins or if explictly asked for by a developer
-  if [[ ${JENKINS} == "true" || $RUN_TESTS == "true" ]] ; then
+  if [[ ${JENKINS} == "true" || ${RUN_TESTS} == "true" ]] ; then
     hadoop_debug "Running unitTests"
     unitTests
     
@@ -1353,11 +1422,11 @@ function add_plugin
   PLUGINS="${PLUGINS} $1"
 }
 
+###############################################################################
+###############################################################################
+###############################################################################
 
-
-###############################################################################
-###############################################################################
-###############################################################################
+big_console_header "Bootstrapping test harness"
 
 setup_defaults
 
@@ -1377,6 +1446,8 @@ fi
 
 post_checkout
 
+findChangedModules
+
 preapply
 
 applyPatch
@@ -1386,6 +1457,8 @@ postapply
 buildAndInstall
 
 postbuild
+
+runtests
 
 giveConsoleReport ${RESULT}
 submitJiraComment ${RESULT}
