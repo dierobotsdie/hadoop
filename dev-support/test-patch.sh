@@ -683,6 +683,8 @@ function determine_branch
     return
   fi
 
+  pushd ${BASEDIR} > /dev/null
+
   # developer mode, existing checkout, whatever
   if [[ "${DIRTY_WORKSPACE}" = true ]];then
     PATCH_BRANCH=$(${GIT} rev-parse --abbrev-ref HEAD)
@@ -726,6 +728,8 @@ function determine_branch
   fi
 
   PATCH_BRANCH=trunk
+
+  popd >/dev/null
 }
 
 ## @description  Try to guess the issue being tested using a variety of heuristics
@@ -767,7 +771,6 @@ function determine_issue
 ## @return       1 on failure, may exit
 function locate_patch
 {
-
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
     PATCH_FILE="${PATCH_OR_ISSUE}"
   else
@@ -1067,7 +1070,6 @@ function check_javac
 ## @return       1 on failure
 function check_apachelicense
 {
-
   big_console_header "Determining number of patched release audit warnings."
 
   start_clock
@@ -1135,7 +1137,6 @@ function check_mvn_install
 ## @return       1 on failure
 function check_findbugs
 {
-
   big_console_header "Determining number of patched Findbugs warnings."
 
   if [[ ! -e "${FINDBUGS_HOME}/bin/findbugs" ]]; then
@@ -1222,7 +1223,6 @@ function check_findbugs
 ## @return       1 on failure
 function check_mvn_eclipse
 {
-
   big_console_header "Running mvn eclipse:eclipse."
 
   start_clock
