@@ -100,11 +100,6 @@ class Version:
     # backfill version with zeroes if missing parts
     self.parts.extend((0,) * (3 - len(self.parts)))
 
-  def decBugFix(self):
-    self.mod = True
-    self.parts[2] -= 1
-    return self
-
   def __str__(self):
     if (self.mod):
       return '.'.join([ str(p) for p in self.parts ])
@@ -443,6 +438,11 @@ def main():
   choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
   choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
   choutputs.writeList(testlist)
+
+  choutputs.writeAll("\n\n### SUB-TASKS:\n\n")
+  choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
+  choutputs.writeAll("|:---- |:---- | :--- |:---- |:---- |:---- |\n")
+  choutputs.writeList(subtasklist)
 
   choutputs.writeAll("\n\n### OTHER:\n\n")
   choutputs.writeAll("| JIRA | Description | Priority | Component | Reporter | Contributor |\n")
