@@ -444,7 +444,9 @@ function checkout
       return $?
     fi
     ### Copy in any supporting files needed by this process
-    cp -r "${SUPPORT_DIR}"/lib/* ./lib
+    if [[ -d "${SUPPORT_DIR}"/lib ]]; then
+      cp -r "${SUPPORT_DIR}"/lib/* ./lib
+    fi
   else
     status=$(${GIT} status --porcelain)
     if [[ "${status}" != "" && -z ${DIRTY_WORKSPACE} ]] ; then
