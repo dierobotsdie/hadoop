@@ -48,7 +48,7 @@ function hadoop_debug
   fi
 }
 
-function setup_defaults 
+function setup_defaults
 {
   if [[ -z "${MAVEN_HOME:-}" ]]; then
     MVN=mvn
@@ -61,7 +61,7 @@ function setup_defaults
   PATCH_DIR=/tmp/${PROJECT_NAME}-test-patch/$$
   SUPPORT_DIR=/tmp
   BASEDIR=$(pwd)
-  
+
   FINDBUGS_HOME=${FINDBUGS_HOME:-}
   ECLIPSE_HOME=${ECLIPSE_HOME:-}
   BUILD_NATIVE=${BUILD_NATIVE:-true}
@@ -94,15 +94,15 @@ function setup_defaults
 function start_clock
 {
   hadoop_debug "Start clock"
-  TIMER=$(date +"%s") 
+  TIMER=$(date +"%s")
 }
 
 function stop_clock
-{ 
+{
   local stoptime=$(date +"%s")
   local elapsed=$((stoptime-TIMER))
   hadoop_debug "Stop clock"
-  
+
   echo ${elapsed}
 }
 
@@ -180,7 +180,7 @@ function add_jira_table
 
   local color
   local calctime=0
-  
+
   local elapsed=$(stop_clock)
 
   if [[ ${elapsed} -lt 0 ]]; then
@@ -188,7 +188,7 @@ function add_jira_table
   else
     printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
-  
+
   echo ""
   echo "Elapsed time: ${calctime}"
   echo ""
@@ -242,13 +242,13 @@ function big_console_header
 function findModule
 {
   local dir=$(dirname "$1")
-  
+
   hadoop_debug "Find module: ${dir}"
 
   while builtin true; do
     if [[ -f "${dir}/pom.xml" ]];then
       echo "${dir}"
-      hadoop_debug "Found: ${dir}"  
+      hadoop_debug "Found: ${dir}"
       return
     else
       dir=$(dirname "${dir}")
@@ -263,7 +263,7 @@ function findChangedModules
   local tmp_modules="${PATCH_DIR}/tmp.modules.$$"
 
   local module
-    
+
   ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
 
   # if all of the lines start with a/ or b/, then this is a git patch that
@@ -322,7 +322,7 @@ function printUsage
   echo "--jira-cmd=<cmd>       The 'jira' command to use (default 'jira')"
   echo "--jira-password=<pw>   The password for the 'jira' command"
   echo "--support-dir=<dir>    The directory to find support files in"
-  echo "--wget-cmd=<cmd>       The 'wget' command to use (default 'wget')"  
+  echo "--wget-cmd=<cmd>       The 'wget' command to use (default 'wget')"
 }
 
 function parseArgs
@@ -460,17 +460,17 @@ function checkout
       PATCH_BRANCH=${currentbranch}
     fi
   fi
-  
-  GIT_REVISION=$(${GIT} rev-parse --verify --short HEAD)  
+
+  GIT_REVISION=$(${GIT} rev-parse --verify --short HEAD)
   # shellcheck disable=SC2034
   VERSION=${GIT_REVISION}_${ISSUE}_PATCH-${patchNum}
-  
+
   if [[ "${ISSUE}" = 'Unknown' ]]; then
     echo "Testing patch on ${PATCH_BRANCH}."
   else
     echo "Testing ${ISSUE} patch on ${PATCH_BRANCH}."
   fi
-  
+
   add_jira_footer "git revision" "${GIT_REVISION}"
   return 0
 }
@@ -526,7 +526,7 @@ function checkagainstbranches
   local branches=$1
   local check=$2
   local i
-    
+
   for i in ${branches}; do
     if [[ "${i}" = "${check}" ]]; then
       return 0
@@ -539,22 +539,22 @@ function determineIssue
 {
   local patchnamechunk
   local maybeissue
-  
+
   # we can shortcut jenkins
   if [[ ${JENKINS} = true ]]; then
     ISSUE=${PATCH_OR_ISSUE}
   fi
-  
+
   # shellcheck disable=SC2016
   patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
-  
+
   maybeissue=$(echo "${patchnamechunk}" | cut -f1,2 -d-)
-  
+
   if [[ ${maybeissue} =~ ${ISSUE_RE} ]]; then
     ISSUE=${maybeissue}
     return 0
   fi
-  
+
   ISSUE="Unknown"
   return 1
 }
@@ -563,31 +563,31 @@ function determineBranch
 {
   local allbranches
   local patchnamechunk
-  
+
   # something has already set this, so move on
   if [[ -n ${PATCH_BRANCH} ]]; then
     return
   fi
-  
+
   # developer mode, existing checkout, whatever
   if [[ "${DIRTY_WORKSPACE}" = true ]];then
     PATCH_BRANCH=$(${GIT} rev-parse --abbrev-ref HEAD)
     echo "dirty workspace mode; applying against existing branch"
     return
   fi
-  
+
   allbranches=$(${GIT} branch -r | tr -d ' ' | ${SED} -e s,origin/,,g)
-  
+
   # shellcheck disable=SC2016
   patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
-  
+
   # ISSUE.branch.##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f2 -d. )
   checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
-  
+
   # ISSUE-branch-##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | cut -f1,2 -d-)
   checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
@@ -595,14 +595,14 @@ function determineBranch
     return
   fi
 
-  # ISSUE-##.patch.branch 
+  # ISSUE-##.patch.branch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | ${AWK} -F. '{print $NF}')
   checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
-  
+
   # ISSUE-branch.##.patch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | ${AWK} -F. '{print $(NF-2)}' 2>/dev/null)
@@ -616,7 +616,7 @@ function determineBranch
 
 function downloadPatch
 {
-  
+
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
     PATCH_FILE="${PATCH_OR_ISSUE}"
   else
@@ -625,17 +625,17 @@ function downloadPatch
       patchURL="${PATCH_OR_ISSUE}"
     else
       ${WGET} -q -O "${PATCH_DIR}/jira" "http://issues.apache.org/jira/browse/${PATCH_OR_ISSUE}"
-      
+
       if [[ $? != 0 ]];then
         hadoop_error "Unable to determine what ${PATCH_OR_ISSUE} may reference."
         cleanupAndExit 0
       fi
-      
+
       if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
         hadoop_error "${PATCH_OR_ISSUE} is not \"Patch Available\".  Exiting."
         cleanupAndExit 0
       fi
-      
+
       relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
       patchURL="http://issues.apache.org${relativePatchURL}"
       patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
@@ -650,11 +650,11 @@ function downloadPatch
     fi
     PATCH_FILE="${PATCH_DIR}/patch"
   fi
-  
+
   determineBranch
-  
+
   determineIssue
-    
+
   if [[ ! -f "${PATCH_DIR}/patch" ]]; then
     cp "${PATCH_FILE}" "${PATCH_DIR}/patch"
     if [[ $? == 0 ]] ; then
@@ -908,7 +908,7 @@ function buildAndInstall
   ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
   retval=$?
   if [[ ${retval} != 0 ]]; then
-    add_jira_table -1 install "The patch causes mvn install to fail."    
+    add_jira_table -1 install "The patch causes mvn install to fail."
   else
     add_jira_table +1 install "mvn install still works."
   fi
@@ -1074,9 +1074,9 @@ function unitTests
     echo "  ${MVN} clean install -fn ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess"
     ${MVN} clean install -fae ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
     test_build_result=$?
-    
+
     add_jira_footer "${module} test log" "@@BASE@@/${test_logfile}"
-    
+
     # shellcheck disable=2016
     module_test_timeouts=$(${AWK} '/^Running / { if (last) { print last } last=$2 } /^Tests run: / { last="" }' "${test_logfile}")
     if [[ -n "${module_test_timeouts}" ]] ; then
@@ -1157,11 +1157,11 @@ function giveConsoleReport
         printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${j}"
       done
     else
-      
+
       echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${PATCH_DIR}/comment.1"
       normaltop=$(head -1 "${PATCH_DIR}/comment.1")
       ${SED} -e '1d' "${PATCH_DIR}/comment.1"  > "${PATCH_DIR}/comment.2"
-      
+
       printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
       "${subs}" "${ela}" "${normaltop}"
       while read line; do
@@ -1171,11 +1171,11 @@ function giveConsoleReport
     ((i=i+1))
     rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1" 2>/dev/null
   done
-    
+
   printf "\n\n|| Subsystem || Report/Notes ||\n"
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
-    comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" | 
+    comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" |
               ${SED} -e "s,@@BASE@@,${PATCH_DIR},g")
     printf "%s\n" "${comment}"
     ((i=i+1))
@@ -1200,8 +1200,8 @@ function submitJiraComment
     printf "(x) *{color:red}-1 overall{color}*\n" > "${commentfile}"
   fi
 
-  printf "\\\\\n" >>  "${commentfile}"
-  printf "\\\\\n" >>  "${commentfile}"
+  echo "\\\\" >>  "${commentfile}"
+  echo "\\\\" >>  "${commentfile}"
 
   i=0
   until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
@@ -1217,13 +1217,13 @@ function submitJiraComment
     ((i=i+1))
   done
 
-  printf "\\\\\n" >>  "${commentfile}"
-  printf "\\\\\n" >>  "${commentfile}"
+  echo "\\\\" >>  "${commentfile}"
+  echo "\\\\" >>  "${commentfile}"
 
   echo "|| Subsystem || Report/Notes ||" >> "${commentfile}"
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
-    comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" | 
+    comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" |
               ${SED} -e "s,@@BASE@@,${BUILD_URL}/artifact/patchprocess,g")
     printf "%s\n" "${comment}" >> "${commentfile}"
     ((i=i+1))
@@ -1232,7 +1232,7 @@ function submitJiraComment
   printf "\n\nThis message was automatically generated.\n\n" >> "${commentfile}"
 
   big_console_header "Adding comment to JIRA"
-  
+
   export USER=hudson
   ${JIRACLI} -s https://issues.apache.org/jira \
              -a addcomment -u hadoopqa \
@@ -1266,10 +1266,10 @@ function post_checkout
 
   for routine in find_java_home verifyPatch
   do
-    
+
     hadoop_debug "Running ${routine}"
     ${routine}
-    
+
     (( RESULT = RESULT + $? ))
     if [[ ${RESULT} != 0 ]] ; then
       giveConsoleReport 1
@@ -1280,12 +1280,12 @@ function post_checkout
 
   for plugin in ${PLUGINS}; do
     if declare -f ${plugin}_postcheckout >/dev/null 2>&1; then
-      
+
       hadoop_debug "Running ${plugin}_postcheckout"
       #shellcheck disable=SC2086
       ${plugin}_postcheckout
-      
-      
+
+
       (( RESULT = RESULT + $? ))
       if [[ ${RESULT} != 0 ]] ; then
         giveConsoleReport 1
@@ -1293,7 +1293,7 @@ function post_checkout
         cleanupAndExit 1
       fi
     fi
-  done  
+  done
 }
 
 function preapply
@@ -1304,20 +1304,20 @@ function preapply
   for routine in prebuildWithoutPatch checkauthor \
                  checkfornewtests
   do
-    
+
     hadoop_debug "Running ${routine}"
     ${routine}
-    
+
     (( RESULT = RESULT + $? ))
   done
 
   for plugin in ${PLUGINS}; do
     if declare -f ${plugin}_preapply >/dev/null 2>&1; then
-      
+
       hadoop_debug "Running ${plugin}_preapply"
       #shellcheck disable=SC2086
       ${plugin}_preapply
-      
+
       (( RESULT = RESULT + $? ))
     fi
   done
@@ -1328,7 +1328,7 @@ function postapply
   local routine
   local plugin
   local retval
-  
+
   checkJavacWarnings
   retval=$?
   ((RESULT = RESULT + retval))
@@ -1336,21 +1336,21 @@ function postapply
     giveConsoleReport 1
     submitJiraComment 1
     cleanupAndExit 1
-  fi  
+  fi
 
   for routine in checkJavadocWarnings checkReleaseAuditWarnings
   do
-    
+
     hadoop_debug "Running ${routine}"
     $routine
-    
+
     (( RESULT = RESULT + $? ))
 
   done
 
   for plugin in ${PLUGINS}; do
     if declare -f ${plugin}_postapply >/dev/null 2>&1; then
-      
+
       hadoop_debug "Running ${plugin}_postapply"
       #shellcheck disable=SC2086
       ${plugin}_postapply
@@ -1364,13 +1364,13 @@ function postbuild
   local routine
   local plugin
 
-  for routine in checkEclipseGeneration checkFindbugsWarnings 
+  for routine in checkEclipseGeneration checkFindbugsWarnings
   do
     hadoop_debug "Running ${routine}"
     ${routine}
     (( RESULT = RESULT + $? ))
   done
-  
+
   for plugin in ${PLUGINS}; do
     if declare -f ${plugin}_postbuild >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_postbuild"
@@ -1385,15 +1385,15 @@ function postbuild
 function runtests
 {
   local plugin
-  
+
   ### Run tests for Jenkins or if explictly asked for by a developer
   if [[ ${JENKINS} == "true" || ${RUN_TESTS} == "true" ]] ; then
     hadoop_debug "Running unitTests"
     unitTests
-    
+
     (( RESULT = RESULT + $? ))
   fi
-  
+
   for plugin in ${PLUGINS}; do
     if declare -f ${plugin}_tests >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_tests"
@@ -1408,11 +1408,11 @@ function importplugins
 {
   local i
   local files
-  
+
   if [[ -d "${BINDIR}/test-patch.d" ]]; then
     files=(${BINDIR}/test-patch.d/*.sh)
   fi
-      
+
   for i in "${files[@]}"; do
     hadoop_debug "Importing ${i}"
     . "${i}"

@@ -25,7 +25,7 @@ function shellcheck_private_findbash
   local i
 
   while read line; do
-    find "${line}" ! -name '*.cmd'
+    find "${line}" ! -name '*.cmd' -type f
   done < <(find . -d -name bin -o -name sbin)
 }
 
@@ -45,7 +45,7 @@ function shellcheck_preapply
   for i in $(shellcheck_private_findbash | sort); do
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
   done
-    
+
   # keep track of how much as elapsed for us already
   SHELLCHECK_TIMER=$(stop_clock)
   return 0
