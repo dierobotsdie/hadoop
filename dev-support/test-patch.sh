@@ -126,14 +126,10 @@ function offset_clock
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
-## @param        subsystem
 ## @param        string
 function add_jira_header
 {
-  local subsystem=$1
-  shift 1
-
-  JIRA_HEADER_TABLE[${JFC}]="| ${subsystem} | $* |"
+  JIRA_HEADER[${JFC}]="| $* |"
   JHC=$(( JHC+1 ))
 }
 
@@ -316,7 +312,7 @@ function find_java_home
 ## @replaceable  no
 function hadoop_usage
 {
-  local up=$(echo ${PROJECT_NAME} | tr [:lower:] [:upper:])
+  local up=$(echo ${PROJECT_NAME} | tr '[:lower:]' '[:upper:]')
 
   echo "Usage: test-patch.sh [options] patch-file | issue-number | http"
   echo
@@ -499,19 +495,19 @@ function find_changed_modules
 
   local module
 
-  ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
+  ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > "${tmp_paths}"
 
   # if all of the lines start with a/ or b/, then this is a git patch that
   # was generated without --no-prefix
-  if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths}; then
-    ${SED} -i -e 's,^[ab]/,,' ${tmp_paths}
+  if ! ${GREP} -qv '^a/\|^b/' "${tmp_paths}"; then
+    ${SED} -i -e 's,^[ab]/,,' "${tmp_paths}"
   fi
 
   # Now find all the modules that were changed
   while read file; do
-    find_pom_dir "${file}" >> ${tmp_modules}
+    find_pom_dir "${file}" >> "${tmp_modules}"
   done < <(cut -f1 "${tmp_paths}" | sort -u)
-  rm ${tmp_paths} 2>/dev/null
+  rm "${tmp_paths}" 2>/dev/null
 
   # Filter out modules without code
   while read module; do
@@ -520,7 +516,7 @@ function find_changed_modules
       CHANGED_MODULES="${CHANGED_MODULES} ${module}"
     fi
   done < <(sort -u "${tmp_modules}")
-  rm ${tmp_modules} 2>/dev/null
+  rm "${tmp_modules}" 2>/dev/null
 }
 
 ## @description  git checkout the appropriate branch to test.
@@ -683,7 +679,7 @@ function determine_branch
     return
   fi
 
-  pushd ${BASEDIR} > /dev/null
+  pushd "${BASEDIR}" > /dev/null
 
   # developer mode, existing checkout, whatever
   if [[ "${DIRTY_WORKSPACE}" = true ]];then
@@ -1443,22 +1439,26 @@ function output_to_jira
     return 0
   fi
 
+  big_console_header "Adding comment to JIRA"
+
   add_jira_footer "Console output" "@@BASE@@/console"
 
   if [[ ${result} == 0 ]]; then
-    printf "(/) *{color:green}+1 overall{color}*\n" > "${commentfile}"
+    add_jira_header "(/) *{color:green}+1 overall{color}*"
   else
-    printf "(x) *{color:red}-1 overall{color}*\n" > "${commentfile}"
+    add_jira_header "(x) *{color:red}-1 overall{color}*"
   fi
 
-  echo "\\\\" >>  "${commentfile}"
-  echo "\\\\" >>  "${commentfile}"
+
+  { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
 
   i=0
   until [[ $i -eq ${#JIRA_HEADER[@]} ]]; do
     printf "%s\n" "${JIRA_HEADER[${i}]}" >> "${commentfile}"
     ((i=i+1))
   done
+
+  { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
 
   echo "|| Vote || Subsystem || Runtime || Comment ||" >> "${commentfile}"
 
@@ -1468,8 +1468,7 @@ function output_to_jira
     ((i=i+1))
   done
 
-  echo "\\\\" >>  "${commentfile}"
-  echo "\\\\" >>  "${commentfile}"
+  { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
 
   echo "|| Subsystem || Report/Notes ||" >> "${commentfile}"
   i=0
@@ -1481,8 +1480,6 @@ function output_to_jira
   done
 
   printf "\n\nThis message was automatically generated.\n\n" >> "${commentfile}"
-
-  big_console_header "Adding comment to JIRA"
 
   export USER=hudson
   ${JIRACLI} -s https://issues.apache.org/jira \
