@@ -323,6 +323,9 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    HDFS-4396. Add START_MSG/SHUTDOWN_MSG for ZKFC
+    (Liang Xie via harsh)
+
     HDFS-7875. Improve log message when wrong value configured for
     dfs.datanode.failed.volumes.tolerated.
     (nijel via harsh)
@@ -344,9 +347,27 @@ Release 2.8.0 - UNRELEASED
 
     HDFS-7990. IBR delete ack should not be delayed. (daryn via kihwal)
 
+    HDFS-8004. Use KeyProviderCryptoExtension#warmUpEncryptedKeys when creating
+    an encryption zone. (awang via asuresh)
+
+    HDFS-6263. Remove DRFA.MaxBackupIndex config from log4j.properties.
+    (Abhiraj Butala via aajisaka)
+
+    HDFS-6408. Remove redundant definitions in log4j.properties.
+    (Abhiraj Butala via aajisaka)
+
+    HDFS-7890. Improve information on Top users for metrics in
+    RollingWindowsManager and lower log level (J.Andreina via vinayakumarb)
+
+    HDFS-7645. Rolling upgrade is restoring blocks from trash multiple times.
+    (Vinayakumar B and Keisuke Ogiwara via Arpit Agarwal)
+
   OPTIMIZATIONS
 
   BUG FIXES
+
+    HDFS-7501. TransactionsSinceLastCheckpoint can be negative on SBNs.
+    (Gautam Gopalakrishnan via harsh)
 
     HDFS-5356. MiniDFSCluster should close all open FileSystems when shutdown()
     (Rakesh R via vinayakumarb)
@@ -357,6 +378,13 @@ Release 2.8.0 - UNRELEASED
     HDFS-3325. When configuring "dfs.namenode.safemode.threshold-pct" to a value
     greater or equal to 1 there is mismatch in the UI report
     (J.Andreina via vinayakumarb)
+
+    HDFS-8002. Website refers to /trash directory. (Brahma Reddy Battula via
+    aajisaka)
+
+    HDFS-7261. storageMap is accessed without synchronization in
+    DatanodeDescriptor#updateHeartbeatState() (Brahma Reddy Battula via Colin
+    P. McCabe)
 
 Release 2.7.0 - UNRELEASED
 
@@ -810,6 +838,9 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-7410. Support CreateFlags with append() to support hsync() for
     appending streams (Vinayakumar B via Colin P. McCabe)
+
+    HDFS-7742. Favoring decommissioning node for replication can cause a block 
+    to stay underreplicated for long periods (Nathan Roberts via kihwal)
 
   OPTIMIZATIONS
 
@@ -1285,6 +1316,9 @@ Release 2.7.0 - UNRELEASED
     HDFS-7963. Fix expected tracing spans in TestTracing along with HDFS-7054.
     (Masatake Iwasaki via kihwal)
 
+    HDFS-7748. Separate ECN flags from the Status in the DataTransferPipelineAck.
+    (Anu Engineer and Haohui Mai via wheat9)
+
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 
       HDFS-7720. Quota by Storage Type API, tools and ClientNameNode
@@ -1307,6 +1341,9 @@ Release 2.7.0 - UNRELEASED
 
       HDFS-7824. GetContentSummary API and its namenode implementation for
       Storage Type Quota/Usage. (Xiaoyu Yao via Arpit Agarwal)
+
+      HDFS-7700. Document quota support for storage types. (Xiaoyu Yao via
+      Arpit Agarwal)
 
 Release 2.6.1 - UNRELEASED
 

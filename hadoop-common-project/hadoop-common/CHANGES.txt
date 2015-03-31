@@ -471,6 +471,9 @@ Release 2.8.0 - UNRELEASED
     HADOOP-11741. Add LOG.isDebugEnabled() guard for some LOG.debug().
     (Walter Su via ozawa)
 
+    HADOOP-11660. Add support for hardware crc of HDFS checksums on ARM aarch64
+    architecture (Edward Nevill via Colin P. McCabe)
+
   OPTIMIZATIONS
 
   BUG FIXES
@@ -1174,6 +1177,12 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11639. Clean up Windows native code compilation warnings related to
     Windows Secure Container Executor. (Remus Rusanu via cnauroth)
+
+    HADOOP-11761. Fix findbugs warnings in org.apache.hadoop.security
+    .authentication. (Li Lu via wheat9)
+
+    HADOOP-11754. RM fails to start in non-secure mode due to authentication
+    filter failure. (wheat9)
 
 Release 2.6.1 - UNRELEASED
 
