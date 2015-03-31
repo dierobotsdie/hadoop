@@ -259,8 +259,8 @@ function findModule
 function findChangedModules
 {
   # Come up with a list of changed files into ${TMP}
-  local tmp_paths="${PATCH_DIR}/tmp.paths.$$"
-  local tmp_modules="${PATCH_DIR}/tmp.modules.$$"
+  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp"
+  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp"
 
   local module
 
@@ -302,7 +302,7 @@ function printUsage
   echo "--debug                If set, then output some extra stuff to stderr"
   echo "--dirty-workspace      Allow the local git workspace to have uncommitted changes"
   echo "--findbugs-home=<path> Findbugs home directory (default FINDBUGS_HOME environment variable)"
-  echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp')"
+  echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp/${PROJECT_NAME}-test-patch/pid')"
   echo "--run-tests            Run all tests below the base directory"
 
   echo "Shell binary overrides:"
@@ -310,7 +310,7 @@ function printUsage
   echo "--diff-cmd=<cmd>       The 'diff' command to use (default 'diff')"
   echo "--git-cmd=<cmd>        The 'git' command to use (default 'git')"
   echo "--grep-cmd=<cmd>       The 'grep' command to use (default 'grep')"
-  echo "--mvn-cmd=<cmd>        The 'mvn' command to use (default \$MAVEN_HOME/bin/mvn, or 'mvn')"
+  echo "--mvn-cmd=<cmd>        The 'mvn' command to use (default \${MAVEN_HOME}/bin/mvn, or 'mvn')"
   echo "--patch-cmd=<cmd>      The 'patch' command to use (default 'patch')"
   echo "--ps-cmd=<cmd>         The 'ps' command to use (default 'ps')"
   echo "--sed-cmd=<cmd>        The 'sed' command to use (default 'sed')"
