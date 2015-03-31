@@ -323,6 +323,9 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    HDFS-3918. EditLogTailer shouldn't log WARN when other node
+    is in standby mode (todd via harsh)
+
     HDFS-4396. Add START_MSG/SHUTDOWN_MSG for ZKFC
     (Liang Xie via harsh)
 
@@ -362,6 +365,9 @@ Release 2.8.0 - UNRELEASED
     HDFS-7645. Rolling upgrade is restoring blocks from trash multiple times.
     (Vinayakumar B and Keisuke Ogiwara via Arpit Agarwal)
 
+    HDFS-7944. Minor cleanup of BlockPoolManager#getAllNamenodeThreads.
+    (Arpit Agarwal)
+
   OPTIMIZATIONS
 
   BUG FIXES
@@ -385,6 +391,9 @@ Release 2.8.0 - UNRELEASED
     HDFS-7261. storageMap is accessed without synchronization in
     DatanodeDescriptor#updateHeartbeatState() (Brahma Reddy Battula via Colin
     P. McCabe)
+
+    HDFS-7997. The first non-existing xattr should also throw IOException.
+    (zhouyingchao via yliu)
 
 Release 2.7.0 - UNRELEASED
 
