@@ -24,9 +24,9 @@ function shellcheck_private_findbash
 {
   local i
 
-  for i in $(find . -d -name bin -o -name sbin); do
-     ls $i/* | ${GREP} -v cmd
-  done
+  while read line; do
+    find "${line}" ! -name '*.cmd'
+  done < <(find . -d -name bin -o -name sbin)
 }
 
 function shellcheck_preapply
@@ -41,8 +41,9 @@ function shellcheck_preapply
 
   start_clock
 
+  echo "Running shellcheck against all identifiable shell scripts"
   for i in $(shellcheck_private_findbash | sort); do
-    ${SHELLCHECK} -f gcc ${i} >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
+    ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
   done
     
   # keep track of how much as elapsed for us already
@@ -64,14 +65,17 @@ function shellcheck_postapply
 
   # add our previous elapsed to our new timer
   # by setting the clock back
-  offset_clock ${SHELLCHECK_TIMER}
+  offset_clock "${SHELLCHECK_TIMER}"
 
+  echo "Running shellcheck against all identifiable shell scripts"
   # we re-check this in case one has been added
   for i in $(shellcheck_private_findbash | sort); do
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
 
+  # shellcheck disable=SC2016
   numPrepatch=$(wc -l "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" | ${AWK} '{print $1}')
+  # shellcheck disable=SC2016
   numPostpatch=$(wc -l "${PATCH_DIR}/patchshellcheck-result.txt" | ${AWK} '{print $1}')
 
   if [[ ${numPostpatch} != "" && ${numPrepatch} != "" ]] ; then

@@ -25,13 +25,14 @@ function checkstyle_preapply
 
   start_clock
   echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" 2>&1
+  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess" > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" 2>&1
   if [[ $? != 0 ]] ; then
     echo "Pre-patch ${PATCH_BRANCH} checkstyle compilation is broken?"
     add_jira_table -1 checkstyle "Pre-patch ${PATCH_BRANCH} checkstyle compilation may be broken."
     return 1
   fi
 
+  # shellcheck disable=SC2016
   CHECKSTYLE_PREPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
 
   # keep track of how much as elapsed for us already
@@ -48,22 +49,23 @@ function checkstyle_postapply
 
   # add our previous elapsed to our new timer
   # by setting the clock back
-  offset_clock ${CHECKSTYLE_TIMER}
+  offset_clock "${CHECKSTYLE_TIMER}"
 
   echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchcheckstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1
+  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess" > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1
   if [[ $? != 0 ]] ; then
     echo "Post-patch checkstyle compilation is broken."
     add_jira_table -1 checkstyle "Post-patch checkstyle compilation is broken."
     return 1
   fi
 
+  # shellcheck disable=SC2016
   CHECKSTYLE_POSTPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
 
   if [[ ${CHECKSTYLE_POSTPATCH} != "" && ${CHECKSTYLE_PREPATCH} != "" ]] ; then
     if [[ ${CHECKSTYLE_POSTPATCH} -gt ${CHECKSTYLE_PREPATCH} ]] ; then
 
-      cp -pr target/* ${PATCH_DIR}/checkstyle
+      cp -pr target/* "${PATCH_DIR}/checkstyle"
 
       add_jira_table -1 checkstyle "The applied patch generated "\
         "$((CHECKSTYLE_POSTPATCH-CHECKSTYLE_PREPATCH))" \

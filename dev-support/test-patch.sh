@@ -189,7 +189,9 @@ function add_jira_table
     printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
   
+  echo ""
   echo "Elapsed time: ${calctime}"
+  echo ""
 
   case ${value} in
     1|+1)
