@@ -622,7 +622,7 @@ function downloadPatch
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
     PATCH_FILE="${PATCH_OR_ISSUE}"
   else
-    if [[ ${PATCH_OR_ISSUE} =~ /^http/ ]]; then
+    if [[ ${PATCH_OR_ISSUE} =~ ^http ]]; then
       echo "Patch is being downloaded at $(date) from"
       patchURL="${PATCH_OR_ISSUE}"
     else
