@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# this really doesn't work
-#add_plugin checkstyle
+add_plugin checkstyle
 
 CHECKSTYLE_TIMER=0
 
@@ -25,15 +24,15 @@ function checkstyle_preapply
   big_console_header "checkstyle plugin: prepatch"
 
   start_clock
-  echo "${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" 2>&1
+  echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt 2>&1"
+  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" 2>&1
   if [[ $? != 0 ]] ; then
     echo "Pre-patch ${PATCH_BRANCH} checkstyle compilation is broken?"
     add_jira_table -1 checkstyle "Pre-patch ${PATCH_BRANCH} checkstyle compilation may be broken."
     return 1
   fi
 
-  cat $(find . -name checkstyle-result.xml) > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle-result.xml"
+  CHECKSTYLE_PREPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
 
   # keep track of how much as elapsed for us already
   CHECKSTYLE_TIMER=$(stop_clock)
@@ -51,33 +50,25 @@ function checkstyle_postapply
   # by setting the clock back
   offset_clock ${CHECKSTYLE_TIMER}
 
-  echo "${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchcheckstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1
+  echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchcheckstyle.txt 2>&1"
+  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1
   if [[ $? != 0 ]] ; then
     echo "Post-patch checkstyle compilation is broken."
     add_jira_table -1 checkstyle "Post-patch checkstyle compilation is broken."
     return 1
   fi
 
-  cat $(find . -name checkstyle-result.xml) > ${PATCH_DIR}/patchcheckstyle-result.xml
+  CHECKSTYLE_POSTPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
 
-  numPrepatch=$(wc -l "${PATCH_DIR}/${PATCH_BRANCH}checkstyle-result.xml" | ${AWK} '{print $1}')
-  numPostpatch=$(wc -l "${PATCH_DIR}/patchcheckstyle-result.xml" | ${AWK} '{print $1}')
+  if [[ ${CHECKSTYLE_POSTPATCH} != "" && ${CHECKSTYLE_PREPATCH} != "" ]] ; then
+    if [[ ${CHECKSTYLE_POSTPATCH} -gt ${CHECKSTYLE_PREPATCH} ]] ; then
 
-  if [[ ${numPostpatch} != "" && ${numPrepatch} != "" ]] ; then
-    if [[ ${numPostpatch} -gt ${numPrepatch} ]] ; then
-
-      ${DIFF} -u "${PATCH_DIR}/${PATCH_BRANCH}checkstyle-result.xml" \
-        "${PATCH_DIR}/patchcheckstyle-result.xml" \
-        > "${PATCH_DIR}/diffpatchcheckstyle.xml"
-
-      rm -f "${PATCH_DIR}/${PATCH_BRANCH}checkstyle-result.xml" \
-        "${PATCH_DIR}/patchcheckstyle-result.xml" 2>/dev/null
+      cp -pr target/* ${PATCH_DIR}/checkstyle
 
       add_jira_table -1 checkstyle "The applied patch generated "\
-        "$((numPostpatch-numPrepatch))" \
+        "$((CHECKSTYLE_POSTPATCH-CHECKSTYLE_PREPATCH))" \
         " additional checkstyle issues."
-      add_jira_footer checkstyle "@@BASE@@/diffpatchcheckstyle.xml"
+      add_jira_footer checkstyle "@@BASE@@/checkstyle"
       return 1
     fi
   fi
