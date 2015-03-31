@@ -14,40 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#
-# We'll want to set these up at some point...
-#
-#set -uo pipefail
-#IFS=$'\n\t'
-
 ### Setup some variables.
 ### BUILD_URL is set by Hudson if it is run by patch process
 ### Read variables from properties file
 this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 
-## @description  Print a message to stderr
+## @description  Setup the default global variables
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
-## @param        string
-function hadoop_error
-{
-  echo "$*" 1>&2
-}
-
-## @description  Print a message to stderr if --debug is turned on
-## @audience     public
-## @stability    stable
-## @replaceable  no
-## @param        string
-function hadoop_debug
-{
-  if [[ -n "${HADOOP_SHELL_SCRIPT_DEBUG}" ]]; then
-    echo "[$(date) DEBUG]: $*" 1>&2
-  fi
-}
-
 function setup_defaults
 {
   if [[ -z "${MAVEN_HOME:-}" ]]; then
@@ -91,12 +67,42 @@ function setup_defaults
   TIMER=0
 }
 
+## @description  Print a message to stderr
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        string
+function hadoop_error
+{
+  echo "$*" 1>&2
+}
+
+## @description  Print a message to stderr if --debug is turned on
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        string
+function hadoop_debug
+{
+  if [[ -n "${HADOOP_SHELL_SCRIPT_DEBUG}" ]]; then
+    echo "[$(date) DEBUG]: $*" 1>&2
+  fi
+}
+
+## @description  Activate the global timer
+## @audience     public
+## @stability    stable
+## @replaceable  no
 function start_clock
 {
   hadoop_debug "Start clock"
   TIMER=$(date +"%s")
 }
 
+## @description  Print the elapsed time in seconds since the start of the global timer
+## @audience     public
+## @stability    stable
+## @replaceable  no
 function stop_clock
 {
   local stoptime=$(date +"%s")
@@ -106,72 +112,46 @@ function stop_clock
   echo ${elapsed}
 }
 
+## @description  Add time to the global timer
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        seconds
 function offset_clock
 {
   ((TIMER=TIMER-$1))
 }
 
-function find_java_home
+## @description  Add to the header of the display
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        subsystem
+## @param        string
+function add_jira_header
 {
-  if [[ -z ${JAVA_HOME:-} ]]; then
-    case $(uname -s) in
-      Darwin)
-        if [[ -z "${JAVA_HOME}" ]]; then
-          if [[ -x /usr/libexec/java_home ]]; then
-            export JAVA_HOME="$(/usr/libexec/java_home)"
-          else
-            export JAVA_HOME=/Library/Java/Home
-          fi
-        fi
-      ;;
-      *)
-      ;;
-    esac
-  fi
-
-  if [[ -z ${JAVA_HOME:-} ]]; then
-    echo "JAVA_HOME is not defined."
-    add_jira_table -1 pre-patch "JAVA_HOME is not defined."
-    return 1
-  fi
-  return 0
-}
-
-function colorstripper
-{
-  local string=$1
+  local subsystem=$1
   shift 1
 
-  local green=""
-  local white=""
-  local red=""
-  local blue=""
-
-  echo "${string}" | \
-  ${SED} -e "s,{color:red},${red},g" \
-         -e "s,{color:green},${green},g" \
-         -e "s,{color:blue},${blue},g" \
-         -e "s,{color},${white},g"
+  JIRA_HEADER_TABLE[${JFC}]="| ${subsystem} | $* |"
+  JHC=$(( JHC+1 ))
 }
 
-function findlargest
-{
-  local column=$1
-  shift
-  local a=("$@")
-  local sizeofa=${#a[@]}
-  local i=0
-
-  until [[ ${i} -gt ${sizeofa} ]]; do
-    string=$( echo ${a[$i]} | cut -f$((column + 1)) -d\| )
-    if [[ ${#string} -gt $maxlen ]]; then
-      maxlen=${#string}
-    fi
-    i=$((i+1))
-  done
-  echo "${maxlen}"
-}
-
+## @description  Add to the output table. If the first parameter is a number
+## @description  that is the vote for that column and calculates the elapsed time
+## @description  based upon the last start_clock().  If it the string null, then it is
+## @description  a special entry that signifies extra
+## @description  content for the final column.  The second parameter is the reporting
+## @description  subsystem (or test) that is providing the vote.  The second parameter
+## @description  is always required.  The third parameter is any extra verbage that goes
+## @description  with that subsystem.
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        +1/0/-1/null
+## @param        subsystem
+## @param        string
+## @return       Elapsed time display
 function add_jira_table
 {
   local value=$1
@@ -217,6 +197,13 @@ function add_jira_table
   fi
 }
 
+## @description  Add to the footer of the display. @@BASE@@ will get replaced with the
+## @description  correct location for the local filesystem in dev mode or the URL for Jenkins mode.
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        subsystem
+## @param        string
 function add_jira_footer
 {
   local subsystem=$1
@@ -226,6 +213,12 @@ function add_jira_footer
   JFC=$(( JFC+1 ))
 }
 
+## @description  Large display for the user console
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        string
+## @return       large chunk of text
 function big_console_header
 {
   local text="$*"
@@ -239,62 +232,98 @@ function big_console_header
   printf "\n\n"
 }
 
-function findModule
+## @description  Remove {color} tags from a string
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        string
+## @return       string
+function colorstripper
 {
-  local dir=$(dirname "$1")
+  local string=$1
+  shift 1
 
-  hadoop_debug "Find module: ${dir}"
+  local green=""
+  local white=""
+  local red=""
+  local blue=""
 
-  while builtin true; do
-    if [[ -f "${dir}/pom.xml" ]];then
-      echo "${dir}"
-      hadoop_debug "Found: ${dir}"
-      return
-    else
-      dir=$(dirname "${dir}")
-    fi
-  done
+  echo "${string}" | \
+  ${SED} -e "s,{color:red},${red},g" \
+         -e "s,{color:green},${green},g" \
+         -e "s,{color:blue},${blue},g" \
+         -e "s,{color},${white},g"
 }
 
-function findChangedModules
+## @description  Find the largest size of a column of an array
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       size
+function findlargest
 {
-  # Come up with a list of changed files into ${TMP}
-  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp"
-  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp"
+  local column=$1
+  shift
+  local a=("$@")
+  local sizeofa=${#a[@]}
+  local i=0
 
-  local module
+  until [[ ${i} -gt ${sizeofa} ]]; do
+    string=$( echo ${a[$i]} | cut -f$((column + 1)) -d\| )
+    if [[ ${#string} -gt $maxlen ]]; then
+      maxlen=${#string}
+    fi
+    i=$((i+1))
+  done
+  echo "${maxlen}"
+}
 
-  ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
-
-  # if all of the lines start with a/ or b/, then this is a git patch that
-  # was generated without --no-prefix
-  if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths}; then
-    ${SED} -i -e 's,^[ab]/,,' ${tmp_paths}
+## @description  Verify that ${JAVA_HOME} is defined
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @return       1 - no JAVA_HOME
+## @return       0 - JAVA_HOME defined
+function find_java_home
+{
+  if [[ -z ${JAVA_HOME:-} ]]; then
+    case $(uname -s) in
+      Darwin)
+        if [[ -z "${JAVA_HOME}" ]]; then
+          if [[ -x /usr/libexec/java_home ]]; then
+            export JAVA_HOME="$(/usr/libexec/java_home)"
+          else
+            export JAVA_HOME=/Library/Java/Home
+          fi
+        fi
+      ;;
+      *)
+      ;;
+    esac
   fi
 
-  # Now find all the modules that were changed
-
-  while read file; do
-    findModule "${file}" >> ${tmp_modules}
-  done < <(cut -f 1 "${tmp_paths}" | sort -u)
-  rm ${tmp_paths}
-
-  # Filter out modules without code
-  while read module; do
-    ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
-    if [[ "$?" != 0 ]]; then
-      CHANGED_MODULES="${CHANGED_MODULES} ${module}"
-    fi
-  done < <(sort -u "${tmp_modules}")
+  if [[ -z ${JAVA_HOME:-} ]]; then
+    echo "JAVA_HOME is not defined."
+    add_jira_table -1 pre-patch "JAVA_HOME is not defined."
+    return 1
+  fi
+  return 0
 }
 
-function printUsage
+## @description  Print the usage information
+## @audience     public
+## @stability    stable
+## @replaceable  no
+function hadoop_usage
 {
-  echo "Usage: $0 [options] patch-file | defect-number"
+  local up=$(echo ${PROJECT_NAME} | tr [:lower:] [:upper:])
+
+  echo "Usage: test-patch.sh [options] patch-file | issue-number | http"
   echo
   echo "Where:"
   echo "  patch-file is a local patch file containing the changes to test"
-  echo "  defect-number is a JIRA defect number (e.g. 'HADOOP-1234') to test (Jenkins only)"
+  echo "  issue-number is a 'Patch Available' JIRA defect number (e.g. '${up}-9902') to test"
+  echo "  http is an HTTP address to download the patch file"
   echo
   echo "Options:"
   echo "--basedir=<dir>        The directory to apply the patch to (default current directory)"
@@ -325,11 +354,18 @@ function printUsage
   echo "--wget-cmd=<cmd>       The 'wget' command to use (default 'wget')"
 }
 
-function parseArgs
+## @description  Interpret the command line parameters
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @params       $@
+## @return       May exit on failure
+function parse_args
 {
-  for i in "$@"
-  do
-    case $i in
+  local i
+
+  for i in "$@"; do
+    case ${i} in
       --java-home)
         JAVA_HOME=${i#*=}
       ;;
@@ -394,7 +430,7 @@ function parseArgs
         BUILD_NATIVE=${i#*=}
       ;;
       *)
-        PATCH_OR_ISSUE=$i
+        PATCH_OR_ISSUE=${i}
       ;;
     esac
   done
@@ -403,14 +439,14 @@ function parseArgs
     REQUIRE_TEST_LIB_HADOOP=-Drequire.test.libhadoop
   fi
   if [[ -z "${PATCH_OR_ISSUE}" ]]; then
-    printUsage
+    hadoop_usage
     exit 1
   fi
   if [[ ${JENKINS} == "true" ]] ; then
     echo "Running in Jenkins mode"
     ISSUE=${PATCH_OR_ISSUE}
     # shellcheck disable=SC2034
-    ECLIPSE_PROPERTY="-Declipse.home=$ECLIPSE_HOME"
+    ECLIPSE_PROPERTY="-Declipse.home=${ECLIPSE_HOME}"
   else
     echo "Running in developer mode"
     JENKINS=false
@@ -421,12 +457,80 @@ function parseArgs
       echo "${PATCH_DIR} has been created"
     else
       echo "Unable to create ${PATCH_DIR}"
-      cleanupAndExit 0
+      cleanup_and_exit 0
     fi
+  else
+    hadoop_error "WARNING: ${PATCH_DIR} already exists."
   fi
 }
 
-function checkout
+## @description  Locate the pom.xml file for a given directory
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       directory containing the pom.xml
+function find_pom_dir
+{
+  local dir=$(dirname "$1")
+
+  hadoop_debug "Find pom dir for: ${dir}"
+
+  while builtin true; do
+    if [[ -f "${dir}/pom.xml" ]];then
+      echo "${dir}"
+      hadoop_debug "Found: ${dir}"
+      return
+    else
+      dir=$(dirname "${dir}")
+    fi
+  done
+}
+
+## @description  Find the modules of the maven build that ${PATCH_DIR}/patch modifies
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       None; sets ${CHANGED_MODULES}
+function find_changed_modules
+{
+  # Come up with a list of changed files into ${TMP}
+  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp"
+  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp"
+
+  local module
+
+  ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > ${tmp_paths}
+
+  # if all of the lines start with a/ or b/, then this is a git patch that
+  # was generated without --no-prefix
+  if ! ${GREP} -qv '^a/\|^b/' ${tmp_paths}; then
+    ${SED} -i -e 's,^[ab]/,,' ${tmp_paths}
+  fi
+
+  # Now find all the modules that were changed
+  while read file; do
+    find_pom_dir "${file}" >> ${tmp_modules}
+  done < <(cut -f1 "${tmp_paths}" | sort -u)
+  rm ${tmp_paths} 2>/dev/null
+
+  # Filter out modules without code
+  while read module; do
+    ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
+    if [[ "$?" != 0 ]]; then
+      CHANGED_MODULES="${CHANGED_MODULES} ${module}"
+    fi
+  done < <(sort -u "${tmp_modules}")
+  rm ${tmp_modules} 2>/dev/null
+}
+
+## @description  git checkout the appropriate branch to test.
+## @description  ${PATCH_BRANCH} is expected to be resolved by now, but it's value may get overwritten
+## @description  with the actual branch if a non-Jenkins run is being executed.
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       0 on success.  May exit on failure.
+function git_checkout
 {
   local currentbranch
 
@@ -436,12 +540,24 @@ function checkout
   if [[ ${JENKINS} == "true" ]] ; then
     cd "${BASEDIR}"
     ${GIT} reset --hard
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git reset is failing"
+      cleanup_and_exit 1
+    fi
     ${GIT} clean -xdf
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git clean is failing"
+      cleanup_and_exit 1
+    fi
     ${GIT} checkout "${PATCH_BRANCH}"
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
+      cleanup_and_exit 1
+    fi
     ${GIT} pull --rebase
     if [[ $? != 0 ]]; then
-      hadoop_error "ERROR: git is failing"
-      return $?
+      hadoop_error "ERROR: git pull is failing"
+      cleanup_and_exit 1
     fi
     ### Copy in any supporting files needed by this process
     if [[ -d "${SUPPORT_DIR}"/lib ]]; then
@@ -453,7 +569,7 @@ function checkout
       hadoop_error "ERROR: --dirty-workspace option not provided."
       hadoop_error "ERROR: can't run in a workspace that contains the following modifications"
       hadoop_error "${status}"
-      cleanupAndExit 1
+      cleanup_and_exit 1
     fi
     currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
     if [[ "${currentbranch}" != "${PATCH_BRANCH}" ]];then
@@ -477,7 +593,14 @@ function checkout
   return 0
 }
 
-function prebuildWithoutPatch
+## @description  Confirm the source environment is good, running prepatch counts of standard parts such
+## @description  as javadoc.
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function precheck_without_patch
 {
   local mypwd=$(pwd)
 
@@ -522,8 +645,15 @@ function prebuildWithoutPatch
   return 0
 }
 
-
-function checkagainstbranches
+## @description  Confirm the given branch is a member of the list of space delimited branches.
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @param        branch
+## @param        branchlist
+## @return       0 on success
+## @return       1 on failure
+function verify_valid_branch
 {
   local branches=$1
   local check=$2
@@ -537,31 +667,13 @@ function checkagainstbranches
   return 1
 }
 
-function determineIssue
-{
-  local patchnamechunk
-  local maybeissue
-
-  # we can shortcut jenkins
-  if [[ ${JENKINS} = true ]]; then
-    ISSUE=${PATCH_OR_ISSUE}
-  fi
-
-  # shellcheck disable=SC2016
-  patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
-
-  maybeissue=$(echo "${patchnamechunk}" | cut -f1,2 -d-)
-
-  if [[ ${maybeissue} =~ ${ISSUE_RE} ]]; then
-    ISSUE=${maybeissue}
-    return 0
-  fi
-
-  ISSUE="Unknown"
-  return 1
-}
-
-function determineBranch
+## @description  Try to guess the branch being tested using a variety of heuristics
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success, with PATCH_BRANCH updated appropriately
+## @return       1 on failure, with PATCH_BRANCH updated to "trunk"
+function determine_branch
 {
   local allbranches
   local patchnamechunk
@@ -585,14 +697,14 @@ function determineBranch
 
   # ISSUE.branch.##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f2 -d. )
-  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
 
   # ISSUE-branch-##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | cut -f1,2 -d-)
-  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
@@ -600,7 +712,7 @@ function determineBranch
   # ISSUE-##.patch.branch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | ${AWK} -F. '{print $NF}')
-  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
@@ -608,7 +720,7 @@ function determineBranch
   # ISSUE-branch.##.patch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | ${AWK} -F. '{print $(NF-2)}' 2>/dev/null)
-  checkagainstbranches "${allbranches}" "${PATCH_BRANCH}"
+  verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
   if [[ $? = 0 ]]; then
     return
   fi
@@ -616,7 +728,44 @@ function determineBranch
   PATCH_BRANCH=trunk
 }
 
-function downloadPatch
+## @description  Try to guess the issue being tested using a variety of heuristics
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success, with ISSUE updated appropriately
+## @return       1 on failure, with ISSUE updated to "Unknown"
+function determine_issue
+{
+  local patchnamechunk
+  local maybeissue
+
+  # we can shortcut jenkins
+  if [[ ${JENKINS} = true ]]; then
+    ISSUE=${PATCH_OR_ISSUE}
+  fi
+
+  # shellcheck disable=SC2016
+  patchnamechunk=$(echo "${PATCH_OR_ISSUE}" | ${AWK} -F/ '{print $NF}')
+
+  maybeissue=$(echo "${patchnamechunk}" | cut -f1,2 -d-)
+
+  if [[ ${maybeissue} =~ ${ISSUE_RE} ]]; then
+    ISSUE=${maybeissue}
+    return 0
+  fi
+
+  ISSUE="Unknown"
+  return 1
+}
+## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
+## @description  necessary work to place it into ${PATCH_DIR}/patch.  Additionally, this calls
+## @description  'determine_issue' and 'determine_branch' based upon the context provided in ${PATCH_DIR}
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure, may exit
+function locate_patch
 {
 
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
@@ -630,12 +779,12 @@ function downloadPatch
 
       if [[ $? != 0 ]];then
         hadoop_error "Unable to determine what ${PATCH_OR_ISSUE} may reference."
-        cleanupAndExit 0
+        cleanup_and_exit 0
       fi
 
       if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
         hadoop_error "${PATCH_OR_ISSUE} is not \"Patch Available\".  Exiting."
-        cleanupAndExit 0
+        cleanup_and_exit 0
       fi
 
       relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
@@ -648,14 +797,14 @@ function downloadPatch
     ${WGET} -q -O "${PATCH_DIR}/patch" "${patchURL}"
     if [[ $? != 0 ]];then
       hadoop_error "${PATCH_OR_ISSUE} could not be downloaded."
-      cleanupAndExit 0
+      cleanup_and_exit 0
     fi
     PATCH_FILE="${PATCH_DIR}/patch"
   fi
 
-  determineBranch
+  determine_branch
 
-  determineIssue
+  determine_issue
 
   if [[ ! -f "${PATCH_DIR}/patch" ]]; then
     cp "${PATCH_FILE}" "${PATCH_DIR}/patch"
@@ -663,12 +812,19 @@ function downloadPatch
       echo "Patch file ${PATCH_FILE} copied to ${PATCH_DIR}"
     else
       hadoop_error "Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
-      cleanupAndExit 0
+      cleanup_and_exit 0
     fi
   fi
 }
 
-function verifyPatch
+## @description  Given ${PATCH_DIR}/patch, verify the patch is good using ${BINDIR}/smart-apply-patch.sh
+## @description  in dryrun mode.
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function verify_patch_file
 {
   # Before building, check to make sure that the patch is valid
   export PATCH
@@ -682,7 +838,13 @@ function verifyPatch
   fi
 }
 
-function applyPatch
+## @description  Given ${PATCH_DIR}/patch, apply the patch using ${BINDIR}/smart-apply-patch.sh
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       exit on failure
+function apply_patch_file
 {
   big_console_header "Applying patch"
 
@@ -692,14 +854,20 @@ function applyPatch
     echo "PATCH APPLICATION FAILED"
     ((RESULT = RESULT + 1))
     add_jira_table -1 patch "The patch command could not apply the patch."
-    giveConsoleReport 1
-    submitJiraComment 1
-    cleanupAndExit 1
+    output_to_console 1
+    output_to_jira 1
+    cleanup_and_exit 1
   fi
   return 0
 }
 
-function checkauthor
+## @description  Check the current directory for @author tags
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_author
 {
   local authorTags
 
@@ -719,7 +887,13 @@ function checkauthor
   return 0
 }
 
-function checkfornewtests
+## @description  Check the patch file for changed/new tests
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_modified_unittests
 {
   local testReferences
   local patchIsDoc
@@ -754,7 +928,13 @@ function checkfornewtests
   return 0
 }
 
-function calculateJavadocWarnings
+## @description  Helper for check_javadoc
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function count_javadoc_warns
 {
   local warningfile=$1
 
@@ -762,7 +942,13 @@ function calculateJavadocWarnings
   return $(${EGREP} "^[0-9]+ warnings$" "${warningfile}" | ${AWK} '{sum+=$1} END {print sum}')
 }
 
-function checkJavadocWarnings
+## @description  Count and compare the number of JavaDoc warnings pre- and post- patch
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_javadoc
 {
   local numBranchJavadocWarnings
   local numPatchJavadocWarnings
@@ -779,9 +965,9 @@ function checkJavadocWarnings
     (cd hadoop-common-project/hadoop-annotations; ${MVN} install > /dev/null 2>&1)
   fi
   ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchJavadocWarnings.txt" 2>&1
-  calculateJavadocWarnings "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt"
+  count_javadoc_warns "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt"
   numBranchJavadocWarnings=$?
-  calculateJavadocWarnings "${PATCH_DIR}/patchJavadocWarnings.txt"
+  count_javadoc_warns "${PATCH_DIR}/patchJavadocWarnings.txt"
   numPatchJavadocWarnings=$?
 
   echo "There appear to be ${numBranchJavadocWarnings} javadoc warnings before the patch and ${numPatchJavadocWarnings} javadoc warnings after applying the patch."
@@ -806,14 +992,26 @@ function checkJavadocWarnings
   return 0
 }
 
-function calculateJavacWarnings
+## @description  Helper for check_javac
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function count_javac_warns
 {
   local warningfile=$1
   #shellcheck disable=SC2016,SC2046
   return $(${AWK} 'BEGIN {total = 0} {total += 1} END {print total}' "${warningfile}")
 }
 
-function checkJavacWarnings
+## @description  Count and compare the number of javac warnings pre- and post- patch
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_javac
 {
   local branchJavacWarnings
   local patchJavacWarnings
@@ -833,9 +1031,9 @@ function checkJavacWarnings
     ${GREP} '\[WARNING\]' "${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt" > "${PATCH_DIR}/filtered${PATCH_BRANCH}JavacWarnings.txt"
     ${GREP} '\[WARNING\]' "${PATCH_DIR}/patchJavacWarnings.txt" > "${PATCH_DIR}/filteredPatchJavacWarnings.txt"
 
-    calculateJavacWarnings "${PATCH_DIR}/filtered${PATCH_BRANCH}JavacWarnings.txt"
+    count_javac_warns "${PATCH_DIR}/filtered${PATCH_BRANCH}JavacWarnings.txt"
     branchJavacWarnings=$?
-    calculateJavacWarnings "${PATCH_DIR}/filteredPatchJavacWarnings.txt"
+    count_javac_warns "${PATCH_DIR}/filteredPatchJavacWarnings.txt"
     patchJavacWarnings=$?
 
     echo "There appear to be ${branchJavacWarnings} javac compiler warnings before the patch and ${patchJavacWarnings} javac compiler warnings after applying the patch."
@@ -861,7 +1059,13 @@ function checkJavacWarnings
   return 0
 }
 
-function checkReleaseAuditWarnings
+## @description  Verify all files have an Apache License
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_apachelicense
 {
 
   big_console_header "Determining number of patched release audit warnings."
@@ -900,7 +1104,13 @@ function checkReleaseAuditWarnings
   return 0
 }
 
-function buildAndInstall
+## @description  Verify mvn install works
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_mvn_install
 {
   local retval
   big_console_header "Installing all of the jars"
@@ -917,7 +1127,13 @@ function buildAndInstall
   return ${retval}
 }
 
-function checkFindbugsWarnings
+## @description  Verify patch does not trigger any findbugs warnings
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_findbugs
 {
 
   big_console_header "Determining number of patched Findbugs warnings."
@@ -997,7 +1213,14 @@ function checkFindbugsWarnings
   return 0
 }
 
-function checkEclipseGeneration
+## @description  Some crazy people like Eclipse.  Make sure Maven's eclipse generation
+## @description  works so they don't freak out.
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_mvn_eclipse
 {
 
   big_console_header "Running mvn eclipse:eclipse."
@@ -1014,7 +1237,13 @@ function checkEclipseGeneration
   return 0
 }
 
-function unitTests
+## @description  Run and verify the output of the appropriate unit tests
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_unittests
 {
   big_console_header "Running unit tests"
 
@@ -1117,11 +1346,25 @@ function unitTests
   return ${result}
 }
 
-function giveConsoleReport
+## @description  Print out the finished details on the console
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @param        runresult
+## @return       0 on success
+## @return       1 on failure
+function output_to_console
 {
   local result=$1
   shift
   local i
+  local ourstring
+  local vote
+  local subs
+  local ela
+  local comment
+  local normaltop
+  local line
   local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
 
   if [[ ${result} == 0 ]]; then
@@ -1184,11 +1427,17 @@ function giveConsoleReport
   done
 }
 
-function submitJiraComment
+## @description  Print out the finished details to the JIRA issue
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @param        runresult
+function output_to_jira
 {
   local result=$1
   local i
   local commentfile=${PATCH_DIR}/commentfile
+  local comment
 
   if [[ ${JENKINS} != "true" ]] ; then
     return 0
@@ -1246,7 +1495,12 @@ function submitJiraComment
              -p "${JIRA_PASSWD}"
 }
 
-function cleanupAndExit
+## @description  Clean the filesystem as appropriate and then exit
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @param        runresult
+function cleanup_and_exit
 {
   local result=$1
 
@@ -1261,22 +1515,25 @@ function cleanupAndExit
   exit ${result}
 }
 
-function post_checkout
+## @description  Driver to execute _postcheckout routines
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+function postcheckout
 {
   local routine
   local plugin
 
-  for routine in find_java_home verifyPatch
+  for routine in find_java_home verify_patch_file
   do
-
     hadoop_debug "Running ${routine}"
     ${routine}
 
     (( RESULT = RESULT + $? ))
     if [[ ${RESULT} != 0 ]] ; then
-      giveConsoleReport 1
-      submitJiraComment 1
-      cleanupAndExit 1
+      output_to_console 1
+      output_to_jira 1
+      cleanup_and_exit 1
     fi
   done
 
@@ -1290,21 +1547,25 @@ function post_checkout
 
       (( RESULT = RESULT + $? ))
       if [[ ${RESULT} != 0 ]] ; then
-        giveConsoleReport 1
-        submitJiraComment 1
-        cleanupAndExit 1
+        output_to_console 1
+        output_to_jira 1
+        cleanup_and_exit 1
       fi
     fi
   done
 }
 
+## @description  Driver to execute _preapply routines
+## @audience     private
+## @stability    evolving
+## @replaceable  no
 function preapply
 {
   local routine
   local plugin
 
-  for routine in prebuildWithoutPatch checkauthor \
-                 checkfornewtests
+  for routine in precheck_without_patch check_author \
+                 check_modified_unittests
   do
 
     hadoop_debug "Running ${routine}"
@@ -1325,22 +1586,27 @@ function preapply
   done
 }
 
+## @description  Driver to execute _postapply routines
+## @audience     private
+## @stability    evolving
+## @replaceable  no
 function postapply
 {
   local routine
   local plugin
   local retval
 
-  checkJavacWarnings
+  check_javac
   retval=$?
-  ((RESULT = RESULT + retval))
   if [[ ${retval} -gt 1 ]] ; then
-    giveConsoleReport 1
-    submitJiraComment 1
-    cleanupAndExit 1
+    output_to_console 1
+    output_to_jira 1
+    cleanup_and_exit 1
   fi
 
-  for routine in checkJavadocWarnings checkReleaseAuditWarnings
+  ((RESULT = RESULT + retval))
+
+  for routine in check_javadoc check_apachelicense
   do
 
     hadoop_debug "Running ${routine}"
@@ -1361,12 +1627,16 @@ function postapply
   done
 }
 
-function postbuild
+## @description  Driver to execute _postinstall routines
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+function postinstall
 {
   local routine
   local plugin
 
-  for routine in checkEclipseGeneration checkFindbugsWarnings
+  for routine in check_mvn_eclipse check_findbugs
   do
     hadoop_debug "Running ${routine}"
     ${routine}
@@ -1374,24 +1644,28 @@ function postbuild
   done
 
   for plugin in ${PLUGINS}; do
-    if declare -f ${plugin}_postbuild >/dev/null 2>&1; then
-      hadoop_debug "Running ${plugin}_postbuild"
+    if declare -f ${plugin}_postinstall >/dev/null 2>&1; then
+      hadoop_debug "Running ${plugin}_postinstall"
       #shellcheck disable=SC2086
-      ${plugin}_postbuild
+      ${plugin}_postinstall
       (( RESULT = RESULT + $? ))
     fi
   done
 
 }
 
+## @description  Driver to execute _tests routines
+## @audience     private
+## @stability    evolving
+## @replaceable  no
 function runtests
 {
   local plugin
 
   ### Run tests for Jenkins or if explictly asked for by a developer
   if [[ ${JENKINS} == "true" || ${RUN_TESTS} == "true" ]] ; then
-    hadoop_debug "Running unitTests"
-    unitTests
+
+    check_unittests
 
     (( RESULT = RESULT + $? ))
   fi
@@ -1406,6 +1680,10 @@ function runtests
   done
 }
 
+## @description  Import content from test-patch.d
+## @audience     private
+## @stability    evolving
+## @replaceable  no
 function importplugins
 {
   local i
@@ -1421,6 +1699,10 @@ function importplugins
   done
 }
 
+## @description  Register test-patch.d plugins
+## @audience     public
+## @stability    stable
+## @replaceable  no
 function add_plugin
 {
   PLUGINS="${PLUGINS} $1"
@@ -1434,13 +1716,13 @@ big_console_header "Bootstrapping test harness"
 
 setup_defaults
 
-parseArgs "$@"
+parse_args "$@"
 
 importplugins
 
-downloadPatch
+locate_patch
 
-checkout
+git_checkout
 RESULT=$?
 if [[ ${JENKINS} == "true" ]] ; then
   if [[ ${RESULT} != 0 ]] ; then
@@ -1448,22 +1730,22 @@ if [[ ${JENKINS} == "true" ]] ; then
   fi
 fi
 
-post_checkout
+postcheckout
 
-findChangedModules
+find_changed_modules
 
 preapply
 
-applyPatch
+apply_patch_file
 
 postapply
 
-buildAndInstall
+check_mvn_install
 
-postbuild
+postinstall
 
 runtests
 
-giveConsoleReport ${RESULT}
-submitJiraComment ${RESULT}
-cleanupAndExit ${RESULT}
+output_to_console ${RESULT}
+output_to_jira ${RESULT}
+cleanup_and_exit ${RESULT}
