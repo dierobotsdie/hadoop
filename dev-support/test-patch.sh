@@ -772,7 +772,7 @@ function determine_issue
 function locate_patch
 {
   hadoop_debug "locate patch"
-  
+
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
     PATCH_FILE="${PATCH_OR_ISSUE}"
   else
@@ -1304,8 +1304,8 @@ function check_unittests
     module_suffix=$(basename "${module}")
     test_logfile=${PATCH_DIR}/testrun_${module_suffix}.txt
     echo "  Running tests in ${module}"
-    echo "  ${MVN} clean install -fn ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess"
-    ${MVN} clean install -fae ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
+    echo "  ${MVN} clean install -fae ${NATIVE_PROFILE} ${REQUIRE_TEST_LIB_HADOOP} -D${PROJECT_NAME}PatchProcess"
+    ${MVN} clean install -fae ${NATIVE_PROFILE} ${REQUIRE_TEST_LIB_HADOOP} -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
     test_build_result=$?
 
     add_jira_footer "${module} test log" "@@BASE@@/testrun_${module_suffix}.txt"
@@ -1317,7 +1317,9 @@ function check_unittests
       result=1
     fi
     #shellcheck disable=SC2038
-    module_failed_tests=$(find . -name 'TEST*.xml' | xargs "${GREP}"  -l -E "<failure|<error" | sed -e "s|.*target/surefire-Reports/TEST-|                  |g" | sed -e "s|\.xml||g")
+    module_failed_tests=$(find . -name 'TEST*.xml'
+      | xargs "${GREP}" -l -E "<failure|<error"
+      | ${AWK} -F/ '{sub("TEST-org.apache.hadoop.",""); sub(".xml",""); print $NF}')
     if [[ -n "${module_failed_tests}" ]] ; then
       failed_tests="${failed_tests} ${module_failed_tests}"
       result=1
