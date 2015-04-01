@@ -323,6 +323,9 @@ Release 2.8.0 - UNRELEASED
 
   IMPROVEMENTS
 
+    HDFS-3918. EditLogTailer shouldn't log WARN when other node
+    is in standby mode (todd via harsh)
+
     HDFS-4396. Add START_MSG/SHUTDOWN_MSG for ZKFC
     (Liang Xie via harsh)
 
@@ -362,7 +365,21 @@ Release 2.8.0 - UNRELEASED
     HDFS-7645. Rolling upgrade is restoring blocks from trash multiple times.
     (Vinayakumar B and Keisuke Ogiwara via Arpit Agarwal)
 
+    HDFS-7944. Minor cleanup of BlockPoolManager#getAllNamenodeThreads.
+    (Arpit Agarwal)
+
+    HDFS-7671. hdfs user guide should point to the common rack awareness doc.
+    (Kai Sasaki via aajisaka)
+
+    HDFS-8009. Signal congestion on the DataNode. (wheat9)
+
+    HDFS-7978. Add LOG.isDebugEnabled() guard for some LOG.debug(..).
+    (Walter Su via wang)
+
   OPTIMIZATIONS
+
+    HDFS-8026. Trace FSOutputSummer#writeChecksumChunks rather than
+    DFSOutputStream#writeChunk (cmccabe)
 
   BUG FIXES
 
@@ -385,6 +402,12 @@ Release 2.8.0 - UNRELEASED
     HDFS-7261. storageMap is accessed without synchronization in
     DatanodeDescriptor#updateHeartbeatState() (Brahma Reddy Battula via Colin
     P. McCabe)
+
+    HDFS-7997. The first non-existing xattr should also throw IOException.
+    (zhouyingchao via yliu)
+
+    HDFS-6945. BlockManager should remove a block from excessReplicateMap and
+    decrement ExcessBlocks metric when the block is removed. (aajisaka)
 
 Release 2.7.0 - UNRELEASED
 
