@@ -223,7 +223,7 @@ function add_jira_test_table
   local failure=$1
   shift 1
 
-  JIRA_TEST_TABLE[${JFC}]="| ${failure} | $* |"
+  JIRA_TEST_TABLE[${JTT}]="| ${failure} | $* |"
   JTT=$(( JTT+1 ))
 }
 
@@ -1465,10 +1465,11 @@ function output_to_console
   printf "\n\n%*s | Tests\n" "${seccoladj}" "Reason"
   i=0
   until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
-    ourstring=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | tr -s ' ')
+    ourstring=$(echo "${JIRA_TEST_TABLE[${i}]}" | tr -s ' ')
     vote=$(echo "${ourstring}" | cut -f2 -d\|)
     subs=$(echo "${ourstring}"  | cut -f3 -d\|)
     printf "%*s | %s\n" "${seccoladj}" "${vote}" "${subs}"
+    ((i=i+1))
   done
 
   printf "\n\n|| Subsystem || Report/Notes ||\n"
