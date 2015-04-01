@@ -1277,9 +1277,9 @@ function populate_unit_table
   
   for i in "$@"; do
     if [[ -z "${first}" ]]; then
-      add_test_table "${reason}" "${i}"
+      add_jira_test_table "${reason}" "${i}"
     else
-      add_test_table "" "${i}"
+      add_jira_test_table "" "${i}"
     fi
   done
 }
