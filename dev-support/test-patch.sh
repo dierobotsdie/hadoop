@@ -448,10 +448,10 @@ function parse_args
       ;;
     esac
   done
-  
+
   # if we get a relative path, turn it absolute
   BASEDIR=$(cd -P -- "${BASEDIR}" >/dev/null && pwd -P)
-  
+
   if [[ ${BUILD_NATIVE} == "true" ]] ; then
     NATIVE_PROFILE=-Pnative
     REQUIRE_TEST_LIB_HADOOP=-Drequire.test.libhadoop
@@ -542,7 +542,7 @@ function find_changed_modules
 }
 
 ## @description  git checkout the appropriate branch to test.  Additionally, this calls
-## @description  'determine_issue' and 'determine_branch' based upon the context provided 
+## @description  'determine_issue' and 'determine_branch' based upon the context provided
 ## @description  in ${PATCH_DIR} and in git after checkout.
 ## @audience     private
 ## @stability    stable
@@ -566,9 +566,9 @@ function git_checkout
       hadoop_error "ERROR: git clean is failing"
       cleanup_and_exit 1
     fi
-    
+
     determine_branch
-    
+
     ${GIT} checkout "${PATCH_BRANCH}"
     if [[ $? != 0 ]]; then
       hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
@@ -587,9 +587,9 @@ function git_checkout
     cd "${BASEDIR}"
     if [[ ! -d .git ]]; then
       hadoop_error "ERROR: ${BASEDIR} is not a git repo."
-      cleanup_and_exit 1      
+      cleanup_and_exit 1
     fi
-    
+
     status=$(${GIT} status --porcelain)
     if [[ "${status}" != "" && -z ${DIRTY_WORKSPACE} ]] ; then
       hadoop_error "ERROR: --dirty-workspace option not provided."
@@ -597,9 +597,9 @@ function git_checkout
       hadoop_error "${status}"
       cleanup_and_exit 1
     fi
-    
+
     determine_branch
-    
+
     currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
     if [[ "${currentbranch}" != "${PATCH_BRANCH}" ]];then
       echo "WARNING: Current git branch is ${currentbranch} but patch is built for ${PATCH_BRANCH}."
@@ -635,22 +635,9 @@ function precheck_without_patch
 {
   local mypwd=$(pwd)
 
-  big_console_header "Pre-build ${PATCH_BRANCH} to verify stability and javac warnings"
+  big_console_header "Pre-patch ${PATCH_BRANCH} verification"
 
   start_clock
-  if [[ ! -d hadoop-common-project ]]; then
-    pushd "${BINDIR}/.." >/dev/null
-    mypwd=$(pwd)
-    echo "Compiling ${mypwd}"
-    echo "${MVN} clean test -DskipTests > ${PATCH_DIR}/${PATCH_BRANCH}Compile.txt 2>&1"
-    ${MVN} clean test -DskipTests > "${PATCH_DIR}/${PATCH_BRANCH}Compile.txt" 2>&1
-    if [[ $? != 0 ]] ; then
-      echo "Pre-patched ${PATCH_BRANCH} compilation is broken?"
-      add_jira_table -1 pre-build "Pre-patched ${PATCH_BRANCH} compilation may be broken."
-      return 1
-    fi
-    popd >/dev/null
-  fi
   echo "Compiling ${mypwd}"
   if [[ -d "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs" ]]; then
     echo "Changing permission on ${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs to avoid broken builds"
@@ -797,7 +784,7 @@ function determine_issue
   return 1
 }
 ## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
-## @description  necessary work to place it into ${PATCH_DIR}/patch. 
+## @description  necessary work to place it into ${PATCH_DIR}/patch.
 ## @audience     private
 ## @stability    evolving
 ## @replaceable  no
@@ -1269,17 +1256,24 @@ function check_mvn_eclipse
   return 0
 }
 
+## @description  Utility to push many tests into the failure list
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @param        testdesc
+## @param        testlist
 function populate_unit_table
 {
   local reason=$1
   local first=""
   local i
-  
+
   for i in "$@"; do
     if [[ -z "${first}" ]]; then
       add_jira_test_table "${reason}" "${i}"
+      first="${reason}"
     else
-      add_jira_test_table "" "${i}"
+      add_jira_test_table " " "${i}"
     fi
   done
 }
