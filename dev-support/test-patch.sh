@@ -674,6 +674,8 @@ function determine_branch
   local allbranches
   local patchnamechunk
 
+  hadoop_debug "Determine branch"
+
   # something has already set this, so move on
   if [[ -n ${PATCH_BRANCH} ]]; then
     return
@@ -739,6 +741,8 @@ function determine_issue
   local patchnamechunk
   local maybeissue
 
+  hadoop_debug "Determine issue"
+
   # we can shortcut jenkins
   if [[ ${JENKINS} = true ]]; then
     ISSUE=${PATCH_OR_ISSUE}
@@ -767,6 +771,8 @@ function determine_issue
 ## @return       1 on failure, may exit
 function locate_patch
 {
+  hadoop_debug "locate patch"
+  
   if [[ -f ${PATCH_OR_ISSUE} ]]; then
     PATCH_FILE="${PATCH_OR_ISSUE}"
   else
@@ -1302,7 +1308,7 @@ function check_unittests
     ${MVN} clean install -fae ${NATIVE_PROFILE} $REQUIRE_TEST_LIB_HADOOP -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
     test_build_result=$?
 
-    add_jira_footer "${module} test log" "@@BASE@@/${test_logfile}"
+    add_jira_footer "${module} test log" "@@BASE@@/testrun_${module_suffix}.txt"
 
     # shellcheck disable=2016
     module_test_timeouts=$(${AWK} '/^Running / { if (last) { print last } last=$2 } /^Tests run: / { last="" }' "${test_logfile}")
@@ -1503,6 +1509,7 @@ function cleanup_and_exit
 
   if [[ ${JENKINS} == "true" ]] ; then
     if [[ -e "${PATCH_DIR}" ]] ; then
+      hadoop_debug "mv ${PATCH_DIR} ${BASEDIR} "
       mv "${PATCH_DIR}" "${BASEDIR}"
     fi
   fi
