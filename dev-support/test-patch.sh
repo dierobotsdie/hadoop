@@ -60,9 +60,11 @@ function setup_defaults
   declare -a JIRA_COMMENT_TABLE
   declare -a JIRA_FOOTER_TABLE
   declare -a JIRA_HEADER
+  declare -a JIRA_TEST_TABLE
 
   JFC=0
   JTC=0
+  JTT=0
   RESULT=0
   TIMER=0
 }
@@ -129,7 +131,7 @@ function offset_clock
 ## @param        string
 function add_jira_header
 {
-  JIRA_HEADER[${JFC}]="| $* |"
+  JIRA_HEADER[${JHC}]="| $* |"
   JHC=$(( JHC+1 ))
 }
 
@@ -194,7 +196,8 @@ function add_jira_table
 }
 
 ## @description  Add to the footer of the display. @@BASE@@ will get replaced with the
-## @description  correct location for the local filesystem in dev mode or the URL for Jenkins mode.
+## @description  correct location for the local filesystem in dev mode or the URL for
+## @description  Jenkins mode.
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
@@ -207,6 +210,21 @@ function add_jira_footer
 
   JIRA_FOOTER_TABLE[${JFC}]="| ${subsystem} | $* |"
   JFC=$(( JFC+1 ))
+}
+
+## @description  Special table just for unit test failures
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        failurereason
+## @param        testlist
+function add_jira_test_table
+{
+  local failure=$1
+  shift 1
+
+  JIRA_TEST_TABLE[${JFC}]="| ${failure} | $* |"
+  JTT=$(( JTT+1 ))
 }
 
 ## @description  Large display for the user console
@@ -430,6 +448,10 @@ function parse_args
       ;;
     esac
   done
+  
+  # if we get a relative path, turn it absolute
+  BASEDIR=$(cd -P -- "${BASEDIR}" >/dev/null && pwd -P)
+  
   if [[ ${BUILD_NATIVE} == "true" ]] ; then
     NATIVE_PROFILE=-Pnative
     REQUIRE_TEST_LIB_HADOOP=-Drequire.test.libhadoop
@@ -519,9 +541,9 @@ function find_changed_modules
   rm "${tmp_modules}" 2>/dev/null
 }
 
-## @description  git checkout the appropriate branch to test.
-## @description  ${PATCH_BRANCH} is expected to be resolved by now, but it's value may get overwritten
-## @description  with the actual branch if a non-Jenkins run is being executed.
+## @description  git checkout the appropriate branch to test.  Additionally, this calls
+## @description  'determine_issue' and 'determine_branch' based upon the context provided 
+## @description  in ${PATCH_DIR} and in git after checkout.
 ## @audience     private
 ## @stability    stable
 ## @replaceable  no
@@ -532,7 +554,6 @@ function git_checkout
 
   big_console_header "Confirming git environment"
 
-  hadoop_debug "Checkout: ${PATCH_BRANCH}"
   if [[ ${JENKINS} == "true" ]] ; then
     cd "${BASEDIR}"
     ${GIT} reset --hard
@@ -545,6 +566,9 @@ function git_checkout
       hadoop_error "ERROR: git clean is failing"
       cleanup_and_exit 1
     fi
+    
+    determine_branch
+    
     ${GIT} checkout "${PATCH_BRANCH}"
     if [[ $? != 0 ]]; then
       hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
@@ -560,6 +584,12 @@ function git_checkout
       cp -r "${SUPPORT_DIR}"/lib/* ./lib
     fi
   else
+    cd "${BASEDIR}"
+    if [[ ! -d .git ]]; then
+      hadoop_error "ERROR: ${BASEDIR} is not a git repo."
+      cleanup_and_exit 1      
+    fi
+    
     status=$(${GIT} status --porcelain)
     if [[ "${status}" != "" && -z ${DIRTY_WORKSPACE} ]] ; then
       hadoop_error "ERROR: --dirty-workspace option not provided."
@@ -567,6 +597,9 @@ function git_checkout
       hadoop_error "${status}"
       cleanup_and_exit 1
     fi
+    
+    determine_branch
+    
     currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
     if [[ "${currentbranch}" != "${PATCH_BRANCH}" ]];then
       echo "WARNING: Current git branch is ${currentbranch} but patch is built for ${PATCH_BRANCH}."
@@ -574,6 +607,8 @@ function git_checkout
       PATCH_BRANCH=${currentbranch}
     fi
   fi
+
+  determine_issue
 
   GIT_REVISION=$(${GIT} rev-parse --verify --short HEAD)
   # shellcheck disable=SC2034
@@ -762,8 +797,7 @@ function determine_issue
   return 1
 }
 ## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
-## @description  necessary work to place it into ${PATCH_DIR}/patch.  Additionally, this calls
-## @description  'determine_issue' and 'determine_branch' based upon the context provided in ${PATCH_DIR}
+## @description  necessary work to place it into ${PATCH_DIR}/patch. 
 ## @audience     private
 ## @stability    evolving
 ## @replaceable  no
@@ -806,10 +840,6 @@ function locate_patch
     fi
     PATCH_FILE="${PATCH_DIR}/patch"
   fi
-
-  determine_branch
-
-  determine_issue
 
   if [[ ! -f "${PATCH_DIR}/patch" ]]; then
     cp "${PATCH_FILE}" "${PATCH_DIR}/patch"
@@ -1239,6 +1269,21 @@ function check_mvn_eclipse
   return 0
 }
 
+function populate_unit_table
+{
+  local reason=$1
+  local first=""
+  local i
+  
+  for i in "$@"; do
+    if [[ -z "${first}" ]]; then
+      add_test_table "${reason}" "${i}"
+    else
+      add_test_table "" "${i}"
+    fi
+  done
+}
+
 ## @description  Run and verify the output of the appropriate unit tests
 ## @audience     private
 ## @stability    evolving
@@ -1316,10 +1361,10 @@ function check_unittests
       test_timeouts="${test_timeouts} ${module_test_timeouts}"
       result=1
     fi
-    #shellcheck disable=SC2038
-    module_failed_tests=$(find . -name 'TEST*.xml'
-      | xargs "${GREP}" -l -E "<failure|<error"
-      | ${AWK} -F/ '{sub("TEST-org.apache.hadoop.",""); sub(".xml",""); print $NF}')
+    #shellcheck disable=SC2026,SC2038
+    module_failed_tests=$(find . -name 'TEST*.xml'\
+      | xargs "${GREP}" -l -E "<failure|<error"\
+      | ${AWK} -F/ '{sub("TEST-org.apache.",""); sub(".xml",""); print $NF}')
     if [[ -n "${module_failed_tests}" ]] ; then
       failed_tests="${failed_tests} ${module_failed_tests}"
       result=1
@@ -1333,13 +1378,16 @@ function check_unittests
   if [[ $result == 1 ]]; then
     add_jira_table -1 "core tests" "Tests failed in ${modules}."
     if [[ -n "${failed_tests}" ]] ; then
-      add_jira_table null "Failed unit tests" "${failed_tests}"
+      # shellcheck disable=SC2086
+      populate_unit_table "Failed unit tests" ${failed_tests}
     fi
     if [[ -n "${test_timeouts}" ]] ; then
-      add_jira_table null "Test timeouts" "${test_timeouts}"
+      # shellcheck disable=SC2086
+      populate_unit_table "Timed out tests" ${test_timeouts}
     fi
     if [[ -n "${failed_test_builds}" ]] ; then
-      add_jira_table null "Failed test builds" "${failed_test_builds}"
+      # shellcheck disable=SC2086
+      populate_unit_table "Failed build" ${failed_test_builds}
     fi
   else
     add_jira_table +1 "core tests" "The patch passed unit tests in ${modules}."
@@ -1399,26 +1447,28 @@ function output_to_console
     ela=$(echo "${ourstring}" | cut -f4 -d\|)
     comment=$(echo "${ourstring}"  | cut -f5 -d\|)
 
+    echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${PATCH_DIR}/comment.1"
+    normaltop=$(head -1 "${PATCH_DIR}/comment.1")
+    ${SED} -e '1d' "${PATCH_DIR}/comment.1"  > "${PATCH_DIR}/comment.2"
 
-    if [[ -z ${vote} ]]; then
-      printf "|      | %*s | %7s | " ${seccoladj} "${subs}" " "
-      for j in ${comment}; do
-        printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${j}"
-      done
-    else
-
-      echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${PATCH_DIR}/comment.1"
-      normaltop=$(head -1 "${PATCH_DIR}/comment.1")
-      ${SED} -e '1d' "${PATCH_DIR}/comment.1"  > "${PATCH_DIR}/comment.2"
-
-      printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
+    printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
       "${subs}" "${ela}" "${normaltop}"
-      while read line; do
-        printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${line}"
-      done < "${PATCH_DIR}/comment.2"
-    fi
+    while read line; do
+      printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${line}"
+    done < "${PATCH_DIR}/comment.2"
+
     ((i=i+1))
     rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1" 2>/dev/null
+  done
+
+  seccoladj=$(findlargest 1 "${JIRA_TEST_TABLE[@]}")
+  printf "\n\n%*s | Tests\n" "${seccoladj}" "Reason"
+  i=0
+  until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
+    ourstring=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | tr -s ' ')
+    vote=$(echo "${ourstring}" | cut -f2 -d\|)
+    subs=$(echo "${ourstring}"  | cut -f3 -d\|)
+    printf "%*s | %s\n" "${seccoladj}" "${vote}" "${subs}"
   done
 
   printf "\n\n|| Subsystem || Report/Notes ||\n"
@@ -1473,6 +1523,14 @@ function output_to_jira
   i=0
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     printf "%s\n" "${JIRA_COMMENT_TABLE[${i}]}" >> "${commentfile}"
+    ((i=i+1))
+  done
+
+  { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
+
+  i=0
+  until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
+    printf "%s\n" "${JIRA_TEST_TABLE[${i}]}" >> "${commentfile}"
     ((i=i+1))
   done
 

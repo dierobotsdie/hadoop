@@ -65,12 +65,12 @@ function checkstyle_postapply
   if [[ ${CHECKSTYLE_POSTPATCH} != "" && ${CHECKSTYLE_PREPATCH} != "" ]] ; then
     if [[ ${CHECKSTYLE_POSTPATCH} -gt ${CHECKSTYLE_PREPATCH} ]] ; then
 
-      cp -pr target/* "${PATCH_DIR}/checkstyle"
+      cp -pr ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}"
 
       add_jira_table -1 checkstyle "The applied patch generated "\
         "$((CHECKSTYLE_POSTPATCH-CHECKSTYLE_PREPATCH))" \
         " additional checkstyle issues."
-      add_jira_footer checkstyle "@@BASE@@/checkstyle"
+      add_jira_footer checkstyle "@@BASE@@/checkstyle.xml"
       return 1
     fi
   fi
