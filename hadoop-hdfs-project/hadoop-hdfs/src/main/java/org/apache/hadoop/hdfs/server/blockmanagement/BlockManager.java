@@ -3351,8 +3351,7 @@ public class BlockManager {
     // file already removes them from the block map below.
     block.setNumBytes(BlockCommand.NO_ACK);
     addToInvalidates(block);
-    corruptReplicas.removeFromCorruptReplicasMap(block);
-    blocksMap.removeBlock(block);
+    removeBlockFromMap(block);
     // Remove the block from pendingReplications and neededReplications
     pendingReplications.remove(block);
     neededReplications.remove(block, UnderReplicatedBlocks.LEVEL);
@@ -3407,6 +3406,27 @@ public class BlockManager {
         processOverReplicatedBlock(block, expected, null, null);
       }
     }
+  }
+
+  /**
+   * Check that the indicated blocks are present and
+   * replicated.
+   */
+  public boolean checkBlocksProperlyReplicated(
+      String src, BlockInfoContiguous[] blocks) {
+    for (BlockInfoContiguous b: blocks) {
+      if (!b.isComplete()) {
+        final BlockInfoContiguousUnderConstruction uc =
+            (BlockInfoContiguousUnderConstruction)b;
+        final int numNodes = b.numNodes();
+        LOG.info("BLOCK* " + b + " is not COMPLETE (ucState = "
+          + uc.getBlockUCState() + ", replication# = " + numNodes
+          + (numNodes < minReplication ? " < ": " >= ")
+          + " minimum = " + minReplication + ") in file " + src);
+        return false;
+      }
+    }
+    return true;
   }
 
   /** 
@@ -3528,9 +3548,28 @@ public class BlockManager {
   }
 
   public void removeBlockFromMap(Block block) {
+    removeFromExcessReplicateMap(block);
     blocksMap.removeBlock(block);
     // If block is removed from blocksMap remove it from corruptReplicasMap
     corruptReplicas.removeFromCorruptReplicasMap(block);
+  }
+
+  /**
+   * If a block is removed from blocksMap, remove it from excessReplicateMap.
+   */
+  private void removeFromExcessReplicateMap(Block block) {
+    for (DatanodeStorageInfo info : blocksMap.getStorages(block)) {
+      String uuid = info.getDatanodeDescriptor().getDatanodeUuid();
+      LightWeightLinkedSet<Block> excessReplicas = excessReplicateMap.get(uuid);
+      if (excessReplicas != null) {
+        if (excessReplicas.remove(block)) {
+          excessBlocksCount.decrementAndGet();
+          if (excessReplicas.isEmpty()) {
+            excessReplicateMap.remove(uuid);
+          }
+        }
+      }
+    }
   }
 
   public int getCapacity() {

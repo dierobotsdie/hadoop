@@ -446,7 +446,9 @@ public class ShortCircuitCache implements Closeable {
           purgeReason = "purging replica because it is stale.";
         }
         if (purgeReason != null) {
-          LOG.debug(this + ": " + purgeReason);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(this + ": " + purgeReason);
+          }
           purge(replica);
         }
       }
@@ -913,6 +915,34 @@ public class ShortCircuitCache implements Closeable {
       }
     } finally {
       lock.unlock();
+    }
+
+    releaserExecutor.shutdown();
+    cleanerExecutor.shutdown();
+    // wait for existing tasks to terminate
+    try {
+      if (!releaserExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+        LOG.error("Forcing SlotReleaserThreadPool to shutdown!");
+        releaserExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      releaserExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+      LOG.error("Interrupted while waiting for SlotReleaserThreadPool "
+          + "to terminate", e);
+    }
+
+    // wait for existing tasks to terminate
+    try {
+      if (!cleanerExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+        LOG.error("Forcing CleanerThreadPool to shutdown!");
+        cleanerExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      cleanerExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+      LOG.error("Interrupted while waiting for CleanerThreadPool "
+          + "to terminate", e);
     }
     IOUtils.cleanup(LOG, shmManager);
   }
