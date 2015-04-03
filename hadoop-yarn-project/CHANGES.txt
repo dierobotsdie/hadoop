@@ -56,6 +56,10 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3345. Add non-exclusive node label API. (Wangda Tan via jianhe)
 
+    YARN-3365. Enhanced NodeManager to support using the 'tc' tool via
+    container-executor for outbound network traffic control. (Sidharta Seethana
+    via vinodkv)
+
   IMPROVEMENTS
 
     YARN-1880. Cleanup TestApplicationClientProtocolOnHA
@@ -97,6 +101,9 @@ Release 2.8.0 - UNRELEASED
     YARN-3248. Display count of nodes blacklisted by apps in the web UI.
     (Varun Vasudev via xgong)
 
+    YARN-2901. Add errors and warning metrics page to RM, NM web UI. 
+    (Varun Vasudev via wangda)
+
   OPTIMIZATIONS
 
     YARN-3339. TestDockerContainerExecutor should pull a single image and not
@@ -131,6 +138,9 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3425. NPE from RMNodeLabelsManager.serviceStop when 
     NodeLabelsManager.serviceInit failed. (Bibin A Chundatt via wangda)
+
+    YARN-3415. Non-AM containers can be counted towards amResourceUsage of a
+    Fair Scheduler queue (Zhihai Xu via Sandy Ryza)
 
 Release 2.7.0 - UNRELEASED
 
