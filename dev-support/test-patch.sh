@@ -20,6 +20,9 @@
 this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 
+USER_PARAMS=("$@")
+
+
 ## @description  Setup the default global variables
 ## @audience     public
 ## @stability    stable
@@ -43,20 +46,41 @@ function setup_defaults
   BUILD_NATIVE=${BUILD_NATIVE:-true}
   PATCH_BRANCH=""
   CHANGED_MODULES=""
+  CHANGED_FILES=""
+  REEXECED=false
   ISSUE=""
   ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
 
-  PS=${PS:-ps}
-  AWK=${AWK:-awk}
-  SED=${SED:-sed}
-  WGET=${WGET:-wget}
-  GIT=${GIT:-git}
-  EGREP=${EGREP:-egrep}
-  GREP=${GREP:-grep}
-  PATCH=${PATCH:-patch}
-  DIFF=${DIFF:-diff}
-  JIRACLI=${JIRA:-jira}
-
+  OSTYPE=$(uname -s)
+  
+  # Solaris needs POSIX, not SVID
+  case ${OSTYPE} in
+    SunOS)
+      PS=${PS:-ps}
+      AWK=${AWK:-/usr/xpg4/bin/awk}
+      SED=${SED:-/usr/xpg4/bin/sed}
+      WGET=${WGET:-wget}
+      GIT=${GIT:-git}
+      EGREP=${EGREP:-/usr/xpg4/bin/egrep}
+      GREP=${GREP:-/usr/xpg4/bin/grep}
+      PATCH=${PATCH:-patch}
+      DIFF=${DIFF:-diff}
+      JIRACLI=${JIRA:-jira}
+    ;;
+    *)
+      PS=${PS:-ps}
+      AWK=${AWK:-awk}
+      SED=${SED:-sed}
+      WGET=${WGET:-wget}
+      GIT=${GIT:-git}
+      EGREP=${EGREP:-egrep}
+      GREP=${GREP:-grep}
+      PATCH=${PATCH:-patch}
+      DIFF=${DIFF:-diff}
+      JIRACLI=${JIRA:-jira}
+    ;;
+  esac
+    
   declare -a JIRA_COMMENT_TABLE
   declare -a JIRA_FOOTER_TABLE
   declare -a JIRA_HEADER
@@ -443,6 +467,9 @@ function parse_args
       --build-native=*)
         BUILD_NATIVE=${i#*=}
       ;;
+      --rexec)
+        REXECED=true
+      ;;
       *)
         PATCH_OR_ISSUE=${i}
       ;;
@@ -512,18 +539,23 @@ function find_pom_dir
 function find_changed_modules
 {
   # Come up with a list of changed files into ${TMP}
-  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp"
-  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp"
+  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp.${RANDOM}"
+  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp.${RANDOM}"
 
   local module
 
-  ${GREP} '^+++ \|^--- ' "${PATCH_DIR}/patch" | cut -c '5-' | ${GREP} -v /dev/null | sort -u > "${tmp_paths}"
-
-  # if all of the lines start with a/ or b/, then this is a git patch that
-  # was generated without --no-prefix
-  if ! ${GREP} -qv '^a/\|^b/' "${tmp_paths}"; then
-    ${SED} -i -e 's,^[ab]/,,' "${tmp_paths}"
-  fi
+  # get a list of all of the files that have been changed, 
+  # except for /dev/null (which would be present for new files). 
+  # Additionally, remove any a/ b/ patterns at the front 
+  # of the patch filenames
+  ${GREP} -E '^(\+\+\+|---) ' "${PATCH_DIR}/patch" \
+    | ${SED} \
+      -e 's,^....,,' \
+      -e 's,^[ab]/,,' \
+    | ${GREP} -v /dev/null \
+    | sort -u > "${tmp_paths}"
+  
+  CHANGED_FILES=$(cat ${tmp_paths})
 
   # Now find all the modules that were changed
   while read file; do
@@ -882,6 +914,56 @@ function apply_patch_file
   fi
   return 0
 }
+
+
+## @description  If this patches actually patches test-patch.sh, then
+## @description  run with the patched version for the test.
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       none; otherwise relaunches
+function check_relaunch
+{
+  
+  local commentfile=${PATCH_DIR}/tp.${RANDOM}
+  
+  if [[ ${REXECED} = true ]]; then
+    big_console_header "Re-exec mode detected. Continuing."
+    return
+  fi
+  
+  if [[ ! ${CHANGED_FILES} =~ dev-support/test-patch* 
+      || ! ${CHANGED_FILES} =~ dev-support/smart-apply* ]] ; then
+    return
+  fi
+  
+  big_console_header "dev-support patch detected"
+  printf "\n\nRe-executing against patched versions to test.\n\n"
+
+  if [[ ${JENKINS} = true ]]; then
+    echo "(!) A patch to test-patch or smart-apply-patch has been detected." > ${commentfile}
+    echo "Re-executing against the patched versions to perform further tests." >> ${commentfile}
+
+    export USER=hudson
+    ${JIRACLI} -s https://issues.apache.org/jira \
+               -a addcomment -u hadoopqa \
+               -p "${JIRA_PASSWD}" \
+               --comment "$(cat ${commentfile})" \
+               --issue "${ISSUE}"
+    ${JIRACLI} -s https://issues.apache.org/jira \
+               -a logout -u hadoopqa \
+               -p "${JIRA_PASSWD}"
+    
+    rm ${commentfile}
+  fi 
+  
+  mkdir -p ${PATCH_DIR}/dev-support-test
+  cp -pr dev-support/test-patch* ${PATCH_DIR}/dev-support-test
+  cp -pr dev-support/smart-apply* ${PATCH_DIR}/dev-support-test
+  exec ${PATCH_DIR}/dev-support-test/test-patch.sh --rexec "${HADOOP_USER_PARAMS[@]}")
+}
+
+
 
 ## @description  Check the current directory for @author tags
 ## @audience     private
@@ -1796,6 +1878,8 @@ find_changed_modules
 preapply
 
 apply_patch_file
+
+relaunch_check
 
 postapply
 
