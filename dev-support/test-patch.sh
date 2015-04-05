@@ -532,20 +532,8 @@ function find_pom_dir
   done
 }
 
-## @description  Find the modules of the maven build that ${PATCH_DIR}/patch modifies
-## @audience     private
-## @stability    stable
-## @replaceable  no
-## @return       None; sets ${CHANGED_MODULES}
-function find_changed_modules
+function find_changed_files
 {
-  # Come up with a list of changed files into ${TMP}
-  local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp.${RANDOM}"
-  local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp.${RANDOM}"
-  local module
-  
-  rm "${tmp_paths}" "${tmp_modules}" 2>/dev/null
-
   # get a list of all of the files that have been changed,
   # except for /dev/null (which would be present for new files).
   # Additionally, remove any a/ b/ patterns at the front
@@ -555,24 +543,33 @@ function find_changed_modules
       -e 's,^....,,' \
       -e 's,^[ab]/,,' \
     | ${GREP} -v /dev/null \
-    | sort -u > "${tmp_paths}"
+    | sort -u
+}
 
-  CHANGED_FILES=$(cat "${tmp_paths}")
 
+## @description  Find the modules of the maven build that ${PATCH_DIR}/patch modifies
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       None; sets ${CHANGED_MODULES}
+function find_changed_modules
+{
+  # Come up with a list of changed files into ${TMP}
+  local pomdirs
+  local module
+  
   # Now find all the modules that were changed
-  while read file; do
-    find_pom_dir "${file}" >> "${tmp_modules}"
-  done < <(cut -f1 "${tmp_paths}" | sort -u)
-  rm "${tmp_paths}" 2>/dev/null
+  for file in ${CHANGED_FILES}; do
+    pomdirs="${pomdirs} $(find_pom_dir ${file})"
+  done
 
   # Filter out modules without code
-  while read module; do
+  for module in ${pomdirs}; do
     ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
     if [[ "$?" != 0 ]]; then
       CHANGED_MODULES="${CHANGED_MODULES} ${module}"
     fi
-  done < <(sort -u "${tmp_modules}")
-  rm "${tmp_modules}" 2>/dev/null
+  done
 }
 
 ## @description  git checkout the appropriate branch to test.  Additionally, this calls
@@ -871,6 +868,8 @@ function locate_patch
       cleanup_and_exit 0
     fi
   fi
+  
+  CHANGED_FILES=$(find_changed_files)
 }
 
 ## @description  Given ${PATCH_DIR}/patch, verify the patch is good using ${BINDIR}/smart-apply-patch.sh
