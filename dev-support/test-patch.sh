@@ -52,7 +52,7 @@ function setup_defaults
   ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
 
   OSTYPE=$(uname -s)
-  
+
   # Solaris needs POSIX, not SVID
   case ${OSTYPE} in
     SunOS)
@@ -80,7 +80,7 @@ function setup_defaults
       JIRACLI=${JIRA:-jira}
     ;;
   esac
-    
+
   declare -a JIRA_COMMENT_TABLE
   declare -a JIRA_FOOTER_TABLE
   declare -a JIRA_HEADER
@@ -468,7 +468,9 @@ function parse_args
         BUILD_NATIVE=${i#*=}
       ;;
       --rexec)
-        REXECED=true
+        REEXECED=true
+        start_clock
+        add_jira_table 0 reexec "dev-support patch detected."
       ;;
       *)
         PATCH_OR_ISSUE=${i}
@@ -544,9 +546,9 @@ function find_changed_modules
 
   local module
 
-  # get a list of all of the files that have been changed, 
-  # except for /dev/null (which would be present for new files). 
-  # Additionally, remove any a/ b/ patterns at the front 
+  # get a list of all of the files that have been changed,
+  # except for /dev/null (which would be present for new files).
+  # Additionally, remove any a/ b/ patterns at the front
   # of the patch filenames
   ${GREP} -E '^(\+\+\+|---) ' "${PATCH_DIR}/patch" \
     | ${SED} \
@@ -554,8 +556,8 @@ function find_changed_modules
       -e 's,^[ab]/,,' \
     | ${GREP} -v /dev/null \
     | sort -u > "${tmp_paths}"
-  
-  CHANGED_FILES=$(cat ${tmp_paths})
+
+  CHANGED_FILES=$(cat "${tmp_paths}")
 
   # Now find all the modules that were changed
   while read file; do
@@ -646,7 +648,7 @@ function git_checkout
   # shellcheck disable=SC2034
   VERSION=${GIT_REVISION}_${ISSUE}_PATCH-${patchNum}
 
-  if [[ "${ISSUE}" = 'Unknown' ]]; then
+  if [[ "${ISSUE}" == 'Unknown' ]]; then
     echo "Testing patch on ${PATCH_BRANCH}."
   else
     echo "Testing ${ISSUE} patch on ${PATCH_BRANCH}."
@@ -710,7 +712,7 @@ function verify_valid_branch
   local i
 
   for i in ${branches}; do
-    if [[ "${i}" = "${check}" ]]; then
+    if [[ "${i}" == "${check}" ]]; then
       return 0
     fi
   done
@@ -738,7 +740,7 @@ function determine_branch
   pushd "${BASEDIR}" > /dev/null
 
   # developer mode, existing checkout, whatever
-  if [[ "${DIRTY_WORKSPACE}" = true ]];then
+  if [[ "${DIRTY_WORKSPACE}" == true ]];then
     PATCH_BRANCH=$(${GIT} rev-parse --abbrev-ref HEAD)
     echo "dirty workspace mode; applying against existing branch"
     return
@@ -752,14 +754,14 @@ function determine_branch
   # ISSUE.branch.##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f2 -d. )
   verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
-  if [[ $? = 0 ]]; then
+  if [[ $? == 0 ]]; then
     return
   fi
 
   # ISSUE-branch-##.patch
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | cut -f1,2 -d-)
   verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
-  if [[ $? = 0 ]]; then
+  if [[ $? == 0 ]]; then
     return
   fi
 
@@ -767,7 +769,7 @@ function determine_branch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | ${AWK} -F. '{print $NF}')
   verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
-  if [[ $? = 0 ]]; then
+  if [[ $? == 0 ]]; then
     return
   fi
 
@@ -775,7 +777,7 @@ function determine_branch
   # shellcheck disable=SC2016
   PATCH_BRANCH=$(echo "${patchnamechunk}" | cut -f3- -d- | ${AWK} -F. '{print $(NF-2)}' 2>/dev/null)
   verify_valid_branch "${allbranches}" "${PATCH_BRANCH}"
-  if [[ $? = 0 ]]; then
+  if [[ $? == 0 ]]; then
     return
   fi
 
@@ -798,7 +800,7 @@ function determine_issue
   hadoop_debug "Determine issue"
 
   # we can shortcut jenkins
-  if [[ ${JENKINS} = true ]]; then
+  if [[ ${JENKINS} == true ]]; then
     ISSUE=${PATCH_OR_ISSUE}
   fi
 
@@ -922,27 +924,27 @@ function apply_patch_file
 ## @stability    evolving
 ## @replaceable  no
 ## @return       none; otherwise relaunches
-function check_relaunch
+function check_reexec
 {
-  
+
   local commentfile=${PATCH_DIR}/tp.${RANDOM}
-  
-  if [[ ${REXECED} = true ]]; then
+
+  if [[ ${REEXECED} == true ]]; then
     big_console_header "Re-exec mode detected. Continuing."
     return
   fi
-  
-  if [[ ! ${CHANGED_FILES} =~ dev-support/test-patch* 
-      || ! ${CHANGED_FILES} =~ dev-support/smart-apply* ]] ; then
+
+  if [[ ! ${CHANGED_FILES} =~ dev-support/test-patch
+      || ! ${CHANGED_FILES} =~ dev-support/smart-apply ]] ; then
     return
   fi
-  
+
   big_console_header "dev-support patch detected"
   printf "\n\nRe-executing against patched versions to test.\n\n"
 
-  if [[ ${JENKINS} = true ]]; then
-    echo "(!) A patch to test-patch or smart-apply-patch has been detected." > ${commentfile}
-    echo "Re-executing against the patched versions to perform further tests." >> ${commentfile}
+  if [[ ${JENKINS} == true ]]; then
+    echo "(!) A patch to test-patch or smart-apply-patch has been detected." > "${commentfile}"
+    echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
 
     export USER=hudson
     ${JIRACLI} -s https://issues.apache.org/jira \
@@ -953,14 +955,17 @@ function check_relaunch
     ${JIRACLI} -s https://issues.apache.org/jira \
                -a logout -u hadoopqa \
                -p "${JIRA_PASSWD}"
-    
-    rm ${commentfile}
-  fi 
-  
-  mkdir -p ${PATCH_DIR}/dev-support-test
-  cp -pr dev-support/test-patch* ${PATCH_DIR}/dev-support-test
-  cp -pr dev-support/smart-apply* ${PATCH_DIR}/dev-support-test
-  exec ${PATCH_DIR}/dev-support-test/test-patch.sh --rexec "${HADOOP_USER_PARAMS[@]}")
+
+    rm "${commentfile}"
+  fi
+
+  mkdir -p "${PATCH_DIR}/dev-support-test"
+  cp -pr dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
+  cp -pr dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
+  exec "${PATCH_DIR}/dev-support-test/test-patch.sh" \
+    --rexec \
+    --patch-dir="${PATCH_DIR}" \
+      "${USER_PARAMS[@]}"
 }
 
 
@@ -1879,7 +1884,7 @@ preapply
 
 apply_patch_file
 
-relaunch_check
+check_reexec
 
 postapply
 
