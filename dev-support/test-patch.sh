@@ -573,7 +573,6 @@ function find_changed_modules
   done
 
   CHANGED_MODULES=$(echo ${pommods} | tr ' ' '\n' | sort -u)
-
 }
 
 ## @description  git checkout the appropriate branch to test.  Additionally, this calls
@@ -1559,16 +1558,18 @@ function output_to_console
     rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1" 2>/dev/null
   done
 
-  seccoladj=$(findlargest 1 "${JIRA_TEST_TABLE[@]}")
-  printf "\n\n%*s | Tests\n" "${seccoladj}" "Reason"
-  i=0
-  until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
-    ourstring=$(echo "${JIRA_TEST_TABLE[${i}]}" | tr -s ' ')
-    vote=$(echo "${ourstring}" | cut -f2 -d\|)
-    subs=$(echo "${ourstring}"  | cut -f3 -d\|)
-    printf "%*s | %s\n" "${seccoladj}" "${vote}" "${subs}"
-    ((i=i+1))
-  done
+  if [[ ${#JIRA_TEST_TABLE[@]} -gt 0 ]]; then
+    seccoladj=$(findlargest 1 "${JIRA_TEST_TABLE[@]}")
+    printf "\n\n%*s | Tests\n" "${seccoladj}" "Reason"
+    i=0
+    until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
+      ourstring=$(echo "${JIRA_TEST_TABLE[${i}]}" | tr -s ' ')
+      vote=$(echo "${ourstring}" | cut -f2 -d\|)
+      subs=$(echo "${ourstring}"  | cut -f3 -d\|)
+      printf "%*s | %s\n" "${seccoladj}" "${vote}" "${subs}"
+      ((i=i+1))
+    done
+  fi
 
   printf "\n\n|| Subsystem || Report/Notes ||\n"
   i=0
@@ -1627,13 +1628,17 @@ function output_to_jira
     ((i=i+1))
   done
 
-  { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
 
-  i=0
-  until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
-    printf "%s\n" "${JIRA_TEST_TABLE[${i}]}" >> "${commentfile}"
-    ((i=i+1))
-  done
+  if [[ ${#JIRA_TEST_TABLE[@]} -gt 0 ]]; then
+    { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
+
+    echo "|| Reason || Tests ||" >>  "${commentfile}"
+    i=0
+    until [[ $i -eq ${#JIRA_TEST_TABLE[@]} ]]; do
+      printf "%s\n" "${JIRA_TEST_TABLE[${i}]}" >> "${commentfile}"
+      ((i=i+1))
+    done
+  fi
 
   { echo "\\\\" ; echo "\\\\"; } >>  "${commentfile}"
 
