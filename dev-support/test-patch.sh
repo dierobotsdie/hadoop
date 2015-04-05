@@ -19,7 +19,7 @@
 ### Read variables from properties file
 this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
-
+CWD=$(PWD)
 USER_PARAMS=("$@")
 
 
@@ -506,7 +506,7 @@ function parse_args
       echo "Unable to create ${PATCH_DIR}"
       cleanup_and_exit 0
     fi
-  else
+  elif [[ ${REEXECED} == false ]]; then
     hadoop_error "WARNING: ${PATCH_DIR} already exists."
   fi
 }
@@ -926,7 +926,7 @@ function apply_patch_file
 ## @return       none; otherwise relaunches
 function check_reexec
 {
-
+  set +x
   local commentfile=${PATCH_DIR}/tp.${RANDOM}
 
   if [[ ${REEXECED} == true ]]; then
@@ -935,7 +935,7 @@ function check_reexec
   fi
 
   if [[ ! ${CHANGED_FILES} =~ dev-support/test-patch
-      || ! ${CHANGED_FILES} =~ dev-support/smart-apply ]] ; then
+      || ${CHANGED_FILES} =~ dev-support/smart-apply ]] ; then
     return
   fi
 
@@ -959,6 +959,7 @@ function check_reexec
     rm "${commentfile}"
   fi
 
+  cd ${CWD}
   mkdir -p "${PATCH_DIR}/dev-support-test"
   cp -pr dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
   cp -pr dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
