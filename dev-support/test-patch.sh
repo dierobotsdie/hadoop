@@ -467,7 +467,7 @@ function parse_args
       --build-native=*)
         BUILD_NATIVE=${i#*=}
       ;;
-      --rexec)
+      --reexec)
         REEXECED=true
         start_clock
         add_jira_table 0 reexec "dev-support patch detected."
@@ -498,6 +498,7 @@ function parse_args
     echo "Running in developer mode"
     JENKINS=false
   fi
+    
   if [[ ! -d ${PATCH_DIR} ]]; then
     mkdir -p "${PATCH_DIR}"
     if [[ $? == 0 ]] ; then
@@ -506,8 +507,6 @@ function parse_args
       echo "Unable to create ${PATCH_DIR}"
       cleanup_and_exit 0
     fi
-  elif [[ ${REEXECED} == false ]]; then
-    hadoop_error "WARNING: ${PATCH_DIR} already exists."
   fi
 }
 
@@ -543,8 +542,9 @@ function find_changed_modules
   # Come up with a list of changed files into ${TMP}
   local tmp_paths="${PATCH_DIR}/tmp.paths.$$.tp.${RANDOM}"
   local tmp_modules="${PATCH_DIR}/tmp.modules.$$.tp.${RANDOM}"
-
   local module
+  
+  rm "${tmp_paths}" "${tmp_modules}" 2>/dev/null
 
   # get a list of all of the files that have been changed,
   # except for /dev/null (which would be present for new files).
@@ -942,7 +942,12 @@ function check_reexec
   big_console_header "dev-support patch detected"
   printf "\n\nRe-executing against patched versions to test.\n\n"
 
+  apply_patch_file
+
   if [[ ${JENKINS} == true ]]; then
+
+    rm "${commentfile}" 2>/dev/null
+    
     echo "(!) A patch to test-patch or smart-apply-patch has been detected." > "${commentfile}"
     echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
 
@@ -966,8 +971,13 @@ function check_reexec
 
   big_console_header "exec'ing test-patch.sh now..."
 
+  echo "${PATCH_DIR}/dev-support-test/test-patch.sh" \
+    --reexec \
+    --patch-dir="${PATCH_DIR}" \
+      "${USER_PARAMS[@]}"
+  
   exec "${PATCH_DIR}/dev-support-test/test-patch.sh" \
-    --rexec \
+    --reexec \
     --patch-dir="${PATCH_DIR}" \
       "${USER_PARAMS[@]}"
 }
@@ -1579,6 +1589,8 @@ function output_to_jira
   local commentfile=${PATCH_DIR}/commentfile
   local comment
 
+  rm "${commentfile}" 2>/dev/null
+
   if [[ ${JENKINS} != "true" ]] ; then
     return 0
   fi
@@ -1880,6 +1892,8 @@ if [[ ${JENKINS} == "true" ]] ; then
   fi
 fi
 
+check_reexec
+
 postcheckout
 
 find_changed_modules
@@ -1887,8 +1901,6 @@ find_changed_modules
 preapply
 
 apply_patch_file
-
-check_reexec
 
 postapply
 
