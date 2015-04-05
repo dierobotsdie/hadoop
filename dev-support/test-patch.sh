@@ -959,10 +959,13 @@ function check_reexec
     rm "${commentfile}"
   fi
 
-  cd ${CWD}
+  cd "${CWD}"
   mkdir -p "${PATCH_DIR}/dev-support-test"
   cp -pr dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
   cp -pr dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
+
+  big_console_header "exec'ing test-patch.sh now..."
+
   exec "${PATCH_DIR}/dev-support-test/test-patch.sh" \
     --rexec \
     --patch-dir="${PATCH_DIR}" \
