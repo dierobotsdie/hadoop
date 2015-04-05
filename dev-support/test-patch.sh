@@ -498,7 +498,7 @@ function parse_args
     echo "Running in developer mode"
     JENKINS=false
   fi
-    
+
   if [[ ! -d ${PATCH_DIR} ]]; then
     mkdir -p "${PATCH_DIR}"
     if [[ $? == 0 ]] ; then
@@ -557,7 +557,8 @@ function find_changed_modules
   # Come up with a list of changed files into ${TMP}
   local pomdirs
   local module
-  
+  local pommods
+
   # Now find all the modules that were changed
   for file in ${CHANGED_FILES}; do
     pomdirs="${pomdirs} $(find_pom_dir ${file})"
@@ -567,9 +568,12 @@ function find_changed_modules
   for module in ${pomdirs}; do
     ${GREP} "<packaging>pom</packaging>" "${module}/pom.xml" > /dev/null
     if [[ "$?" != 0 ]]; then
-      CHANGED_MODULES="${CHANGED_MODULES} ${module}"
+      pommods="${pommods} ${module}"
     fi
   done
+
+  CHANGED_MODULES=$(echo ${pommods} | tr ' ' '\n' | sort -u)
+
 }
 
 ## @description  git checkout the appropriate branch to test.  Additionally, this calls
@@ -868,7 +872,7 @@ function locate_patch
       cleanup_and_exit 0
     fi
   fi
-  
+
   CHANGED_FILES=$(find_changed_files)
 }
 
@@ -946,7 +950,7 @@ function check_reexec
   if [[ ${JENKINS} == true ]]; then
 
     rm "${commentfile}" 2>/dev/null
-    
+
     echo "(!) A patch to test-patch or smart-apply-patch has been detected." > "${commentfile}"
     echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
 
@@ -974,7 +978,7 @@ function check_reexec
     --reexec \
     --patch-dir="${PATCH_DIR}" \
       "${USER_PARAMS[@]}"
-  
+
   exec "${PATCH_DIR}/dev-support-test/test-patch.sh" \
     --reexec \
     --patch-dir="${PATCH_DIR}" \
@@ -1025,7 +1029,7 @@ function check_modified_unittests
   start_clock
 
   testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
-  echo "There appear to be ${testReferences} test files referenced in the patch."
+  echo "There appear to be ${testReferences} test file(s) referenced in the patch."
   if [[ ${testReferences} == 0 ]] ; then
     if [[ ${JENKINS} == "true" ]] ; then
       # if component has documentation in it, we skip this part.
