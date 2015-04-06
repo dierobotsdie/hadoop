@@ -11,7 +11,7 @@ function whitespace_preapply
 
   ${GREP} '^+' "${PATCH_DIR}/patch" | ${GREP} -c '[[:space:]]$' > "${PATCH_DIR}/whitespace.txt"
 
-  count=$(wc -l "${PATCH_DIR}/whitespace.txt")
+  count=$(wc -l "${PATCH_DIR}/whitespace.txt" | ${AWK} '{print $1}')
 
   if [[ ${count} -gt 0 ]]; then
     add_jira_table -1 whitspace "The patch has ${count}"\

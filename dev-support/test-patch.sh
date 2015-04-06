@@ -1263,6 +1263,7 @@ function check_findbugs
 
   if [[ ! -e "${FINDBUGS_HOME}/bin/findbugs" ]]; then
     printf "\n\n%s is not executable.\n\n" "${FINDBUGS_HOME}/bin/findbugs"
+    add_jira_table -1 findbugs "Findbugs is not installed."
     return 1
   fi
 
