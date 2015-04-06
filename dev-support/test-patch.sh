@@ -1512,14 +1512,43 @@ function output_to_console
   local subs
   local ela
   local comment
+  local commentfile1="${PATCH_DIR}/comment.1"
+  local commentfile2="${PATCH_DIR}/comment.2"
   local normaltop
   local line
   local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
+  local spcfx=${PATCH_DIR}/spcl.txt
 
   if [[ ${result} == 0 ]]; then
+    if [[ ${JENKINS} == false ]]; then
+      printf "IF9fX19fX19fX18gCjwgU3VjY2VzcyEgPgogLS0tLS0tLS0tLSAKIFwgICAg" > ${spcfx}
+      printf "IC9cICBfX18gIC9cCiAgXCAgIC8vIFwvICAgXC8gXFwKICAgICAoKCAgICBP" >> ${spcfx}
+      printf "IE8gICAgKSkKICAgICAgXFwgLyAgICAgXCAvLwogICAgICAgXC8gIHwgfCAg" >> ${spcfx}
+      printf "XC8gCiAgICAgICAgfCAgfCB8ICB8ICAKICAgICAgICB8ICB8IHwgIHwgIAog" >> ${spcfx}
+      printf "ICAgICAgIHwgICBvICAgfCAgCiAgICAgICAgfCB8ICAgfCB8ICAKICAgICAg" >> ${spcfx}
+      printf "ICB8bXwgICB8bXwgIAo"= >> ${spcfx}
+    fi
     printf "\n\n+1 overall\n\n"
   else
+    if [[ ${JENKINS} == false ]]; then
+      printf "IF9fX19fX19fX18gCjwgRmFpbHVyZSEgPgogLS0tLS0tLS0tLSAKICAgXAog" > ${spcfx}
+      printf "ICAgXCAgICAgICAgICAgICAgLi4uLiAgICAgICAKICAgICAgICAgICAuLi4u" >> ${spcfx}
+      printf "Li4uLiAgICAuICAgICAgCiAgICAgICAgICAuICAgICAgICAgICAgLiAgICAg" >> ${spcfx}
+      printf "IAogICAgICAgICAuICAgICAgICAgICAgIC4gICAgICAKLi4uLi4uLi4uICAg" >> ${spcfx}
+      printf "ICAgICAgICAgICAuLi4uLi4uCi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4u" >> ${spcfx}
+      printf "Li4uLgoKRWxlcGhhbnQgaW5zaWRlIEFTQ0lJIHNuYWtlCg==" >> ${spcfx}
+    fi
     printf "\n\n-1 overall\n\n"
+  fi
+
+  if [[ -f ${spcfx} ]]; then
+    if which base64 >/dev/null 2>&1; then
+      base64 --decode ${spcfx}
+    elif which openssl >/dev/null 2>&1; then
+      openssl enc -A -d -base64 -in ${spcfx}
+    fi
+
+    rm ${spcfx}
   fi
 
   if [[ ${seccoladj} -lt 10 ]]; then
@@ -1544,18 +1573,18 @@ function output_to_console
     ela=$(echo "${ourstring}" | cut -f4 -d\|)
     comment=$(echo "${ourstring}"  | cut -f5 -d\|)
 
-    echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${PATCH_DIR}/comment.1"
-    normaltop=$(head -1 "${PATCH_DIR}/comment.1")
-    ${SED} -e '1d' "${PATCH_DIR}/comment.1"  > "${PATCH_DIR}/comment.2"
+    echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${commentfile1}"
+    normaltop=$(head -1 "${commentfile1}")
+    ${SED} -e '1d' "${commentfile1}"  > "${commentfile2}"
 
     printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
       "${subs}" "${ela}" "${normaltop}"
     while read line; do
       printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${line}"
-    done < "${PATCH_DIR}/comment.2"
+    done < "${commentfile2}"
 
     ((i=i+1))
-    rm "${PATCH_DIR}/comment.2" "${PATCH_DIR}/comment.1" 2>/dev/null
+    rm "${commentfile2}" "${commentfile1}" 2>/dev/null
   done
 
   if [[ ${#JIRA_TEST_TABLE[@]} -gt 0 ]]; then
@@ -1579,6 +1608,8 @@ function output_to_console
     printf "%s\n" "${comment}"
     ((i=i+1))
   done
+
+
 }
 
 ## @description  Print out the finished details to the JIRA issue
