@@ -1531,12 +1531,11 @@ function output_to_console
     printf "\n\n+1 overall\n\n"
   else
     if [[ ${JENKINS} == false ]]; then
-      printf "IF9fX19fX19fX18gCjwgRmFpbHVyZSEgPgogLS0tLS0tLS0tLSAKICAgXAog" > ${spcfx}
-      printf "ICAgXCAgICAgICAgICAgICAgLi4uLiAgICAgICAKICAgICAgICAgICAuLi4u" >> ${spcfx}
-      printf "Li4uLiAgICAuICAgICAgCiAgICAgICAgICAuICAgICAgICAgICAgLiAgICAg" >> ${spcfx}
-      printf "IAogICAgICAgICAuICAgICAgICAgICAgIC4gICAgICAKLi4uLi4uLi4uICAg" >> ${spcfx}
-      printf "ICAgICAgICAgICAuLi4uLi4uCi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4uLi4u" >> ${spcfx}
-      printf "Li4uLgoKRWxlcGhhbnQgaW5zaWRlIEFTQ0lJIHNuYWtlCg==" >> ${spcfx}
+      printf "IF9fX19fICAgICBfIF8gICAgICAgICAgICAgICAgXyAKfCAgX19ffF8gXyhf" > ${spcfx}
+      printf "KSB8XyAgIF8gXyBfXyBfX198IHwKfCB8XyAvIF9gIHwgfCB8IHwgfCB8ICdf" >> ${spcfx}
+      printf "Xy8gXyBcIHwKfCAgX3wgKF98IHwgfCB8IHxffCB8IHwgfCAgX18vX3wKfF98" >> ${spcfx}
+      printf "ICBcX18sX3xffF98XF9fLF98X3wgIFxfX18oXykKICAgICAgICAgICAgICAg" >> ${spcfx}
+      printf "ICAgICAgICAgICAgICAgICAK" >> ${spcfx}
     fi
     printf "\n\n-1 overall\n\n"
   fi
