@@ -33,7 +33,8 @@ function checkstyle_preapply
   fi
 
   # shellcheck disable=SC2016
-  CHECKSTYLE_PREPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
+  CHECKSTYLE_PREPATCH=$(wc -l ${BASEDIR}/target/checkstyle-result.xml | ${AWK} '{print $1}')
+  cp -p ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml"
 
   # keep track of how much as elapsed for us already
   CHECKSTYLE_TIMER=$(stop_clock)
@@ -65,15 +66,66 @@ function checkstyle_postapply
   if [[ ${CHECKSTYLE_POSTPATCH} != "" && ${CHECKSTYLE_PREPATCH} != "" ]] ; then
     if [[ ${CHECKSTYLE_POSTPATCH} -gt ${CHECKSTYLE_PREPATCH} ]] ; then
 
-      cp -pr ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}"
+      cp -p ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}/checkstyle-result-patch.xml"
+
+      checkstyle_runcomparison
 
       add_jira_table -1 checkstyle "The applied patch generated "\
         "$((CHECKSTYLE_POSTPATCH-CHECKSTYLE_PREPATCH))" \
         " additional checkstyle issues."
-      add_jira_footer checkstyle "@@BASE@@/checkstyle.xml"
+      add_jira_footer checkstyle "@@BASE@@/checkstyle-result-diff.txt"
+
       return 1
     fi
   fi
   add_jira_table +1 checkstyle "There were no new checkstyle issues."
   return 0
+}
+
+
+function checkstyle_runcomparison
+{
+
+  python <(cat <<EOF
+import os
+import sys
+import xml.etree.ElementTree as etree
+from collections import defaultdict
+
+if len(sys.argv) != 3 :
+  print "usage: %s checkstyle-result-master.xml checkstyle-result-patch.xml" % sys.argv[0]
+  exit(1)
+
+def path_key(x):
+  path = x.attrib['name']
+  return path[path.find('hbase-'):]
+
+def print_row(path, master_errors, patch_errors):
+    print '%s\t%s\t%s' % (k,master_dict[k],child_errors)
+
+master = etree.parse(sys.argv[1])
+patch = etree.parse(sys.argv[2])
+
+master_dict = defaultdict(int)
+
+for child in master.getroot().getchildren():
+    if child.tag != 'file':
+        continue
+    child_errors = len(child.getchildren())
+    if child_errors == 0:
+        continue
+    master_dict[path_key(child)] = child_errors
+
+for child in patch.getroot().getchildren():
+    if child.tag != 'file':
+        continue
+    child_errors = len(child.getchildren())
+    if child_errors == 0:
+        continue
+    k = path_key(child)
+    if child_errors > master_dict[k]:
+        print_row(k, master_dict[k], child_errors)
+EOF
+) "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml" "${PATCH_DIR}/checkstyle-result-patch.xml" > "${PATCH_DIR}/checkstyle-result-diff.txt"
+
 }
