@@ -324,6 +324,7 @@ function findlargest
 ## @return       0 - JAVA_HOME defined
 function find_java_home
 {
+  start_clock
   if [[ -z ${JAVA_HOME:-} ]]; then
     case $(uname -s) in
       Darwin)
@@ -532,19 +533,25 @@ function find_pom_dir
   done
 }
 
+## @description  List of files that ${PATCH_DIR}/patch modifies
+## @audience     private
+## @stability    stable
+## @replaceable  no
+## @return       None; sets ${CHANGED_FILES}
 function find_changed_files
 {
   # get a list of all of the files that have been changed,
   # except for /dev/null (which would be present for new files).
   # Additionally, remove any a/ b/ patterns at the front
   # of the patch filenames
-  ${GREP} -E '^(\+\+\+|---) ' "${PATCH_DIR}/patch" \
+  CHANGED_FILES=$(${GREP} -E '^(\+\+\+|---) ' "${PATCH_DIR}/patch" \
     | ${SED} \
       -e 's,^....,,' \
       -e 's,^[ab]/,,' \
     | ${GREP} -v /dev/null \
-    | sort -u
+    | sort -u)
 }
+
 
 
 ## @description  Find the modules of the maven build that ${PATCH_DIR}/patch modifies
@@ -658,8 +665,7 @@ function git_checkout
   return 0
 }
 
-## @description  Confirm the source environment is good, running prepatch counts of standard parts such
-## @description  as javadoc.
+## @description  Confirm the source environment is compilable
 ## @audience     private
 ## @stability    stable
 ## @replaceable  no
@@ -669,28 +675,37 @@ function precheck_without_patch
 {
   local mypwd=$(pwd)
 
-  big_console_header "Pre-patch ${PATCH_BRANCH} verification"
+  big_console_header "Pre-patch ${PATCH_BRANCH} Java verification"
 
   start_clock
-  echo "Compiling ${mypwd}"
-  if [[ -d "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs" ]]; then
-    echo "Changing permission on ${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs to avoid broken builds"
-    chmod +x -R "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs"
-  fi
-  echo "${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess -Ptest-patch > ${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt 2>&1"
-  ${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess -Ptest-patch > "${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt" 2>&1
-  if [[ $? != 0 ]] ; then
-    echo "${PATCH_BRANCH} compilation is broken?"
-    add_jira_table -1 pre-patch "${PATCH_BRANCH} compilation may be broken."
-    return 1
+
+  if [[ ${NEEDED_TESTS} =~ javac ]]; then
+    echo "Compiling ${mypwd}"
+    if [[ -d "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs" ]]; then
+      echo "Changing permission on ${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs to avoid broken builds"
+      chmod +x -R "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs"
+    fi
+    echo "${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess -Ptest-patch > ${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt 2>&1"
+    ${MVN} clean test -DskipTests -D${PROJECT_NAME}PatchProcess -Ptest-patch > "${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt" 2>&1
+    if [[ $? != 0 ]] ; then
+      echo "${PATCH_BRANCH} compilation is broken?"
+      add_jira_table -1 pre-patch "${PATCH_BRANCH} compilation may be broken."
+      return 1
+    fi
+  else
+    echo "Patch does not appear to need javac tests."
   fi
 
-  echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt 2>&1"
-  ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt" 2>&1
-  if [[ $? != 0 ]] ; then
-    echo "Pre-patch ${PATCH_BRANCH} javadoc compilation is broken?"
-    add_jira_table -1 pre-patch "Pre-patch ${PATCH_BRANCH} JavaDoc compilation may be broken."
-    return 1
+  if [[ ${NEEDED_TESTS} =~ javadoc ]]; then
+    echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt 2>&1"
+    ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt" 2>&1
+    if [[ $? != 0 ]] ; then
+      echo "Pre-patch ${PATCH_BRANCH} javadoc compilation is broken?"
+      add_jira_table -1 pre-patch "Pre-patch ${PATCH_BRANCH} JavaDoc compilation may be broken."
+      return 1
+    fi
+  else
+    echo "Patch does not appear to need javadoc tests."
   fi
 
   add_jira_table 0 pre-patch "Pre-patch ${PATCH_BRANCH} compilation is healthy."
@@ -817,6 +832,77 @@ function determine_issue
   ISSUE="Unknown"
   return 1
 }
+
+## @description  Add the given test type
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+## @param        test
+function add_test
+{
+  local testname=$1
+
+  hadoop_debug "Testing against ${testname}"
+
+  if [[ -z ${NEEDED_TESTS} ]]; then
+    hadoop_debug "Setting tests to ${testname}"
+    NEEDED_TESTS=${testname}
+  elif [[ ! ${NEEDED_TESTS} =~ ${testname} ]] ; then
+    hadoop_debug "Adding ${testname}"
+    NEEDED_TESTS="${NEEDED_TESTS} ${testname}"
+  fi
+}
+
+
+function determine_needed_tests
+{
+  local i
+
+  for i in ${CHANGED_FILES}; do
+
+    # web bits
+    if [[ ${i} =~ src/main/webapp ]]; then
+      continue
+    fi
+
+    #documentation
+    if [[ ${i} =~ .md$
+      || ${i} =~ .md.vm$
+      || ${i} =~ src/site
+      || ${i} =~ src/main/docs
+      ]]; then
+      add_test site
+      continue
+    fi
+
+    # native code
+    if [[ ${i} =~ .c$
+      || ${i} =~ .cc$
+      || ${i} =~ .h$
+      || ${i} =~ .hh$
+      || ${i} =~ .proto$
+      || ${i} =~ src/test
+      || ${i} =~ .cmake$
+       ]]; then
+       add_test javac
+       add_test unit
+       continue
+    fi
+
+    if [[ ${i} =~ pom.xml$
+      || ${i} =~ .java$
+      || ${i} =~ src/main
+      ]]; then
+      add_test javadoc
+      add_test javac
+      add_test unit
+    fi
+
+  done
+
+  hadoop_debug "Needed tests: ${NEEDED_TESTS}"
+}
+
 ## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
 ## @description  necessary work to place it into ${PATCH_DIR}/patch.
 ## @audience     private
@@ -838,13 +924,17 @@ function locate_patch
       ${WGET} -q -O "${PATCH_DIR}/jira" "http://issues.apache.org/jira/browse/${PATCH_OR_ISSUE}"
 
       if [[ $? != 0 ]];then
-        hadoop_error "Unable to determine what ${PATCH_OR_ISSUE} may reference."
+        hadoop_error "ERROR: Unable to determine what ${PATCH_OR_ISSUE} may reference."
         cleanup_and_exit 0
       fi
 
       if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
-        hadoop_error "${PATCH_OR_ISSUE} is not \"Patch Available\".  Exiting."
-        cleanup_and_exit 0
+        if [[ ${JENKINS} == true ]]; then
+          hadoop_error "ERROR: ${PATCH_OR_ISSUE} is not \"Patch Available\"."
+          cleanup_and_exit 0
+        else
+          hadoop_error "WARNING: ${PATCH_OR_ISSUE} is not \"Patch Available\"."
+        fi
       fi
 
       relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
@@ -856,7 +946,7 @@ function locate_patch
     add_jira_footer "Patch URL" "${patchURL}"
     ${WGET} -q -O "${PATCH_DIR}/patch" "${patchURL}"
     if [[ $? != 0 ]];then
-      hadoop_error "${PATCH_OR_ISSUE} could not be downloaded."
+      hadoop_error "ERROR: ${PATCH_OR_ISSUE} could not be downloaded."
       cleanup_and_exit 0
     fi
     PATCH_FILE="${PATCH_DIR}/patch"
@@ -867,12 +957,10 @@ function locate_patch
     if [[ $? == 0 ]] ; then
       echo "Patch file ${PATCH_FILE} copied to ${PATCH_DIR}"
     else
-      hadoop_error "Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
+      hadoop_error "ERROR: Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
       cleanup_and_exit 0
     fi
   fi
-
-  CHANGED_FILES=$(find_changed_files)
 }
 
 ## @description  Given ${PATCH_DIR}/patch, verify the patch is good using ${BINDIR}/smart-apply-patch.sh
@@ -886,6 +974,8 @@ function verify_patch_file
 {
   # Before building, check to make sure that the patch is valid
   export PATCH
+
+  start_clock
   "${BINDIR}/smart-apply-patch.sh" "${PATCH_DIR}/patch" dryrun
   if [[ $? != 0 ]] ; then
     echo "PATCH APPLICATION FAILED"
@@ -1027,29 +1117,23 @@ function check_modified_unittests
 
   start_clock
 
-  testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
-  echo "There appear to be ${testReferences} test file(s) referenced in the patch."
-  if [[ ${testReferences} == 0 ]] ; then
-    if [[ ${JENKINS} == "true" ]] ; then
-      # if component has documentation in it, we skip this part.
-      # really need a better test here
-      patchIsDoc=$("${GREP}" -c -i 'title="documentation' "${PATCH_DIR}/jira")
-      if [[ ${patchIsDoc} != 0 ]] ; then
-        echo "The patch appears to be a documentation patch that doesn't require tests."
-        add_jira_table 0 "tests included" \
-        "The patch appears to be a documentation patch that doesn't require tests."
-        return 0
-      fi
+  if [[ ${NEEDED_TESTS} =~ unit ]]; then
+    testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
+    echo "There appear to be ${testReferences} test file(s) referenced in the patch."
+    if [[ ${testReferences} == 0 ]] ; then
+      add_jira_table -1 "tests included" \
+        "The patch doesn't appear to include any new or modified tests. " \
+        "Please justify why no new tests are needed for this patch." \
+        "Also please list what manual steps were performed to verify this patch."
+      return 1
     fi
-
-    add_jira_table -1 "tests included" \
-      "The patch doesn't appear to include any new or modified tests. " \
-      "Please justify why no new tests are needed for this patch." \
-      "Also please list what manual steps were performed to verify this patch."
-    return 1
+    add_jira_table +1 "tests included" \
+      "The patch appears to include ${testReferences} new or modified test files."
+  else
+    echo "The patch doesn't appear to require tests."
+    add_jira_table 0 "tests included" \
+      "The patch appears to be a doc, etc patch that doesn't require tests."
   fi
-  add_jira_table +1 "tests included" \
-    "The patch appears to include ${testReferences} new or modified test files."
   return 0
 }
 
@@ -1077,6 +1161,11 @@ function check_javadoc
 {
   local numBranchJavadocWarnings
   local numPatchJavadocWarnings
+
+  if [[ ${NEEDED_TESTS} =~ javadoc ]]; then
+    echo "This patch does not appear to need javadoc checks."
+    return 0
+  fi
 
   big_console_header "Determining number of patched javadoc warnings"
 
@@ -1140,6 +1229,11 @@ function check_javac
 {
   local branchJavacWarnings
   local patchJavacWarnings
+
+  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
+    echo "This patch does not require any javac checks."
+    return 0
+  fi
 
   big_console_header "Determining number of patched javac warnings."
 
@@ -1267,6 +1361,11 @@ function check_findbugs
     return 1
   fi
 
+  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
+    echo "Patch does not touch any java files. Skipping findbugs"
+    return 0
+  fi
+
   start_clock
 
   local findbugs_version=$("${FINDBUGS_HOME}/bin/findbugs" -version)
@@ -1348,6 +1447,11 @@ function check_mvn_eclipse
 {
   big_console_header "Running mvn eclipse:eclipse."
 
+  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
+    echo "Patch does not touch any java files. Skipping mvn eclipse:eclipse"
+    return 0
+  fi
+
   start_clock
 
   echo "${MVN} eclipse:eclipse -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchEclipseOutput.txt 2>&1"
@@ -1391,6 +1495,11 @@ function populate_unit_table
 function check_unittests
 {
   big_console_header "Running unit tests"
+
+  if [[ ! ${NEEDED_TESTS} =~ unit ]]; then
+    echo "Existing unit tests do not test patched files. Skipping."
+    return 0
+  fi
 
   start_clock
 
@@ -1522,33 +1631,37 @@ function output_to_console
 
   if [[ ${result} == 0 ]]; then
     if [[ ${JENKINS} == false ]]; then
-      printf "IF9fX19fX19fX18gCjwgU3VjY2VzcyEgPgogLS0tLS0tLS0tLSAKIFwgICAg" > ${spcfx}
-      printf "IC9cICBfX18gIC9cCiAgXCAgIC8vIFwvICAgXC8gXFwKICAgICAoKCAgICBP" >> ${spcfx}
-      printf "IE8gICAgKSkKICAgICAgXFwgLyAgICAgXCAvLwogICAgICAgXC8gIHwgfCAg" >> ${spcfx}
-      printf "XC8gCiAgICAgICAgfCAgfCB8ICB8ICAKICAgICAgICB8ICB8IHwgIHwgIAog" >> ${spcfx}
-      printf "ICAgICAgIHwgICBvICAgfCAgCiAgICAgICAgfCB8ICAgfCB8ICAKICAgICAg" >> ${spcfx}
-      printf "ICB8bXwgICB8bXwgIAo"= >> ${spcfx}
+      {
+        printf "IF9fX19fX19fX18gCjwgU3VjY2VzcyEgPgogLS0tLS0tLS0tLSAKIFwgICAg";
+        printf "IC9cICBfX18gIC9cCiAgXCAgIC8vIFwvICAgXC8gXFwKICAgICAoKCAgICBP";
+        printf "IE8gICAgKSkKICAgICAgXFwgLyAgICAgXCAvLwogICAgICAgXC8gIHwgfCAg";
+        printf "XC8gCiAgICAgICAgfCAgfCB8ICB8ICAKICAgICAgICB8ICB8IHwgIHwgIAog";
+        printf "ICAgICAgIHwgICBvICAgfCAgCiAgICAgICAgfCB8ICAgfCB8ICAKICAgICAg";
+        printf "ICB8bXwgICB8bXwgIAo"
+      } > "${spcfx}"
     fi
     printf "\n\n+1 overall\n\n"
   else
     if [[ ${JENKINS} == false ]]; then
-      printf "IF9fX19fICAgICBfIF8gICAgICAgICAgICAgICAgXyAKfCAgX19ffF8gXyhf" > ${spcfx}
-      printf "KSB8XyAgIF8gXyBfXyBfX198IHwKfCB8XyAvIF9gIHwgfCB8IHwgfCB8ICdf" >> ${spcfx}
-      printf "Xy8gXyBcIHwKfCAgX3wgKF98IHwgfCB8IHxffCB8IHwgfCAgX18vX3wKfF98" >> ${spcfx}
-      printf "ICBcX18sX3xffF98XF9fLF98X3wgIFxfX18oXykKICAgICAgICAgICAgICAg" >> ${spcfx}
-      printf "ICAgICAgICAgICAgICAgICAK" >> ${spcfx}
+      {
+        printf "IF9fX19fICAgICBfIF8gICAgICAgICAgICAgICAgXyAKfCAgX19ffF8gXyhf";
+        printf "KSB8XyAgIF8gXyBfXyBfX198IHwKfCB8XyAvIF9gIHwgfCB8IHwgfCB8ICdf";
+        printf "Xy8gXyBcIHwKfCAgX3wgKF98IHwgfCB8IHxffCB8IHwgfCAgX18vX3wKfF98";
+        printf "ICBcX18sX3xffF98XF9fLF98X3wgIFxfX18oXykKICAgICAgICAgICAgICAg";
+        printf "ICAgICAgICAgICAgICAgICAK"
+      } > "${spcfx}"
     fi
     printf "\n\n-1 overall\n\n"
   fi
 
   if [[ -f ${spcfx} ]]; then
     if which base64 >/dev/null 2>&1; then
-      base64 --decode ${spcfx}
+      base64 --decode "${spcfx}"
     elif which openssl >/dev/null 2>&1; then
-      openssl enc -A -d -base64 -in ${spcfx}
+      openssl enc -A -d -base64 -in "${spcfx}"
     fi
 
-    rm ${spcfx}
+    rm "${spcfx}"
   fi
 
   if [[ ${seccoladj} -lt 10 ]]; then
@@ -1922,6 +2035,10 @@ parse_args "$@"
 importplugins
 
 locate_patch
+
+find_changed_files
+
+determine_needed_tests
 
 git_checkout
 RESULT=$?
