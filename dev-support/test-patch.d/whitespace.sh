@@ -23,7 +23,7 @@ function whitespace_preapply
   big_console_header "Checking for whitespace at the end of lines"
   start_clock
 
-  ${GREP} '^+' "${PATCH_DIR}/patch" | ${GREP} -c '[[:space:]]$' > "${PATCH_DIR}/whitespace.txt"
+  ${GREP} '^+' "${PATCH_DIR}/patch" | ${GREP} '[[:space:]]$' > "${PATCH_DIR}/whitespace.txt"
 
   count=$(wc -l "${PATCH_DIR}/whitespace.txt" | ${AWK} '{print $1}')
 

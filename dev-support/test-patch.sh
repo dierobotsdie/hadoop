@@ -697,6 +697,7 @@ function precheck_without_patch
   fi
 
   if [[ ${NEEDED_TESTS} =~ javadoc ]]; then
+    echo "Javadoc'ing ${mypwd}"
     echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt 2>&1"
     ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt" 2>&1
     if [[ $? != 0 ]] ; then
@@ -706,6 +707,19 @@ function precheck_without_patch
     fi
   else
     echo "Patch does not appear to need javadoc tests."
+  fi
+
+  if [[ ${NEEDED_TESTS} =~ site ]]; then
+    echo "site creation for ${mypwd}"
+    echo "${MVN} clean site site:stage -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}SiteWarnings.txt 2>&1"
+    ${MVN} clean site site:stage -DskipTests -Dmaven.javadoc.skip=true -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}SiteWarnings.txt" 2>&1
+    if [[ $? != 0 ]] ; then
+      echo "Pre-patch ${PATCH_BRANCH} site compilation is broken?"
+      add_jira_table -1 pre-patch "Pre-patch ${PATCH_BRANCH} site compilation may be broken."
+      return 1
+    fi
+  else
+    echo "Patch does not appear to need site tests."
   fi
 
   add_jira_table 0 pre-patch "Pre-patch ${PATCH_BRANCH} compilation is healthy."
@@ -900,7 +914,7 @@ function determine_needed_tests
 
   done
 
-  hadoop_debug "Needed tests: ${NEEDED_TESTS}"
+  add_jira_footer "Test Options Enabled" "${NEEDED_TESTS}"
 }
 
 ## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
@@ -1203,6 +1217,37 @@ function check_javadoc
     fi
   fi
   add_jira_table +1 javadoc "There were no new javadoc warning messages."
+  return 0
+}
+
+## @description  Make sure site still compiles
+## @audience     private
+## @stability    evolving
+## @replaceable  no
+## @return       0 on success
+## @return       1 on failure
+function check_site
+{
+
+  if [[ ! ${NEEDED_TESTS} =~ site ]]; then
+    echo "This patch does not appear to need site checks."
+    return 0
+  fi
+
+  big_console_header "Determining if patched site still builds"
+
+  start_clock
+
+  echo "site creation for ${mypwd}"
+  echo "${MVN} clean site site:stage -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchSiteWarnings.txt 2>&1"
+  ${MVN} clean site site:stage -DskipTests -Dmaven.javadoc.skip=true -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/patchSiteWarnings.txt" 2>&1
+  if [[ $? != 0 ]] ; then
+    echo "Site compilation is broken"
+    add_jira_table -1 site "Site compilation is broken."
+    add_jira_footer site "@@BASE@@/patchSiteWarnings.txt"
+    return 1
+  fi
+  add_jira_table +1 site "There were no new javadoc warning messages."
   return 0
 }
 
@@ -1920,7 +1965,7 @@ function postapply
 
   ((RESULT = RESULT + retval))
 
-  for routine in check_javadoc check_apachelicense
+  for routine in check_javadoc check_apachelicense check_site
   do
 
     hadoop_debug "Running ${routine}"
