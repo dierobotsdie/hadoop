@@ -20,6 +20,22 @@ SHELLCHECK_TIMER=0
 
 SHELLCHECK=${SHELLCHECK:-$(which shellcheck)}
 
+
+# if it ends in an explicit .sh, then this is shell code.
+# if it doesn't have an extension, we assume it is shell code too
+function shellcheck_filefilter
+{
+  local filename=$1
+  
+  if [[ ${filename} =~ .sh$ ]]; then
+    add_test shellcheck
+  fi
+  
+  if [[ ! ${filename} =~ \. ]]; then
+    add_test shellcheck
+  fi
+}
+
 function shellcheck_private_findbash
 {
   local i
@@ -32,6 +48,11 @@ function shellcheck_private_findbash
 function shellcheck_preapply
 {
   local i
+  local needshellcheck=verify_needed_test shellcheck
+  
+  if [[ ${neededshellcheck}==0 ]]; then
+    return 0
+  fi
 
   big_console_header "shellcheck plugin: prepatch"
 
@@ -54,6 +75,11 @@ function shellcheck_preapply
 function shellcheck_postapply
 {
   local i
+  local needshellcheck=verify_needed_test shellcheck
+  
+  if [[ ${neededshellcheck}==0 ]]; then
+    return 0
+  fi
 
   big_console_header "shellcheck plugin: postpatch"
 

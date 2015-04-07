@@ -867,6 +867,16 @@ function add_test
   fi
 }
 
+function verify_needed_test
+{
+  local i=$1
+  
+  if [[ ${NEEDED_TESTS} =~ $i ]]; then
+    return 1
+  fi
+  return 0
+}
+
 ## @description  Use some heuristics to determine which long running
 ## @description  tests to run
 ## @audience     private
@@ -901,6 +911,7 @@ function determine_needed_tests
       || ${i} =~ .proto$
       || ${i} =~ src/test
       || ${i} =~ .cmake$
+      || ${i} =~ CMakeLists.txt
        ]]; then
        add_test javac
        add_test unit
@@ -915,6 +926,12 @@ function determine_needed_tests
       add_test javac
       add_test unit
     fi
+    
+    for plugin in ${PLUGINS}; do
+      if declare -f ${plugin}_filefilter >/dev/null 2>&1; then
+        ${plugin}_filefilter ${i}
+      fi
+    done
 
   done
 
