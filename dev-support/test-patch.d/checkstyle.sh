@@ -60,23 +60,19 @@ function checkstyle_postapply
     return 1
   fi
 
+  checkstyle_runcomparison
+
   # shellcheck disable=SC2016
-  CHECKSTYLE_POSTPATCH=$(wc -l target/checkstyle-result.xml | ${AWK} '{print $1}')
+  CHECKSTYLE_POSTPATCH=$(wc -l "${PATCH_DIR}/checkstyle-result-diff.txt" | ${AWK} '{print $1}')
 
-  if [[ ${CHECKSTYLE_POSTPATCH} != "" && ${CHECKSTYLE_PREPATCH} != "" ]] ; then
-    if [[ ${CHECKSTYLE_POSTPATCH} -gt ${CHECKSTYLE_PREPATCH} ]] ; then
+  if [[ ${CHECKSTYLE_POSTPATCH} -gt 0 ]] ; then
 
-      cp -p ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}/checkstyle-result-patch.xml"
+    add_jira_table -1 checkstyle "The applied patch generated "\
+      "${CHECKSTYLE_POSTPATCH}" \
+      " additional checkstyle issues."
+    add_jira_footer checkstyle "@@BASE@@/checkstyle-result-diff.txt"
 
-      checkstyle_runcomparison
-
-      add_jira_table -1 checkstyle "The applied patch generated "\
-        "$((CHECKSTYLE_POSTPATCH-CHECKSTYLE_PREPATCH))" \
-        " additional checkstyle issues."
-      add_jira_footer checkstyle "@@BASE@@/checkstyle-result-diff.txt"
-
-      return 1
-    fi
+    return 1
   fi
   add_jira_table +1 checkstyle "There were no new checkstyle issues."
   return 0
@@ -98,7 +94,7 @@ if len(sys.argv) != 3 :
 
 def path_key(x):
   path = x.attrib['name']
-  return path[path.find('hbase-'):]
+  return path[path.find('hadoop-'):]
 
 def print_row(path, master_errors, patch_errors):
     print '%s\t%s\t%s' % (k,master_dict[k],child_errors)
@@ -125,6 +121,7 @@ for child in patch.getroot().getchildren():
     k = path_key(child)
     if child_errors > master_dict[k]:
         print_row(k, master_dict[k], child_errors)
+
 EOF
 ) "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml" "${PATCH_DIR}/checkstyle-result-patch.xml" > "${PATCH_DIR}/checkstyle-result-diff.txt"
 

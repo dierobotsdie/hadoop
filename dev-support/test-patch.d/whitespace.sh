@@ -28,13 +28,13 @@ function whitespace_preapply
   count=$(wc -l "${PATCH_DIR}/whitespace.txt" | ${AWK} '{print $1}')
 
   if [[ ${count} -gt 0 ]]; then
-    add_jira_table -1 whitspace "The patch has ${count}"\
+    add_jira_table -1 whitespace "The patch has ${count}"\
       " lines that end in whitespace."
     add_jira_footer whitespace "@@BASE@@/whitespace.txt"
     return 1
   fi
 
-  add_jira_table +1 whitspace "The patch has no "\
+  add_jira_table +1 whitespace "The patch has no "\
         " lines that end in whitespace."
   return 0
 }

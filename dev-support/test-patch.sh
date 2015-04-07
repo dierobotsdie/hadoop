@@ -867,7 +867,11 @@ function add_test
   fi
 }
 
-
+## @description  Use some heuristics to determine which long running
+## @description  tests to run
+## @audience     private
+## @stability    stable
+## @replaceable  no
 function determine_needed_tests
 {
   local i
@@ -914,7 +918,7 @@ function determine_needed_tests
 
   done
 
-  add_jira_footer "Test Options Enabled" "${NEEDED_TESTS}"
+  add_jira_footer "Optional Tests" "${NEEDED_TESTS}"
 }
 
 ## @description  Given ${PATCH_ISSUE}, determine what type of patch file is in use, and do the
