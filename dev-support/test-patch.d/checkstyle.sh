@@ -18,8 +18,24 @@ add_plugin checkstyle
 
 CHECKSTYLE_TIMER=0
 
+# if it ends in an explicit .sh, then this is shell code.
+# if it doesn't have an extension, we assume it is shell code too
+function checkstyle_filefilter
+{
+  local filename=$1
+
+  if [[ ${filename} =~ \.java$ ]]; then
+    add_test checkstyle
+  fi
+}
+
 function checkstyle_preapply
 {
+  local needcheckstyle=verify_needed_test checkstyle
+
+  if [[ ${needcheckstyle}==0 ]]; then
+    return 0
+  fi
 
   big_console_header "checkstyle plugin: prepatch"
 
@@ -43,6 +59,12 @@ function checkstyle_preapply
 
 function checkstyle_postapply
 {
+
+  local needcheckstyle=verify_needed_test checkstyle
+
+  if [[ ${needcheckstyle}==0 ]]; then
+    return 0
+  fi
 
   big_console_header "checkstyle plugin: postpatch"
 

@@ -870,7 +870,7 @@ function add_test
 function verify_needed_test
 {
   local i=$1
-  
+
   if [[ ${NEEDED_TESTS} =~ $i ]]; then
     return 1
   fi
@@ -894,8 +894,8 @@ function determine_needed_tests
     fi
 
     #documentation
-    if [[ ${i} =~ .md$
-      || ${i} =~ .md.vm$
+    if [[ ${i} =~ \.md$
+      || ${i} =~ \.md\.vm$
       || ${i} =~ src/site
       || ${i} =~ src/main/docs
       ]]; then
@@ -904,13 +904,13 @@ function determine_needed_tests
     fi
 
     # native code
-    if [[ ${i} =~ .c$
-      || ${i} =~ .cc$
-      || ${i} =~ .h$
-      || ${i} =~ .hh$
-      || ${i} =~ .proto$
+    if [[ ${i} =~ \.c$
+      || ${i} =~ \.cc$
+      || ${i} =~ \.h$
+      || ${i} =~ \.hh$
+      || ${i} =~ \.proto$
       || ${i} =~ src/test
-      || ${i} =~ .cmake$
+      || ${i} =~ \.cmake$
       || ${i} =~ CMakeLists.txt
        ]]; then
        add_test javac
@@ -919,14 +919,14 @@ function determine_needed_tests
     fi
 
     if [[ ${i} =~ pom.xml$
-      || ${i} =~ .java$
+      || ${i} =~ \.java$
       || ${i} =~ src/main
       ]]; then
       add_test javadoc
       add_test javac
       add_test unit
     fi
-    
+
     for plugin in ${PLUGINS}; do
       if declare -f ${plugin}_filefilter >/dev/null 2>&1; then
         ${plugin}_filefilter ${i}
@@ -1093,8 +1093,12 @@ function check_reexec
 
   cd "${CWD}"
   mkdir -p "${PATCH_DIR}/dev-support-test"
-  cp -pr dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
-  cp -pr dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
+  cp -pr ${BASEDIR}/dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
+  cp -pr ${BASEDIR}/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
+  rm -rf ${BASEDIR}/dev-support
+  pushd ${BASEDIR} >/dev/null
+  ${GIT} checkout --force
+  popd >/dev/null
 
   big_console_header "exec'ing test-patch.sh now..."
 

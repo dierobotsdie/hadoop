@@ -26,11 +26,11 @@ SHELLCHECK=${SHELLCHECK:-$(which shellcheck)}
 function shellcheck_filefilter
 {
   local filename=$1
-  
-  if [[ ${filename} =~ .sh$ ]]; then
+
+  if [[ ${filename} =~ \.sh$ ]]; then
     add_test shellcheck
   fi
-  
+
   if [[ ! ${filename} =~ \. ]]; then
     add_test shellcheck
   fi
@@ -49,8 +49,8 @@ function shellcheck_preapply
 {
   local i
   local needshellcheck=verify_needed_test shellcheck
-  
-  if [[ ${neededshellcheck}==0 ]]; then
+
+  if [[ ${needshellcheck}==0 ]]; then
     return 0
   fi
 
@@ -76,7 +76,7 @@ function shellcheck_postapply
 {
   local i
   local needshellcheck=verify_needed_test shellcheck
-  
+
   if [[ ${neededshellcheck}==0 ]]; then
     return 0
   fi
