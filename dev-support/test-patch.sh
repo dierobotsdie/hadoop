@@ -678,8 +678,10 @@ function precheck_without_patch
   big_console_header "Pre-patch ${PATCH_BRANCH} Java verification"
 
   start_clock
+  
+  verify_needed_test javac
 
-  if [[ ${NEEDED_TESTS} =~ javac ]]; then
+  if [[ $? == 1 ]]; then
     echo "Compiling ${mypwd}"
     if [[ -d "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs" ]]; then
       echo "Changing permission on ${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs to avoid broken builds"
@@ -696,7 +698,9 @@ function precheck_without_patch
     echo "Patch does not appear to need javac tests."
   fi
 
-  if [[ ${NEEDED_TESTS} =~ javadoc ]]; then
+  verify_needed_test javadoc
+
+  if [[ $? == 1 ]]; then
     echo "Javadoc'ing ${mypwd}"
     echo "${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt 2>&1"
     ${MVN} clean test javadoc:javadoc -DskipTests -Pdocs -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}JavadocWarnings.txt" 2>&1
@@ -709,7 +713,9 @@ function precheck_without_patch
     echo "Patch does not appear to need javadoc tests."
   fi
 
-  if [[ ${NEEDED_TESTS} =~ site ]]; then
+  verify_needed_test site
+
+  if [[ $? == 1 ]]; then
     echo "site creation for ${mypwd}"
     echo "${MVN} clean site site:stage -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}SiteWarnings.txt 2>&1"
     ${MVN} clean site site:stage -DskipTests -Dmaven.javadoc.skip=true -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/${PATCH_BRANCH}SiteWarnings.txt" 2>&1
@@ -1152,27 +1158,27 @@ function check_modified_unittests
   local testReferences
   local patchIsDoc
 
+  verify_needed_test unit
+
+  if [[ $? == 0 ]]; then
+    return 0
+  fi
+
   big_console_header "Checking there are new or changed tests in the patch."
 
   start_clock
 
-  if [[ ${NEEDED_TESTS} =~ unit ]]; then
-    testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
-    echo "There appear to be ${testReferences} test file(s) referenced in the patch."
-    if [[ ${testReferences} == 0 ]] ; then
-      add_jira_table -1 "tests included" \
-        "The patch doesn't appear to include any new or modified tests. " \
-        "Please justify why no new tests are needed for this patch." \
-        "Also please list what manual steps were performed to verify this patch."
-      return 1
-    fi
-    add_jira_table +1 "tests included" \
-      "The patch appears to include ${testReferences} new or modified test files."
-  else
-    echo "The patch doesn't appear to require tests."
-    add_jira_table 0 "tests included" \
-      "The patch appears to be a doc, etc patch that doesn't require tests."
+  testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
+  echo "There appear to be ${testReferences} test file(s) referenced in the patch."
+  if [[ ${testReferences} == 0 ]] ; then
+    add_jira_table -1 "tests included" \
+      "The patch doesn't appear to include any new or modified tests. " \
+      "Please justify why no new tests are needed for this patch." \
+      "Also please list what manual steps were performed to verify this patch."
+    return 1
   fi
+  add_jira_table +1 "tests included" \
+    "The patch appears to include ${testReferences} new or modified test files."
   return 0
 }
 
@@ -1200,8 +1206,10 @@ function check_javadoc
 {
   local numBranchJavadocWarnings
   local numPatchJavadocWarnings
+  
+  verify_needed_test javadoc
 
-  if [[ ! ${NEEDED_TESTS} =~ javadoc ]]; then
+  if [[ $? == 0 ]]; then
     echo "This patch does not appear to need javadoc checks."
     return 0
   fi
@@ -1253,8 +1261,10 @@ function check_javadoc
 ## @return       1 on failure
 function check_site
 {
+  
+  verify_needed_test site
 
-  if [[ ! ${NEEDED_TESTS} =~ site ]]; then
+  if [[ $? == 0 ]]; then
     echo "This patch does not appear to need site checks."
     return 0
   fi
@@ -1300,8 +1310,10 @@ function check_javac
   local branchJavacWarnings
   local patchJavacWarnings
 
-  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
-    echo "This patch does not require any javac checks."
+  verify_needed_test javac
+
+  if [[ $? == 0 ]]; then
+    echo "This patch does not appear to need javac checks."
     return 0
   fi
 
@@ -1402,22 +1414,29 @@ function check_mvn_install
 {
   local retval
 
-  if [[ ${NEEDED_TESTS} =~ javac
-    || ${NEEDED_TESTS} =~ javadoc ]]; then
-    big_console_header "Installing all of the jars"
+  verify_needed_test javadoc
+  retval=$?
+  
+  verify_needed_test javac
+  ((retval = retval + $? ))
 
-    start_clock
-    echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
-    ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
-    retval=$?
-    if [[ ${retval} != 0 ]]; then
-      add_jira_table -1 install "The patch causes mvn install to fail."
-    else
-      add_jira_table +1 install "mvn install still works."
-    fi
-    return ${retval}
+  if [[ $? == 0 ]]; then
+    echo "This patch does not appear to need mvn install checks."
+    return 0
   fi
-  return 0
+
+  big_console_header "Installing all of the jars"
+
+  start_clock
+  echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
+  ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
+  retval=$?
+  if [[ ${retval} != 0 ]]; then
+    add_jira_table -1 install "The patch causes mvn install to fail."
+  else
+    add_jira_table +1 install "mvn install still works."
+  fi
+  return ${retval}
 }
 
 ## @description  Verify patch does not trigger any findbugs warnings
@@ -1435,9 +1454,11 @@ function check_findbugs
     add_jira_table -1 findbugs "Findbugs is not installed."
     return 1
   fi
+  
+  verify_needed_test javac
 
-  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
-    echo "Patch does not touch any java files. Skipping findbugs"
+  if [[ $? == 0 ]]; then
+    echo "Patch does not touch any java files. Skipping findbugs."
     return 0
   fi
 
@@ -1522,7 +1543,8 @@ function check_mvn_eclipse
 {
   big_console_header "Running mvn eclipse:eclipse."
 
-  if [[ ! ${NEEDED_TESTS} =~ javac ]]; then
+  verify_needed_test javac
+  if [[ $? == 0 ]]; then
     echo "Patch does not touch any java files. Skipping mvn eclipse:eclipse"
     return 0
   fi
@@ -1569,12 +1591,14 @@ function populate_unit_table
 ## @return       1 on failure
 function check_unittests
 {
-  big_console_header "Running unit tests"
+  verify_needed_test unit
 
-  if [[ ! ${NEEDED_TESTS} =~ unit ]]; then
+  if [[ $? == 0 ]]; then
     echo "Existing unit tests do not test patched files. Skipping."
     return 0
   fi
+
+  big_console_header "Running unit tests"
 
   start_clock
 
