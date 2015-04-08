@@ -68,9 +68,6 @@ Release 2.8.0 - UNRELEASED
     YARN-3243. CapacityScheduler should pass headroom from parent to children
     to make sure ParentQueue obey its capacity limits. (Wangda Tan via jianhe)
 
-    YARN-3273. Improve scheduler UI to facilitate scheduling analysis and
-    debugging. (Rohith Sharmaks via jianhe)
-
     YARN-3357. Move TestFifoScheduler to FIFO package. (Rohith Sharmaks 
     via devaraj)
 
@@ -103,6 +100,9 @@ Release 2.8.0 - UNRELEASED
 
     YARN-2901. Add errors and warning metrics page to RM, NM web UI. 
     (Varun Vasudev via wangda)
+
+    YARN-3294. Allow dumping of Capacity Scheduler debug logs via
+    web UI for a fixed time period. (Varun Vasudev via xgong)
 
   OPTIMIZATIONS
 
@@ -141,6 +141,20 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3415. Non-AM containers can be counted towards amResourceUsage of a
     Fair Scheduler queue (Zhihai Xu via Sandy Ryza)
+
+    YARN-3435. AM container to be allocated Appattempt AM container shown as null.
+    (Bibin A Chundatt via xgong)
+
+    YARN-2666. TestFairScheduler.testContinuousScheduling fails Intermittently.
+    (Zhihai Xu via ozawa)
+
+    YARN-3429. TestAMRMTokens.testTokenExpiry fails Intermittently with
+    error message:Invalid AMRMToken (zxu via rkanter)
+
+    YARN-3110. Few issues in ApplicationHistory web ui. (Naganarasimha G R via xgong)
+
+    YARN-3457. NPE when NodeManager.serviceInit fails and stopRecoveryStore called.
+    (Bibin A Chundatt via ozawa)
 
 Release 2.7.0 - UNRELEASED
 
@@ -472,6 +486,9 @@ Release 2.7.0 - UNRELEASED
 
     YARN-2777. Mark the end of individual log in aggregated log.
     (Varun Saxena via xgong)
+
+    YARN-3273. Improve scheduler UI to facilitate scheduling analysis and
+    debugging. (Rohith Sharmaks via jianhe)
 
   OPTIMIZATIONS
 

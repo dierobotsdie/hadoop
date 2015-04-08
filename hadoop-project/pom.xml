@@ -42,6 +42,8 @@
     <!-- These 2 versions are defined here becuase they are used -->
     <!-- JDIFF generation from embedded ant in the antrun plugin -->
     <jdiff.version>1.0.9</jdiff.version>
+    <!-- Version number for xerces used by JDiff -->
+    <xerces.jdiff.version>2.11.0</xerces.jdiff.version>
 
     <hadoop.assemblies.version>${project.version}</hadoop.assemblies.version>
 
@@ -949,6 +951,19 @@
        <scope>test</scope>
      </dependency>
       
+      <dependency>
+          <groupId>com.nimbusds</groupId>
+          <artifactId>nimbus-jose-jwt</artifactId>
+          <version>3.9</version>
+          <scope>compile</scope>
+          <exclusions>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
     </dependencies>
   </dependencyManagement>
 

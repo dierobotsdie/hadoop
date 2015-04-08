@@ -194,6 +194,9 @@ Trunk (Unreleased)
     HADOOP-11524. hadoop_do_classpath_subcommand throws a shellcheck warning.
     (cnauroth)
 
+    HADOOP-11781. fix race conditions and add URL support to
+    smart-apply-patch.sh (Raymie Stata via aw)
+
   BUG FIXES
 
     HADOOP-11473. test-patch says "-1 overall" even when all checks are +1
@@ -481,6 +484,9 @@ Release 2.8.0 - UNRELEASED
     HADOOP-9805. Refactor RawLocalFileSystem#rename for improved testability.
     (Jean-Pierre Matsumoto via cnauroth)
 
+    HADOOP-11717. Support JWT tokens for web single sign on to the Hadoop
+    servers. (Larry McCay via omalley)
+
   OPTIMIZATIONS
 
     HADOOP-11785. Reduce the number of listStatus operation in distcp
@@ -743,6 +749,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-10670. Allow AuthenticationFilters to load secret from signature
     secret files. (Kai Zheng via wheat9)
+
+    HADOOP-11801. Update BUILDING.txt for Ubuntu. (Gabor Liptak via
+    Arpit Agarwal)
 
   OPTIMIZATIONS
 
@@ -1202,6 +1211,14 @@ Release 2.7.0 - UNRELEASED
     
     HADOOP-11757. NFS gateway should shutdown when it can't start UDP or TCP
     server (brandonli)
+
+    HADOOP-11377. Added Null.java without which jdiff completely flops. (Tsuyoshi
+    Ozawa via vinodkv)
+
+    HADOOP-11776. Fixed the broken JDiff support in Hadoop 2. (Li Lu via vinodkv)
+
+    HADOOP-11796. Skip TestShellBasedIdMapping.testStaticMapUpdate on Windows.
+    (Xiaoyu Yao via cnauroth)
     
 Release 2.6.1 - UNRELEASED
 
