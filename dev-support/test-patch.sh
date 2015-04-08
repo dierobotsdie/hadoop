@@ -678,7 +678,7 @@ function precheck_without_patch
   big_console_header "Pre-patch ${PATCH_BRANCH} Java verification"
 
   start_clock
-  
+
   verify_needed_test javac
 
   if [[ $? == 1 ]]; then
@@ -1202,7 +1202,7 @@ function check_javadoc
 {
   local numBranchJavadocWarnings
   local numPatchJavadocWarnings
-  
+
   verify_needed_test javadoc
 
   if [[ $? == 0 ]]; then
@@ -1257,7 +1257,7 @@ function check_javadoc
 ## @return       1 on failure
 function check_site
 {
-  
+
   verify_needed_test site
 
   if [[ $? == 0 ]]; then
@@ -1412,7 +1412,7 @@ function check_mvn_install
 
   verify_needed_test javadoc
   retval=$?
-  
+
   verify_needed_test javac
   ((retval = retval + $? ))
 
@@ -1450,7 +1450,7 @@ function check_findbugs
     add_jira_table -1 findbugs "Findbugs is not installed."
     return 1
   fi
-  
+
   verify_needed_test javac
 
   if [[ $? == 0 ]]; then
