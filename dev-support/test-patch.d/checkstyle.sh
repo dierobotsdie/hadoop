@@ -48,9 +48,7 @@ function checkstyle_preapply
     return 1
   fi
 
-  # shellcheck disable=SC2016
-  CHECKSTYLE_PREPATCH=$(wc -l ${BASEDIR}/target/checkstyle-result.xml | ${AWK} '{print $1}')
-  cp -p ${BASEDIR}/target/checkstyle-result.xml "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml"
+  cp -p "${BASEDIR}/target/checkstyle-result.xml" "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml"
 
   # keep track of how much as elapsed for us already
   CHECKSTYLE_TIMER=$(stop_clock)
@@ -80,6 +78,8 @@ function checkstyle_postapply
     add_jira_table -1 checkstyle "Post-patch checkstyle compilation is broken."
     return 1
   fi
+
+ cp -p "${BASEDIR}/target/checkstyle-result.xml" "${PATCH_DIR}/checkstyle-result-patch.xml"
 
   checkstyle_runcomparison
 

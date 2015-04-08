@@ -25,6 +25,7 @@ function whitespace_preapply
 
   ${GREP} '^+' "${PATCH_DIR}/patch" | ${GREP} '[[:space:]]$' > "${PATCH_DIR}/whitespace.txt"
 
+  # shellcheck disable=SC2016
   count=$(wc -l "${PATCH_DIR}/whitespace.txt" | ${AWK} '{print $1}')
 
   if [[ ${count} -gt 0 ]]; then

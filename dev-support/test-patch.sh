@@ -568,6 +568,7 @@ function find_changed_modules
 
   # Now find all the modules that were changed
   for file in ${CHANGED_FILES}; do
+    #shellcheck disable=SC2086
     pomdirs="${pomdirs} $(find_pom_dir ${file})"
   done
 
@@ -579,6 +580,7 @@ function find_changed_modules
     fi
   done
 
+  #shellcheck disable=SC2086
   CHANGED_MODULES=$(echo ${pommods} | tr ' ' '\n' | sort -u)
 }
 
@@ -935,7 +937,7 @@ function determine_needed_tests
 
     for plugin in ${PLUGINS}; do
       if declare -f ${plugin}_filefilter >/dev/null 2>&1; then
-        ${plugin}_filefilter ${i}
+        "${plugin}_filefilter" "${i}"
       fi
     done
 
@@ -1099,8 +1101,8 @@ function check_reexec
 
   cd "${CWD}"
   mkdir -p "${PATCH_DIR}/dev-support-test"
-  cp -pr ${BASEDIR}/dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
-  cp -pr ${BASEDIR}/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
+  cp -pr "${BASEDIR}"/dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
+  cp -pr "${BASEDIR}"/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
 
   big_console_header "exec'ing test-patch.sh now..."
 
@@ -1498,8 +1500,8 @@ function check_findbugs
     cp "${file}" "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
 
     "${FINDBUGS_HOME}/bin/setBugDatabaseInfo" -timestamp "01/01/2000" \
-    "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
-    "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
+      "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
+      "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml"
 
     newFindbugsWarnings=$("${FINDBUGS_HOME}/bin/filterBugs" \
       -first "01/01/2000" "${PATCH_DIR}/patchFindbugsWarnings${module_suffix}.xml" \
@@ -1511,11 +1513,11 @@ function check_findbugs
     findbugsWarnings=$((findbugsWarnings+newFindbugsWarnings))
 
     "${FINDBUGS_HOME}/bin/convertXmlToText" -html \
-    "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
-    "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
+      "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml" \
+      "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
 
     if [[ ${newFindbugsWarnings} -gt 0 ]] ; then
-      add_jira_footer "Findbugs warnings" "@@BASE@@/patchprocess/newPatchFindbugsWarnings${module_suffix}.html"
+      add_jira_footer "Findbugs warnings" "@@BASE@@/newPatchFindbugsWarnings${module_suffix}.html"
     fi
   done < <(find "${BASEDIR}" -name findbugsXml.xml)
 
