@@ -612,6 +612,10 @@ function git_checkout
 
     determine_branch
 
+    if [[ ${PATCH_BRANCH} =~ ^git ]]; then
+      PATCH_BRANCH=$(echo ${PATCH_BRANCH} | cut -dt -f2)
+    fi
+
     ${GIT} checkout "${PATCH_BRANCH}"
     if [[ $? != 0 ]]; then
       hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
@@ -642,6 +646,9 @@ function git_checkout
     fi
 
     determine_branch
+    if [[ ${PATCH_BRANCH} =~ ^git ]]; then
+      PATCH_BRANCH=$(echo ${PATCH_BRANCH} | cut -dt -f2)
+    fi
 
     currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
     if [[ "${currentbranch}" != "${PATCH_BRANCH}" ]];then
@@ -663,7 +670,7 @@ function git_checkout
     echo "Testing ${ISSUE} patch on ${PATCH_BRANCH}."
   fi
 
-  add_jira_footer "git revision" "${GIT_REVISION}"
+  add_jira_footer "git revision" "${GIT_REVISION} / ${PATCH_BRANCH}"
   return 0
 }
 
@@ -734,7 +741,8 @@ function precheck_without_patch
   return 0
 }
 
-## @description  Confirm the given branch is a member of the list of space delimited branches.
+## @description  Confirm the given branch is a member of the list of space
+## @description  delimited branches or a git ref
 ## @audience     private
 ## @stability    evolving
 ## @replaceable  no
@@ -747,6 +755,16 @@ function verify_valid_branch
   local branches=$1
   local check=$2
   local i
+
+  if [[ ${check} =~ ^git ]]; then
+    ref=$(echo ${ref} | cut -f2 -dt)
+    count=$(echo ${ref} | wc -c | tr -d ' ')
+
+    if [[ ${count} == 8 || ${count} == 41 ]]; then
+      return 0
+    fi
+    return 1
+  fi
 
   for i in ${branches}; do
     if [[ "${i}" == "${check}" ]]; then
@@ -982,6 +1000,12 @@ function locate_patch
 
       relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
       patchURL="http://issues.apache.org${relativePatchURL}"
+      if [[ ! ${patchURL} =~ \.patch$ ]]; then
+        if [[ ${JENKINS} == true ]]; then
+          hadoop_error "ERROR: ${patchURL} is not a patch file."
+          cleanup_and_exit 0
+        fi
+      fi
       patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
       echo "${ISSUE} patch is being downloaded at $(date) from"
     fi
