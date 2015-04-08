@@ -48,9 +48,9 @@ function shellcheck_private_findbash
 function shellcheck_preapply
 {
   local i
-  local needshellcheck=verify_needed_test shellcheck
 
-  if [[ ${needshellcheck}==0 ]]; then
+  verify_needed_test shellcheck
+  if [[ $? == 0 ]]; then
     return 0
   fi
 
@@ -75,9 +75,9 @@ function shellcheck_preapply
 function shellcheck_postapply
 {
   local i
-  local needshellcheck=verify_needed_test shellcheck
 
-  if [[ ${needshellcheck}==0 ]]; then
+  verify_needed_test shellcheck
+  if [[ $? == 0 ]]; then
     return 0
   fi
 

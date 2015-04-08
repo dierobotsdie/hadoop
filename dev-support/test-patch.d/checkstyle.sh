@@ -31,9 +31,9 @@ function checkstyle_filefilter
 
 function checkstyle_preapply
 {
-  local needcheckstyle=verify_needed_test checkstyle
+  verify_needed_test checkstyle
 
-  if [[ ${needcheckstyle}==0 ]]; then
+  if [[ $? == 0 ]]; then
     return 0
   fi
 
@@ -59,10 +59,9 @@ function checkstyle_preapply
 
 function checkstyle_postapply
 {
+  verify_needed_test checkstyle
 
-  local needcheckstyle=verify_needed_test checkstyle
-
-  if [[ ${needcheckstyle}==0 ]]; then
+  if [[ $? == 0 ]]; then
     return 0
   fi
 

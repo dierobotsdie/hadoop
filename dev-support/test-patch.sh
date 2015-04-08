@@ -1095,10 +1095,10 @@ function check_reexec
   mkdir -p "${PATCH_DIR}/dev-support-test"
   cp -pr ${BASEDIR}/dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
   cp -pr ${BASEDIR}/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
-  rm -rf ${BASEDIR}/dev-support
-  pushd ${BASEDIR} >/dev/null
-  ${GIT} checkout --force
-  popd >/dev/null
+  # rm -rf ${BASEDIR}/dev-support
+  # pushd ${BASEDIR} >/dev/null
+  # ${GIT} checkout --force
+  # popd >/dev/null
 
   big_console_header "exec'ing test-patch.sh now..."
 
@@ -1402,9 +1402,10 @@ function check_mvn_install
 {
   local retval
 
-  if [[ ${NEEDED_TESTS} =~ javac || ${NEEDED_TESTS}=~ javadoc ]]; then
+  if [[ ${NEEDED_TESTS} =~ javac
+    || ${NEEDED_TESTS} =~ javadoc ]]; then
     big_console_header "Installing all of the jars"
-    
+
     start_clock
     echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
     ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
