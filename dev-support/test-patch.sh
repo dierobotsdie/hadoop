@@ -1201,7 +1201,7 @@ function check_javadoc
   local numBranchJavadocWarnings
   local numPatchJavadocWarnings
 
-  if [[ ${NEEDED_TESTS} =~ javadoc ]]; then
+  if [[ ! ${NEEDED_TESTS} =~ javadoc ]]; then
     echo "This patch does not appear to need javadoc checks."
     return 0
   fi
