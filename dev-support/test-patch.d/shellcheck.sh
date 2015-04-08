@@ -77,7 +77,7 @@ function shellcheck_postapply
   local i
   local needshellcheck=verify_needed_test shellcheck
 
-  if [[ ${neededshellcheck}==0 ]]; then
+  if [[ ${needshellcheck}==0 ]]; then
     return 0
   fi
 

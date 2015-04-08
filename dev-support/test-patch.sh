@@ -1401,18 +1401,22 @@ function check_apachelicense
 function check_mvn_install
 {
   local retval
-  big_console_header "Installing all of the jars"
 
-  start_clock
-  echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
-  ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
-  retval=$?
-  if [[ ${retval} != 0 ]]; then
-    add_jira_table -1 install "The patch causes mvn install to fail."
-  else
-    add_jira_table +1 install "mvn install still works."
+  if [[ ${NEEDED_TESTS} =~ javac || ${NEEDED_TESTS}=~ javadoc ]]; then
+    big_console_header "Installing all of the jars"
+    
+    start_clock
+    echo "${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess  > ${PATCH_DIR}/jarinstall.txt 2>&1"
+    ${MVN} install -Dmaven.javadoc.skip=true -DskipTests -D${PROJECT_NAME}PatchProcess > "${PATCH_DIR}/jarinstall.txt" 2>&1
+    retval=$?
+    if [[ ${retval} != 0 ]]; then
+      add_jira_table -1 install "The patch causes mvn install to fail."
+    else
+      add_jira_table +1 install "mvn install still works."
+    fi
+    return ${retval}
   fi
-  return ${retval}
+  return 0
 }
 
 ## @description  Verify patch does not trigger any findbugs warnings
