@@ -38,7 +38,6 @@ function setup_defaults
   PROJECT_NAME=hadoop
   JENKINS=false
   PATCH_DIR=/tmp/${PROJECT_NAME}-test-patch/$$
-  SUPPORT_DIR=/tmp
   BASEDIR=$(pwd)
 
   FINDBUGS_HOME=${FINDBUGS_HOME:-}
@@ -48,6 +47,7 @@ function setup_defaults
   CHANGED_MODULES=""
   CHANGED_FILES=""
   REEXECED=false
+  RESETREPO=false
   ISSUE=""
   ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
 
@@ -371,6 +371,7 @@ function hadoop_usage
   echo "--dirty-workspace      Allow the local git workspace to have uncommitted changes"
   echo "--findbugs-home=<path> Findbugs home directory (default FINDBUGS_HOME environment variable)"
   echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp/${PROJECT_NAME}-test-patch/pid')"
+  echo "--resetrepo            Forcibly clean the repo"
   echo "--run-tests            Run all tests below the base directory"
 
   echo "Shell binary overrides:"
@@ -389,7 +390,6 @@ function hadoop_usage
   echo "--eclipse-home=<path>  Eclipse home directory (default ECLIPSE_HOME environment variable)"
   echo "--jira-cmd=<cmd>       The 'jira' command to use (default 'jira')"
   echo "--jira-password=<pw>   The password for the 'jira' command"
-  echo "--support-dir=<dir>    The directory to find support files in"
   echo "--wget-cmd=<cmd>       The 'wget' command to use (default 'wget')"
 }
 
@@ -405,32 +405,32 @@ function parse_args
 
   for i in "$@"; do
     case ${i} in
-      --java-home)
-        JAVA_HOME=${i#*=}
-      ;;
-      --jenkins)
-        JENKINS=true
-      ;;
-      --patch-dir=*)
-        PATCH_DIR=${i#*=}
-      ;;
-      --support-dir=*)
-        SUPPORT_DIR=${i#*=}
+      --awk-cmd=*)
+        AWK=${i#*=}
       ;;
       --basedir=*)
         BASEDIR=${i#*=}
       ;;
-      --mvn-cmd=*)
-        MVN=${i#*=}
+      --build-native=*)
+        BUILD_NATIVE=${i#*=}
       ;;
-      --ps-cmd=*)
-        PS=${i#*=}
+      --debug)
+        HADOOP_SHELL_SCRIPT_DEBUG=true
       ;;
-      --awk-cmd=*)
-        AWK=${i#*=}
+      --diff-cmd=*)
+        DIFF=${i#*=}
       ;;
-      --wget-cmd=*)
-        WGET=${i#*=}
+      --dirty-workspace)
+        DIRTY_WORKSPACE=true
+      ;;
+      --eclipse-home=*)
+        ECLIPSE_HOME=${i#*=}
+      ;;
+      --findbugs-home=*)
+        FINDBUGS_HOME=${i#*=}
+      ;;
+      --forcecheckout)
+        FORCECHECKOUT=true
       ;;
       --git-cmd=*)
         GIT=${i#*=}
@@ -438,11 +438,11 @@ function parse_args
       --grep-cmd=*)
         GREP=${i#*=}
       ;;
-      --patch-cmd=*)
-        PATCH=${i#*=}
+      --java-home)
+        JAVA_HOME=${i#*=}
       ;;
-      --diff-cmd=*)
-        DIFF=${i#*=}
+      --jenkins)
+        JENKINS=true
       ;;
       --jira-cmd=*)
         JIRACLI=${i#*=}
@@ -450,28 +450,31 @@ function parse_args
       --jira-password=*)
         JIRA_PASSWD=${i#*=}
       ;;
-      --findbugs-home=*)
-        FINDBUGS_HOME=${i#*=}
+      --mvn-cmd=*)
+        MVN=${i#*=}
       ;;
-      --eclipse-home=*)
-        ECLIPSE_HOME=${i#*=}
+      --patch-cmd=*)
+        PATCH=${i#*=}
       ;;
-      --dirty-workspace)
-        DIRTY_WORKSPACE=true
+      --patch-dir=*)
+        PATCH_DIR=${i#*=}
       ;;
-      --run-tests)
-        RUN_TESTS=true
-      ;;
-      --debug)
-        HADOOP_SHELL_SCRIPT_DEBUG=true
-      ;;
-      --build-native=*)
-        BUILD_NATIVE=${i#*=}
+      --ps-cmd=*)
+        PS=${i#*=}
       ;;
       --reexec)
         REEXECED=true
         start_clock
         add_jira_table 0 reexec "dev-support patch detected."
+      ;;
+      --resetrepo)
+        RESETREPO=true
+      ;;
+      --run-tests)
+        RUN_TESTS=true
+      ;;
+      --wget-cmd=*)
+        WGET=${i#*=}
       ;;
       *)
         PATCH_OR_ISSUE=${i}
@@ -493,6 +496,7 @@ function parse_args
   if [[ ${JENKINS} == "true" ]] ; then
     echo "Running in Jenkins mode"
     ISSUE=${PATCH_OR_ISSUE}
+    RESETREPO=true
     # shellcheck disable=SC2034
     ECLIPSE_PROPERTY="-Declipse.home=${ECLIPSE_HOME}"
   else
@@ -597,7 +601,7 @@ function git_checkout
 
   big_console_header "Confirming git environment"
 
-  if [[ ${JENKINS} == "true" ]] ; then
+  if [[ ${RESETREPO} == "true" ]] ; then
     cd "${BASEDIR}"
     ${GIT} reset --hard
     if [[ $? != 0 ]]; then
@@ -625,10 +629,6 @@ function git_checkout
     if [[ $? != 0 ]]; then
       hadoop_error "ERROR: git pull is failing"
       cleanup_and_exit 1
-    fi
-    ### Copy in any supporting files needed by this process
-    if [[ -d "${SUPPORT_DIR}"/lib ]]; then
-      cp -r "${SUPPORT_DIR}"/lib/* ./lib
     fi
   else
     cd "${BASEDIR}"
@@ -914,23 +914,20 @@ function determine_needed_tests
 
   for i in ${CHANGED_FILES}; do
 
-    # web bits
     if [[ ${i} =~ src/main/webapp ]]; then
-      continue
-    fi
-
-    #documentation
-    if [[ ${i} =~ \.md$
+      hadoop_debug "tests/webapp: ${i}"
+    elif [[ ${i} =~ \.sh
+      || ${i} =~ \.cmd
+      ]]; then
+      hadoop_debug "tests/shell: ${i}"
+    elif [[ ${i} =~ \.md$
       || ${i} =~ \.md\.vm$
       || ${i} =~ src/site
       || ${i} =~ src/main/docs
       ]]; then
+      hadoop_debug "tests/site: ${i}"
       add_test site
-      continue
-    fi
-
-    # native code
-    if [[ ${i} =~ \.c$
+    elif [[ ${i} =~ \.c$
       || ${i} =~ \.cc$
       || ${i} =~ \.h$
       || ${i} =~ \.hh$
@@ -939,15 +936,14 @@ function determine_needed_tests
       || ${i} =~ \.cmake$
       || ${i} =~ CMakeLists.txt
        ]]; then
+       hadoop_debug "tests/native: ${i}"
        add_test javac
        add_test unit
-       continue
-    fi
-
-    if [[ ${i} =~ pom.xml$
+    elif [[ ${i} =~ pom.xml$
       || ${i} =~ \.java$
       || ${i} =~ src/main
       ]]; then
+      hadoop_debug "tests/java: ${i}"
       add_test javadoc
       add_test javac
       add_test unit
@@ -1001,10 +997,8 @@ function locate_patch
       relativePatchURL=$(${GREP} -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PATCH_DIR}/jira" | ${GREP} -v -e 'htm[l]*$' | sort | tail -1 | ${GREP} -o '/jira/secure/attachment/[0-9]*/[^"]*')
       patchURL="http://issues.apache.org${relativePatchURL}"
       if [[ ! ${patchURL} =~ \.patch$ ]]; then
-        if [[ ${JENKINS} == true ]]; then
-          hadoop_error "ERROR: ${patchURL} is not a patch file."
-          cleanup_and_exit 0
-        fi
+        hadoop_error "ERROR: ${patchURL} is not a patch file."
+        cleanup_and_exit 0
       fi
       patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
       echo "${ISSUE} patch is being downloaded at $(date) from"
@@ -1781,7 +1775,8 @@ function output_to_console
     elif which openssl >/dev/null 2>&1; then
       openssl enc -A -d -base64 -in "${spcfx}"
     fi
-
+    echo
+    echo
     rm "${spcfx}"
   fi
 

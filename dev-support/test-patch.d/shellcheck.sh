@@ -41,7 +41,8 @@ function shellcheck_private_findbash
   local i
 
   while read line; do
-    find "${line}" ! -name '*.cmd' -type f
+    find "${line}" ! -name '*.cmd' -type f \
+      | ${GREP} -E -v '(.orig$|.rej$)'
   done < <(find . -d -name bin -o -name sbin)
 }
 
