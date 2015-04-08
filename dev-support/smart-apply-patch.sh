@@ -11,6 +11,8 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+set -e
+
 #
 # Determine if the patch file is a git diff file with prefixes.
 # These files are generated via "git diff" *without* the --no-prefix option.
@@ -52,7 +54,6 @@ if [ -z "$PATCH_FILE" ]; then
   exit 1
 fi
 
-TMPDIR=${TMPDIR:-/tmp}
 PATCH=${PATCH:-patch} # allow overriding patch binary
 
 # Cleanup handler for temporary files
@@ -65,39 +66,9 @@ trap "cleanup 1" HUP INT QUIT TERM
 
 # Allow passing "-" for stdin patches
 if [ "$PATCH_FILE" == "-" ]; then
-  PATCH_FILE="$TMPDIR/smart-apply.in.$RANDOM"
+  PATCH_FILE=/tmp/tmp.in.$$
   cat /dev/fd/0 > $PATCH_FILE
   TOCLEAN="$TOCLEAN $PATCH_FILE"
-fi
-
-ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
-if [[ ${PATCH_FILE} =~ ^http || ${PATCH_FILE} =~ ${ISSUE_RE} ]]; then
-  # Allow downloading of patches
-  PFILE="$TMPDIR/smart-apply.in.$RANDOM"
-  TOCLEAN="$TOCLEAN $PFILE"
-  if [[ ${PATCH_FILE} =~ ^http ]]; then
-    patchURL="${PATCH_FILE}"
-  else # Get URL of patch from JIRA
-    wget -q -O "${PFILE}" "http://issues.apache.org/jira/browse/${PATCH_FILE}"
-    if [[ $? != 0 ]]; then
-      echo "Unable to determine what ${PATCH_FILE} may reference." 1>&2
-      cleanup 1
-    elif [[ $(grep -c 'Patch Available' "${PFILE}") == 0 ]]; then
-      echo "${PATCH_FILE} is not \"Patch Available\".  Exiting." 1>&2
-      cleanup 1
-    fi
-    relativePatchURL=$(grep -o '"/jira/secure/attachment/[0-9]*/[^"]*' "${PFILE}" | grep -v -e 'htm[l]*$' | sort | tail -1 | grep -o '/jira/secure/attachment/[0-9]*/[^"]*')
-    patchURL="http://issues.apache.org${relativePatchURL}"
-  fi
-  if [[ -n $DRY_RUN ]]; then
-    echo "Downloading ${patchURL}"
-  fi
-  wget -q -O "${PFILE}" "${patchURL}"
-  if [[ $? != 0 ]]; then
-    echo "${PATCH_FILE} could not be downloaded." 1>&2
-    cleanup 1
-  fi
-  PATCH_FILE="${PFILE}"
 fi
 
 # Special case for git-diff patches without --no-prefix
@@ -114,7 +85,7 @@ if is_git_diff_with_prefix "$PATCH_FILE"; then
 fi
 
 # Come up with a list of changed files into $TMP
-TMP="$TMPDIR/smart-apply.paths.$RANDOM"
+TMP=/tmp/tmp.paths.$$
 TOCLEAN="$TOCLEAN $TMP"
 
 if $PATCH -p0 -E --dry-run < $PATCH_FILE 2>&1 > $TMP; then
@@ -123,10 +94,10 @@ if $PATCH -p0 -E --dry-run < $PATCH_FILE 2>&1 > $TMP; then
   # is adding new files and they would apply anywhere. So try to guess the
   # correct place to put those files.
 
-  TMP2="$TMPDIR/smart-apply.paths.2.$RANDOM"
+  TMP2=/tmp/tmp.paths.2.$$
   TOCLEAN="$TOCLEAN $TMP2"
 
-  egrep '^patching file |^checking file ' $TMP | awk '{print $3}' | grep -v /dev/null | sort -u > $TMP2
+  egrep '^patching file |^checking file ' $TMP | awk '{print $3}' | grep -v /dev/null | sort | uniq > $TMP2
 
   if [ ! -s $TMP2 ]; then
     echo "Error: Patch dryrun couldn't detect changes the patch would make. Exiting."
@@ -154,8 +125,8 @@ if $PATCH -p0 -E --dry-run < $PATCH_FILE 2>&1 > $TMP; then
       sed -i -e 's,^[ab]/,,' $TMP2
     fi
 
-    PREFIX_DIRS_AND_FILES=$(cut -d '/' -f 1 $TMP2 | sort -u)
- 
+    PREFIX_DIRS_AND_FILES=$(cut -d '/' -f 1 | sort | uniq)
+
     # if we are at the project root then nothing more to do
     if [[ -d hadoop-common-project ]]; then
       echo Looks like this is being run at project root
