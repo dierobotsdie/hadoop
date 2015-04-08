@@ -1101,10 +1101,6 @@ function check_reexec
   mkdir -p "${PATCH_DIR}/dev-support-test"
   cp -pr ${BASEDIR}/dev-support/test-patch* "${PATCH_DIR}/dev-support-test"
   cp -pr ${BASEDIR}/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
-  # rm -rf ${BASEDIR}/dev-support
-  # pushd ${BASEDIR} >/dev/null
-  # ${GIT} checkout --force
-  # popd >/dev/null
 
   big_console_header "exec'ing test-patch.sh now..."
 
@@ -1420,7 +1416,7 @@ function check_mvn_install
   verify_needed_test javac
   ((retval = retval + $? ))
 
-  if [[ $? == 0 ]]; then
+  if [[ ${retval} == 0 ]]; then
     echo "This patch does not appear to need mvn install checks."
     return 0
   fi
