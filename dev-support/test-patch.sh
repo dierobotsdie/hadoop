@@ -21,6 +21,7 @@ this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 CWD=$(PWD)
 USER_PARAMS=("$@")
+GLOBALTIMER=$(date +"%s")
 
 
 ## @description  Setup the default global variables
@@ -115,7 +116,7 @@ function hadoop_debug
   fi
 }
 
-## @description  Activate the global timer
+## @description  Activate the local timer
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
@@ -125,7 +126,7 @@ function start_clock
   TIMER=$(date +"%s")
 }
 
-## @description  Print the elapsed time in seconds since the start of the global timer
+## @description  Print the elapsed time in seconds since the start of the local timer
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
@@ -138,7 +139,20 @@ function stop_clock
   echo ${elapsed}
 }
 
-## @description  Add time to the global timer
+## @description  Print the elapsed time in seconds since the start of the global timer
+## @audience     private
+## @stability    stable
+## @replaceable  no
+function stop_global_clock
+{
+  local stoptime=$(date +"%s")
+  local elapsed=$((stoptime-TIMER))
+  hadoop_debug "Stop global clock"
+
+  echo ${elapsed}
+}
+
+## @description  Add time to the local timer
 ## @audience     public
 ## @stability    stable
 ## @replaceable  no
@@ -217,6 +231,30 @@ function add_jira_table
     JIRA_COMMENT_TABLE[${JTC}]="| {color:${color}}${value}{color} | ${subsystem} | ${calctime} | $* |"
     JTC=$(( JTC+1 ))
   fi
+}
+
+## @description  Put the final elapsed time at the bottom of the table.
+## @audience     private
+## @stability    stable
+## @replaceable  no
+function close_jira_table
+{
+
+  local elapsed=$(stop_global_clock)
+
+  if [[ ${elapsed} -lt 0 ]]; then
+    calctime="N/A"
+  else
+    printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
+  fi
+
+  echo ""
+  echo "Total Elapsed time: ${calctime}"
+  echo ""
+
+
+  JIRA_COMMENT_TABLE[${JTC}]="| | Total Runtime | ${calctime} | |"
+  JTC=$(( JTC+1 ))
 }
 
 ## @description  Add to the footer of the display. @@BASE@@ will get replaced with the
@@ -950,7 +988,7 @@ function determine_needed_tests
       add_test unit
     fi
 
-    if [[ ${i} == \.java$ ]]; then
+    if [[ ${i} =~ \.java$ ]]; then
       add_test findbugs
     fi
 
@@ -1105,7 +1143,7 @@ function check_reexec
 
     rm "${commentfile}" 2>/dev/null
 
-    echo "(!) A patch to test-patch or smart-apply-patch has been detected." > "${commentfile}"
+    echo "(!) A patch to test-patch or smart-apply-patch has been detected. " > "${commentfile}"
     echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
 
     export USER=hudson
@@ -2197,6 +2235,8 @@ check_mvn_install
 postinstall
 
 runtests
+
+close_jira_table
 
 output_to_console ${RESULT}
 output_to_jira ${RESULT}
