@@ -613,7 +613,6 @@ function git_checkout
 
     determine_branch
     if [[ ${PATCH_BRANCH} =~ ^git ]]; then
-      gitrefmode=true
       PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
     fi
 

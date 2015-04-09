@@ -30,7 +30,7 @@ function shellcheck_filefilter
 
   if [[ ${filename} =~ \.sh$ ]]; then
     add_test shellcheck
-    SHELLCHECK_SPECIFICFILES="${SHELLCHECK_SPECIFICFILES} ${filename}"
+    SHELLCHECK_SPECIFICFILES="${SHELLCHECK_SPECIFICFILES} ./${filename}"
   fi
 
   if [[ ! ${filename} =~ \. ]]; then
@@ -67,10 +67,13 @@ function shellcheck_preapply
   start_clock
 
   echo "Running shellcheck against all identifiable shell scripts"
+  pushd ${BASEDIR} >/dev/null
   for i in $(shellcheck_private_findbash | sort); do
-    ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
+    if [[ -f ${i} ]]; then
+      ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
+    fi
   done
-
+  popd > /dev/null
   # keep track of how much as elapsed for us already
   SHELLCHECK_TIMER=$(stop_clock)
   return 0
@@ -103,28 +106,28 @@ function shellcheck_postapply
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
 
+
+
   # shellcheck disable=SC2016
   numPrepatch=$(wc -l "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" | ${AWK} '{print $1}')
   # shellcheck disable=SC2016
   numPostpatch=$(wc -l "${PATCH_DIR}/patchshellcheck-result.txt" | ${AWK} '{print $1}')
 
-  if [[ ${numPostpatch} != "" && ${numPrepatch} != "" ]] ; then
-    if [[ ${numPostpatch} -gt ${numPrepatch} ]] ; then
+  ${DIFF} -u "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" \
+    "${PATCH_DIR}/patchshellcheck-result.txt" \
+      | ${GREP} '^+\.' \
+      > "${PATCH_DIR}/diffpatchshellcheck.txt"
 
-      ${DIFF} -u "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" \
-        "${PATCH_DIR}/patchshellcheck-result.txt" \
-        > "${PATCH_DIR}/diffpatchshellcheck.txt"
+  # shellcheck disable=SC2016
+  diffPostpatch=$(wc -l "${PATCH_DIR}/diffpatchshellcheck.txt" | ${AWK} '{print $1}')
 
-      rm -f "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" \
-        "${PATCH_DIR}/patchshellcheck-result.txt" 2>/dev/null
-
-      add_jira_table -1 shellcheck "The applied patch generated "\
-        "$((numPostpatch-numPrepatch))" \
-        " additional shellcheck issues."
-      add_jira_footer shellcheck "@@BASE@@/diffpatchshellcheck.txt"
-      return 1
-    fi
+  if [[ ${diffPostpatch} -gt 0 ]] ; then
+    add_jira_table -1 shellcheck "The applied patch generated "\
+      "${diffPostpatch} new shellcheck issues (total was ${numPrepatch}, now ${numPostpatch})."
+    add_jira_footer shellcheck "@@BASE@@/diffpatchshellcheck.txt"
+    return 1
   fi
+
   add_jira_table +1 shellcheck "There were no new shellcheck issues."
   return 0
 }
