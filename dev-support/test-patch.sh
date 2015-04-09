@@ -429,9 +429,6 @@ function parse_args
       --findbugs-home=*)
         FINDBUGS_HOME=${i#*=}
       ;;
-      --forcecheckout)
-        FORCECHECKOUT=true
-      ;;
       --git-cmd=*)
         GIT=${i#*=}
       ;;
@@ -615,9 +612,8 @@ function git_checkout
     fi
 
     determine_branch
-
     if [[ ${PATCH_BRANCH} =~ ^git ]]; then
-      PATCH_BRANCH=$(echo ${PATCH_BRANCH} | cut -dt -f2)
+      PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
     fi
 
     ${GIT} checkout "${PATCH_BRANCH}"
@@ -647,7 +643,7 @@ function git_checkout
 
     determine_branch
     if [[ ${PATCH_BRANCH} =~ ^git ]]; then
-      PATCH_BRANCH=$(echo ${PATCH_BRANCH} | cut -dt -f2)
+      PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
     fi
 
     currentbranch=$(${GIT} rev-parse --abbrev-ref HEAD)
@@ -757,8 +753,8 @@ function verify_valid_branch
   local i
 
   if [[ ${check} =~ ^git ]]; then
-    ref=$(echo ${ref} | cut -f2 -dt)
-    count=$(echo ${ref} | wc -c | tr -d ' ')
+    ref=$(echo "${ref}" | cut -f2 -dt)
+    count=$(echo "${ref}" | wc -c | tr -d ' ')
 
     if [[ ${count} == 8 || ${count} == 41 ]]; then
       return 0
@@ -1488,6 +1484,9 @@ function check_findbugs
   local relative_file
   local newFindbugsWarnings
   local findbugsWarnings
+  local line
+  local firstpart
+  local secondpart
 
   for module in ${modules}
   do
@@ -1535,6 +1534,13 @@ function check_findbugs
       "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
 
     if [[ ${newFindbugsWarnings} -gt 0 ]] ; then
+      while read line; do
+        firstpart=$(echo "${line}" | cut -f2 -d:)
+        secondpart=$(echo "${line}" | cut -f9- -d' ')
+        populate_unit_table FindBugs "${firstpart}:${secondpart}"
+      done < <("${FINDBUGS_HOME}/bin/convertXmlToText" \
+        "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml")
+
       add_jira_footer "Findbugs warnings" "@@BASE@@/newPatchFindbugsWarnings${module_suffix}.html"
     fi
   done < <(find "${BASEDIR}" -name findbugsXml.xml)
