@@ -595,6 +595,7 @@ function find_changed_modules
 function git_checkout
 {
   local currentbranch
+  local gitrefmode=false
 
   big_console_header "Confirming git environment"
 
@@ -613,6 +614,7 @@ function git_checkout
 
     determine_branch
     if [[ ${PATCH_BRANCH} =~ ^git ]]; then
+      gitrefmode=true
       PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
     fi
 
@@ -621,10 +623,12 @@ function git_checkout
       hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
       cleanup_and_exit 1
     fi
-    ${GIT} pull --rebase
-    if [[ $? != 0 ]]; then
-      hadoop_error "ERROR: git pull is failing"
-      cleanup_and_exit 1
+    if [[ ${gitrefmode} == false ]]; then
+      ${GIT} pull --rebase
+      if [[ $? != 0 ]]; then
+        hadoop_error "ERROR: git pull is failing"
+        cleanup_and_exit 1
+      fi
     fi
   else
     cd "${BASEDIR}"
@@ -753,7 +757,7 @@ function verify_valid_branch
   local i
 
   if [[ ${check} =~ ^git ]]; then
-    ref=$(echo "${ref}" | cut -f2 -dt)
+    ref=$(echo "${check}" | cut -f2 -dt)
     count=$(echo "${ref}" | wc -c | tr -d ' ')
 
     if [[ ${count} == 8 || ${count} == 41 ]]; then
