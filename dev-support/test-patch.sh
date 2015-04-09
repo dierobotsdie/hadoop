@@ -50,6 +50,7 @@ function setup_defaults
   RESETREPO=false
   ISSUE=""
   ISSUE_RE='^(HADOOP|YARN|MAPREDUCE|HDFS)-[0-9]+$'
+  TIMER=$(date +"%s")
 
   OSTYPE=$(uname -s)
 
@@ -90,7 +91,6 @@ function setup_defaults
   JTC=0
   JTT=0
   RESULT=0
-  TIMER=0
 }
 
 ## @description  Print a message to stderr
@@ -1036,7 +1036,6 @@ function verify_patch_file
   # Before building, check to make sure that the patch is valid
   export PATCH
 
-  start_clock
   "${BINDIR}/smart-apply-patch.sh" "${PATCH_DIR}/patch" dryrun
   if [[ $? != 0 ]] ; then
     echo "PATCH APPLICATION FAILED"
@@ -1538,10 +1537,11 @@ function check_findbugs
       "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
 
     if [[ ${newFindbugsWarnings} -gt 0 ]] ; then
+      populate_test_table FindBugs "${module_suffix}"
       while read line; do
         firstpart=$(echo "${line}" | cut -f2 -d:)
         secondpart=$(echo "${line}" | cut -f9- -d' ')
-        populate_unit_table FindBugs "${firstpart}:${secondpart}"
+        add_jira_test_table "" "${firstpart}:${secondpart}"
       done < <("${FINDBUGS_HOME}/bin/convertXmlToText" \
         "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.xml")
 
@@ -1593,9 +1593,10 @@ function check_mvn_eclipse
 ## @replaceable  no
 ## @param        testdesc
 ## @param        testlist
-function populate_unit_table
+function populate_test_table
 {
   local reason=$1
+  shift
   local first=""
   local i
 
@@ -1711,15 +1712,15 @@ function check_unittests
     add_jira_table -1 "core tests" "Tests failed in ${modules}."
     if [[ -n "${failed_tests}" ]] ; then
       # shellcheck disable=SC2086
-      populate_unit_table "Failed unit tests" ${failed_tests}
+      populate_test_table "Failed unit tests" ${failed_tests}
     fi
     if [[ -n "${test_timeouts}" ]] ; then
       # shellcheck disable=SC2086
-      populate_unit_table "Timed out tests" ${test_timeouts}
+      populate_test_table "Timed out tests" ${test_timeouts}
     fi
     if [[ -n "${failed_test_builds}" ]] ; then
       # shellcheck disable=SC2086
-      populate_unit_table "Failed build" ${failed_test_builds}
+      populate_test_table "Failed build" ${failed_test_builds}
     fi
   else
     add_jira_table +1 "core tests" "The patch passed unit tests in ${modules}."
