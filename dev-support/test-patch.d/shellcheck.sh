@@ -20,6 +20,7 @@ SHELLCHECK_TIMER=0
 
 SHELLCHECK=${SHELLCHECK:-$(which shellcheck)}
 
+SHELLCHECK_SPECIFICFILES=""
 
 # if it ends in an explicit .sh, then this is shell code.
 # if it doesn't have an extension, we assume it is shell code too
@@ -29,6 +30,7 @@ function shellcheck_filefilter
 
   if [[ ${filename} =~ \.sh$ ]]; then
     add_test shellcheck
+    SHELLCHECK_SPECIFICFILES="${SHELLCHECK_SPECIFICFILES} ${filename}"
   fi
 
   if [[ ! ${filename} =~ \. ]]; then
@@ -44,6 +46,7 @@ function shellcheck_private_findbash
     find "${line}" ! -name '*.cmd' -type f \
       | ${GREP} -E -v '(.orig$|.rej$)'
   done < <(find . -d -name bin -o -name sbin)
+  echo ${SHELLCHECK_SPECIFICFILES}
 }
 
 function shellcheck_preapply

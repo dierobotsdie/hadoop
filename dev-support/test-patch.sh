@@ -595,7 +595,6 @@ function find_changed_modules
 function git_checkout
 {
   local currentbranch
-  local gitrefmode=false
 
   big_console_header "Confirming git environment"
 
@@ -618,18 +617,21 @@ function git_checkout
       PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
     fi
 
-    ${GIT} checkout "${PATCH_BRANCH}"
+    # we need to explicitly fetch in case the
+    # git ref hasn't been brought in tree yet
+    ${GIT} fetch --all
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git fetch is failing"
+      cleanup_and_exit 1
+    fi
+
+    # forcibly checkout this branch or git ref
+    ${GIT} checkout --force "${PATCH_BRANCH}"
     if [[ $? != 0 ]]; then
       hadoop_error "ERROR: git checkout ${PATCH_BRANCH} is failing"
       cleanup_and_exit 1
     fi
-    if [[ ${gitrefmode} == false ]]; then
-      ${GIT} pull --rebase
-      if [[ $? != 0 ]]; then
-        hadoop_error "ERROR: git pull is failing"
-        cleanup_and_exit 1
-      fi
-    fi
+
   else
     cd "${BASEDIR}"
     if [[ ! -d .git ]]; then
@@ -947,6 +949,10 @@ function determine_needed_tests
       add_test javadoc
       add_test javac
       add_test unit
+    fi
+
+    if [[ ${i} == \.java$ ]]; then
+      add_test findbugs
     fi
 
     for plugin in ${PLUGINS}; do
@@ -1470,7 +1476,7 @@ function check_findbugs
     return 1
   fi
 
-  verify_needed_test javac
+  verify_needed_test findbugs
 
   if [[ $? == 0 ]]; then
     echo "Patch does not touch any java files. Skipping findbugs."
@@ -1537,7 +1543,7 @@ function check_findbugs
       "${PATCH_DIR}/newPatchFindbugsWarnings${module_suffix}.html"
 
     if [[ ${newFindbugsWarnings} -gt 0 ]] ; then
-      populate_test_table FindBugs "${module_suffix}"
+      populate_test_table FindBugs "module:${module_suffix}"
       while read line; do
         firstpart=$(echo "${line}" | cut -f2 -d:)
         secondpart=$(echo "${line}" | cut -f9- -d' ')

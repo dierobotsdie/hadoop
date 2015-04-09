@@ -30,7 +30,7 @@ function whitespace_preapply
 
   if [[ ${count} -gt 0 ]]; then
     add_jira_table -1 whitespace "The patch has ${count}"\
-      " lines that end in whitespace."
+      " line(s) that end in whitespace."
     add_jira_footer whitespace "@@BASE@@/whitespace.txt"
     return 1
   fi
