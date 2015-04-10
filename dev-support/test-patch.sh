@@ -713,7 +713,7 @@ function git_checkout
     echo "Testing ${ISSUE} patch on ${PATCH_BRANCH}."
   fi
 
-  add_jira_footer "git revision" "${GIT_REVISION} / ${PATCH_BRANCH}"
+  add_jira_footer "git revision" "${PATCH_BRANCH} / ${GIT_REVISION}"
   return 0
 }
 
@@ -1935,7 +1935,7 @@ function output_to_jira
 
   big_console_header "Adding comment to JIRA"
 
-  add_jira_footer "Console output" "${BASE_URL}/console"
+  add_jira_footer "Console output" "${BUILD_URL}/console"
 
   if [[ ${result} == 0 ]]; then
     add_jira_header "(/) *{color:green}+1 overall{color}*"

@@ -35,7 +35,6 @@ function whitespace_preapply
     return 1
   fi
 
-  add_jira_table +1 whitespace "The patch has no "\
-        " lines that end in whitespace."
+  add_jira_table +1 whitespace "The patch has no lines that end in whitespace."
   return 0
 }
