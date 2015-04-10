@@ -1782,7 +1782,7 @@ function check_unittests
   fi
 
   if [[ ${JENKINS} == true ]]; then
-    add_jira_footer "Test Results" "[link|${BUILD_URL}testReport/]"
+    add_jira_footer "Test Results" "${BUILD_URL}testReport/"
   fi
 
   if [[ ${totalresult} -gt 0 ]]; then
@@ -1935,7 +1935,7 @@ function output_to_jira
 
   big_console_header "Adding comment to JIRA"
 
-  add_jira_footer "Console output" "[link|${BASE_URL}/console]"
+  add_jira_footer "Console output" "${BASE_URL}/console"
 
   if [[ ${result} == 0 ]]; then
     add_jira_header "(/) *{color:green}+1 overall{color}*"
@@ -1980,7 +1980,7 @@ function output_to_jira
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" |
-              ${SED} -e "s,@@BASE@@,[link|${BUILD_URL}artifact/patchprocess],g")
+              ${SED} -e "s,@@BASE@@,${BUILD_URL}artifact/patchprocess,g")
     printf "%s\n" "${comment}" >> "${commentfile}"
     ((i=i+1))
   done
