@@ -391,6 +391,30 @@ Release 2.8.0 - UNRELEASED
     HDFS-8080. Separate JSON related routines used by WebHdfsFileSystem to a
     package local class. (wheat9)
 
+    HDFS-8085. Move CorruptFileBlockIterator to a new hdfs.client.impl package.
+    (szetszwo)
+
+    HDFS-8046. Allow better control of getContentSummary (kihwal)
+
+    HDFS-8076. Code cleanup for DFSInputStream: use offset instead of
+    LocatedBlock when possible. (Zhe Zhang via wang)
+
+    HDFS-8025. Addendum fix for HDFS-3087 Decomissioning on NN restart can
+    complete without blocks being replicated. (Ming Ma via wang)
+
+    HDFS-8089. Move o.a.h.hdfs.web.resources.* to the client jars. (wheat9)
+
+    HDFS-7979. Initialize block report IDs with a random number. (wang)
+
+    HDFS-8101. DFSClient use of non-constant DFSConfigKeys pulls in WebHDFS
+    classes at runtime. (Sean Busbey via atm)
+
+    HDFS-8099. Change "DFSInputStream has been closed already" message to
+    debug log level (Charles Lamb via Colin P. McCabe)
+
+    HDFS-8102. Separate webhdfs retry configuration keys from DFSConfigKeys.
+    (wheat9)
+
   OPTIMIZATIONS
 
     HDFS-8026. Trace FSOutputSummer#writeChecksumChunks rather than
@@ -432,6 +456,27 @@ Release 2.8.0 - UNRELEASED
 
     HDFS-5215. dfs.datanode.du.reserved is not considered while computing
     available space ( Brahma Reddy Battula via Yongjun Zhang)
+
+    HDFS-7725. Incorrect "nodes in service" metrics caused all writes to fail.
+    (Ming Ma via wang)
+
+    HDFS-8096. DatanodeMetrics#blocksReplicated will get incremented early and
+    even for failed transfers (vinayakumarb)
+
+    HDFS-8091: ACLStatus and XAttributes should be presented to
+    INodeAttributesProvider before returning to client (asuresh)
+
+Release 2.7.1 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
 
 Release 2.7.0 - UNRELEASED
 
@@ -1224,17 +1269,11 @@ Release 2.7.0 - UNRELEASED
     HDFS-6662. WebHDFS cannot open a file if its path contains "%".
     (Gerson Carlos via wheat9)
 
-    HDFS-7808. Remove obsolete -ns options in in DFSHAAdmin.java.
-    (Arshad Mohammad via wheat9)
-
     HDFS-7788. Post-2.6 namenode may not start up with an image containing
     inodes created with an old release. (Rushabh Shah via kihwal)
 
     HDFS-7814. Fix usage string of storageType parameter for
     "dfsadmin -setSpaceQuota/clrSpaceQuota". (Xiaoyu Yao via cnauroth)
-
-    HDFS-7813. TestDFSHAAdminMiniCluster#testFencer testcase is failing
-    frequently. (Rakesh R via cnauroth)
 
     HDFS-7009. Active NN and standby NN have different live nodes.
     (Ming Ma via cnauroth)
@@ -1402,6 +1441,12 @@ Release 2.7.0 - UNRELEASED
 
     HDFS-8038. PBImageDelimitedTextWriter#getEntry output HDFS path in
     platform-specific format. (Xiaoyu Yao via cnauroth)
+
+    HDFS-8072. Reserved RBW space is not released if client terminates while
+    writing block. (Arpit Agarwal)
+
+    HDFS-8063: Fix intermittent test failures in TestTracing (Masatake Iwasaki
+    via Colin P. McCabe)
 
     BREAKDOWN OF HDFS-7584 SUBTASKS AND RELATED JIRAS
 

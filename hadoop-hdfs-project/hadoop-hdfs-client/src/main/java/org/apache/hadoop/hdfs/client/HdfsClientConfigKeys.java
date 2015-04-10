@@ -19,8 +19,15 @@ package org.apache.hadoop.hdfs.client;
 
 /** Client configuration properties */
 public interface HdfsClientConfigKeys {
-  static final String PREFIX = "dfs.client.";
+  String  DFS_BLOCK_SIZE_KEY = "dfs.blocksize";
+  long    DFS_BLOCK_SIZE_DEFAULT = 128*1024*1024;
+  String  DFS_REPLICATION_KEY = "dfs.replication";
+  short   DFS_REPLICATION_DEFAULT = 3;
+  String  DFS_WEBHDFS_USER_PATTERN_DEFAULT = "^[A-Za-z_][A-Za-z0-9._-]*[$]?$";
+  String DFS_WEBHDFS_ACL_PERMISSION_PATTERN_DEFAULT =
+      "^(default:)?(user|group|mask|other):[[A-Za-z_][A-Za-z0-9._-]]*:([rwx-]{3})?(,(default:)?(user|group|mask|other):[[A-Za-z_][A-Za-z0-9._-]]*:([rwx-]{3})?)*$";
 
+  static final String PREFIX = "dfs.client.";
   /** Client retry configuration properties */
   public interface Retry {
     static final String PREFIX = HdfsClientConfigKeys.PREFIX + "retry.";
@@ -52,5 +59,22 @@ public interface HdfsClientConfigKeys {
         = PREFIX + "window.base";
     public static final int     WINDOW_BASE_DEFAULT
         = 3000;
+  }
+
+  // WebHDFS retry configuration policy
+  interface WebHdfsRetry {
+    String  PREFIX = HdfsClientConfigKeys.PREFIX + "http.client.";
+    String  RETRY_POLICY_ENABLED_KEY = PREFIX + "dfs.http.client.retry.policy.enabled";
+    boolean RETRY_POLICY_ENABLED_DEFAULT = false;
+    String  RETRY_POLICY_SPEC_KEY = PREFIX + "dfs.http.client.retry.policy.spec";
+    String  RETRY_POLICY_SPEC_DEFAULT = "10000,6,60000,10"; //t1,n1,t2,n2,...
+    String  FAILOVER_MAX_ATTEMPTS_KEY = PREFIX + "dfs.http.client.failover.max.attempts";
+    int     FAILOVER_MAX_ATTEMPTS_DEFAULT =  15;
+    String  RETRY_MAX_ATTEMPTS_KEY = PREFIX + "dfs.http.client.retry.max.attempts";
+    int     RETRY_MAX_ATTEMPTS_DEFAULT = 10;
+    String  FAILOVER_SLEEPTIME_BASE_KEY = PREFIX + "dfs.http.client.failover.sleep.base.millis";
+    int     FAILOVER_SLEEPTIME_BASE_DEFAULT = 500;
+    String  FAILOVER_SLEEPTIME_MAX_KEY = PREFIX + "dfs.http.client.failover.sleep.max.millis";
+    int     FAILOVER_SLEEPTIME_MAX_DEFAULT =  15000;
   }
 }

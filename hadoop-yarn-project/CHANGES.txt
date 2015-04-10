@@ -156,6 +156,27 @@ Release 2.8.0 - UNRELEASED
     YARN-3457. NPE when NodeManager.serviceInit fails and stopRecoveryStore called.
     (Bibin A Chundatt via ozawa)
 
+    YARN-3459. Fix failiure of TestLog4jWarningErrorMetricsAppender.
+    (Varun Vasudev via wangda)
+
+    YARN-2890. MiniYarnCluster should turn on timeline service if
+    configured to do so. (Mit Desai via hitesh)
+
+    YARN-3465. Use LinkedHashMap to preserve order of resource requests. 
+    (Zhihai Xu via kasha)
+
+Release 2.7.1 - UNRELEASED
+
+  INCOMPATIBLE CHANGES
+
+  NEW FEATURES
+
+  IMPROVEMENTS
+
+  OPTIMIZATIONS
+
+  BUG FIXES
+
 Release 2.7.0 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -899,6 +920,12 @@ Release 2.7.0 - UNRELEASED
 
     YARN-3430. Made headroom data available on app attempt page of RM WebUI.
     (Xuan Gong via zjshen)
+
+    YARN-3466. Fix RM nodes web page to sort by node HTTP-address, #containers 
+    and node-label column (Jason Lowe via wangda)
+
+    YARN-3055. Fixed ResourceManager's DelegationTokenRenewer to not stop token
+    renewal of applications part of a bigger workflow. (Daryn Sharp via vinodkv)
 
 Release 2.6.0 - 2014-11-18
 
