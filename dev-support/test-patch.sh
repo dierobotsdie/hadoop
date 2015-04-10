@@ -201,7 +201,7 @@ function add_jira_table
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
   else
-    printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
+    printf -v calctime "%3sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
 
   echo ""
@@ -244,7 +244,7 @@ function close_jira_table
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
   else
-    printf -v calctime "%02sm %02ss" $((elapsed/60)) $((elapsed%60))
+    printf -v calctime "%3sm %02ss" $((elapsed/60)) $((elapsed%60))
   fi
 
   echo ""
@@ -297,13 +297,13 @@ function add_jira_test_table
 function big_console_header
 {
   local text="$*"
-  local spacing=$(( (70+${#text}) /2 ))
+  local spacing=$(( (75+${#text}) /2 ))
   printf "\n\n"
-  echo "======================================================================="
-  echo "======================================================================="
+  echo "============================================================================"
+  echo "============================================================================"
   printf "%*s\n"  ${spacing} "${text}"
-  echo "======================================================================="
-  echo "======================================================================="
+  echo "============================================================================"
+  echo "============================================================================"
   printf "\n\n"
 }
 
@@ -1863,8 +1863,8 @@ function output_to_console
     ((i=i+1))
   done
 
-  printf "| %s | %*s |  %s  | %s\n" "Vote" ${seccoladj} Subsystem Runtime "Comment"
-
+  printf "| %s | %*s |  %s   | %s\n" "Vote" ${seccoladj} Subsystem Runtime "Comment"
+  echo "============================================================================"
   i=0
   until [[ $i -eq ${#JIRA_COMMENT_TABLE[@]} ]]; do
     ourstring=$(echo "${JIRA_COMMENT_TABLE[${i}]}" | tr -s ' ')
@@ -1874,14 +1874,14 @@ function output_to_console
     ela=$(echo "${ourstring}" | cut -f4 -d\|)
     comment=$(echo "${ourstring}"  | cut -f5 -d\|)
 
-    echo "${comment}" | fold -s -w $((78-seccoladj-21)) > "${commentfile1}"
+    echo "${comment}" | fold -s -w $((78-seccoladj-22)) > "${commentfile1}"
     normaltop=$(head -1 "${commentfile1}")
     ${SED} -e '1d' "${commentfile1}"  > "${commentfile2}"
 
-    printf "| %4s | %*s | %-7s |%-s\n" "${vote}" ${seccoladj} \
+    printf "| %4s | %*s | %-10s |%-s\n" "${vote}" ${seccoladj} \
       "${subs}" "${ela}" "${normaltop}"
     while read line; do
-      printf "|      | %*s |           | %-s\n" ${seccoladj} " " "${line}"
+      printf "|      | %*s |            | %-s\n" ${seccoladj} " " "${line}"
     done < "${commentfile2}"
 
     ((i=i+1))
@@ -1902,7 +1902,9 @@ function output_to_console
   fi
 
   printf "\n\n|| Subsystem || Report/Notes ||\n"
+  echo "============================================================================"
   i=0
+
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" |
               ${SED} -e "s,@@BASE@@,${PATCH_DIR},g")
