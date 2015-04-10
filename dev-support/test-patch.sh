@@ -14,15 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-### Setup some variables.
 ### BUILD_URL is set by Hudson if it is run by patch process
-### Read variables from properties file
+
 this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 CWD=$(PWD)
 USER_PARAMS=("$@")
 GLOBALTIMER=$(date +"%s")
-
 
 ## @description  Setup the default global variables
 ## @audience     public
@@ -46,6 +44,7 @@ function setup_defaults
   BUILD_NATIVE=${BUILD_NATIVE:-true}
   PATCH_BRANCH=""
   CHANGED_MODULES=""
+  OFFLINE=false
   CHANGED_FILES=""
   REEXECED=false
   RESETREPO=false
@@ -146,7 +145,7 @@ function stop_clock
 function stop_global_clock
 {
   local stoptime=$(date +"%s")
-  local elapsed=$((stoptime-TIMER))
+  local elapsed=$((stoptime-GLOBALTIMER))
   hadoop_debug "Stop global clock"
 
   echo ${elapsed}
@@ -253,7 +252,7 @@ function close_jira_table
   echo ""
 
 
-  JIRA_COMMENT_TABLE[${JTC}]="| | Total Runtime | ${calctime} | |"
+  JIRA_COMMENT_TABLE[${JTC}]="| | | ${calctime} | |"
   JTC=$(( JTC+1 ))
 }
 
@@ -408,6 +407,7 @@ function hadoop_usage
   echo "--debug                If set, then output some extra stuff to stderr"
   echo "--dirty-workspace      Allow the local git workspace to have uncommitted changes"
   echo "--findbugs-home=<path> Findbugs home directory (default FINDBUGS_HOME environment variable)"
+  echo "--offline              Avoid connecting to the Internet"
   echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp/${PROJECT_NAME}-test-patch/pid')"
   echo "--resetrepo            Forcibly clean the repo"
   echo "--run-tests            Run all tests below the base directory"
@@ -487,6 +487,9 @@ function parse_args
       ;;
       --mvn-cmd=*)
         MVN=${i#*=}
+      ;;
+      --offline)
+        OFFLINE=true
       ;;
       --patch-cmd=*)
         PATCH=${i#*=}
@@ -656,12 +659,13 @@ function git_checkout
 
     # we need to explicitly fetch in case the
     # git ref hasn't been brought in tree yet
-    ${GIT} fetch --all
-    if [[ $? != 0 ]]; then
-      hadoop_error "ERROR: git fetch is failing"
-      cleanup_and_exit 1
+    if [[ ${OFFLINE} == false ]]; then
+      ${GIT} fetch --all
+      if [[ $? != 0 ]]; then
+        hadoop_error "ERROR: git fetch is failing"
+        cleanup_and_exit 1
+      fi
     fi
-
     # forcibly checkout this branch or git ref
     ${GIT} checkout --force "${PATCH_BRANCH}"
     if [[ $? != 0 ]]; then
@@ -1146,17 +1150,19 @@ function check_reexec
     echo "(!) A patch to test-patch or smart-apply-patch has been detected. " > "${commentfile}"
     echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
 
-    export USER=hudson
-    ${JIRACLI} -s https://issues.apache.org/jira \
-               -a addcomment -u hadoopqa \
-               -p "${JIRA_PASSWD}" \
-               --comment "$(cat ${commentfile})" \
-               --issue "${ISSUE}"
-    ${JIRACLI} -s https://issues.apache.org/jira \
-               -a logout -u hadoopqa \
-               -p "${JIRA_PASSWD}"
+    if [[ ${OFFLINE} == false ]]; then
+      export USER=hudson
+      ${JIRACLI} -s https://issues.apache.org/jira \
+                 -a addcomment -u hadoopqa \
+                 -p "${JIRA_PASSWD}" \
+                 --comment "$(cat ${commentfile})" \
+                 --issue "${ISSUE}"
+      ${JIRACLI} -s https://issues.apache.org/jira \
+                 -a logout -u hadoopqa \
+                 -p "${JIRA_PASSWD}"
 
-    rm "${commentfile}"
+      rm "${commentfile}"
+    fi
   fi
 
   cd "${CWD}"
@@ -1165,11 +1171,6 @@ function check_reexec
   cp -pr "${BASEDIR}"/dev-support/smart-apply* "${PATCH_DIR}/dev-support-test"
 
   big_console_header "exec'ing test-patch.sh now..."
-
-  echo "${PATCH_DIR}/dev-support-test/test-patch.sh" \
-    --reexec \
-    --patch-dir="${PATCH_DIR}" \
-      "${USER_PARAMS[@]}"
 
   exec "${PATCH_DIR}/dev-support-test/test-patch.sh" \
     --reexec \
@@ -1676,13 +1677,15 @@ function check_unittests
   local modules=${CHANGED_MODULES}
   local building_common=0
   local hdfs_modules
-  local ordered_modules
+  local ordered_modules=""
   local failed_test_builds=""
   local test_timeouts=""
   local test_logfile
   local test_build_result
-  local module_test_timeouts
+  local module_test_timeouts=""
   local result
+  local totalresult=0
+  local module_prefix
 
   #
   # If we are building hadoop-hdfs-project, we must build the native component
@@ -1712,24 +1715,29 @@ function check_unittests
       echo "  Building hadoop-common with -Pnative in order to provide libhadoop.so to the hadoop-hdfs unit tests."
       echo "  ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess"
       if ! ${MVN} compile ${NATIVE_PROFILE} -D${PROJECT_NAME}PatchProcess; then
-        add_jira_table -1 "core tests" "Failed to build the native portion " \
+        add_jira_table -1 "native" "Failed to build the native portion " \
           "of hadoop-common prior to running the unit tests in ${ordered_modules}"
         return 1
+      else
+        add_jira_table +1 "native" "Pre-build of native portion"
       fi
     fi
   fi
 
-  result=0
   for module in ${ordered_modules}; do
+    result=0
+    start_clock
     pushd "${module}" >/dev/null
     module_suffix=$(basename "${module}")
+    module_prefix=$(echo ${module} | cut -f2 -d- )
+
     test_logfile=${PATCH_DIR}/testrun_${module_suffix}.txt
-    echo "  Running tests in ${module}"
+    echo "  Running tests in ${module_suffix}"
     echo "  ${MVN} clean install -fae ${NATIVE_PROFILE} ${REQUIRE_TEST_LIB_HADOOP} -D${PROJECT_NAME}PatchProcess"
     ${MVN} clean install -fae ${NATIVE_PROFILE} ${REQUIRE_TEST_LIB_HADOOP} -D${PROJECT_NAME}PatchProcess > "${test_logfile}" 2>&1
     test_build_result=$?
 
-    add_jira_footer "${module} test log" "@@BASE@@/testrun_${module_suffix}.txt"
+    add_jira_footer "${module_suffix} test log" "@@BASE@@/testrun_${module_suffix}.txt"
 
     # shellcheck disable=2016
     module_test_timeouts=$(${AWK} '/^Running / { if (last) { print last } last=$2 } /^Tests run: / { last="" }' "${test_logfile}")
@@ -1746,32 +1754,42 @@ function check_unittests
       result=1
     fi
     if [[ ${test_build_result} != 0 && -z "${module_failed_tests}" && -z "${module_test_timeouts}" ]] ; then
-      failed_test_builds="${failed_test_builds} ${module}"
+      failed_test_builds="${failed_test_builds} ${module_suffix}"
       result=1
     fi
     popd >/dev/null
+
+    if [[ $result == 1 ]]; then
+      add_jira_table -1 "${module_prefix} tests" "Tests failed in ${module_suffix}."
+    else
+      add_jira_table +1 "${module_prefix} tests" "Tests passed in ${module_suffix}."
+    fi
+
+    ((totalresult = totalresult + result))
   done
-  if [[ $result == 1 ]]; then
-    add_jira_table -1 "core tests" "Tests failed in ${modules}."
-    if [[ -n "${failed_tests}" ]] ; then
-      # shellcheck disable=SC2086
-      populate_test_table "Failed unit tests" ${failed_tests}
-    fi
-    if [[ -n "${test_timeouts}" ]] ; then
-      # shellcheck disable=SC2086
-      populate_test_table "Timed out tests" ${test_timeouts}
-    fi
-    if [[ -n "${failed_test_builds}" ]] ; then
-      # shellcheck disable=SC2086
-      populate_test_table "Failed build" ${failed_test_builds}
-    fi
-  else
-    add_jira_table +1 "core tests" "The patch passed unit tests in ${modules}."
+
+  if [[ -n "${failed_tests}" ]] ; then
+    # shellcheck disable=SC2086
+    populate_test_table "Failed unit tests" ${failed_tests}
   fi
+  if [[ -n "${test_timeouts}" ]] ; then
+    # shellcheck disable=SC2086
+    populate_test_table "Timed out tests" ${test_timeouts}
+  fi
+  if [[ -n "${failed_test_builds}" ]] ; then
+    # shellcheck disable=SC2086
+    populate_test_table "Failed build" ${failed_test_builds}
+  fi
+
   if [[ ${JENKINS} == true ]]; then
-    add_jira_footer "Test Results" "${BUILD_URL}/testReport/"
+    add_jira_footer "Test Results" "[link|${BUILD_URL}testReport/]"
   fi
-  return ${result}
+
+  if [[ ${totalresult} -gt 0 ]]; then
+    return 1
+  else
+    return 0
+  fi
 }
 
 ## @description  Print out the finished details on the console
@@ -1915,7 +1933,7 @@ function output_to_jira
 
   big_console_header "Adding comment to JIRA"
 
-  add_jira_footer "Console output" "@@BASE@@/console"
+  add_jira_footer "Console output" "[link|${BASE_URL}/console]"
 
   if [[ ${result} == 0 ]]; then
     add_jira_header "(/) *{color:green}+1 overall{color}*"
@@ -1960,22 +1978,24 @@ function output_to_jira
   i=0
   until [[ $i -eq ${#JIRA_FOOTER_TABLE[@]} ]]; do
     comment=$(echo "${JIRA_FOOTER_TABLE[${i}]}" |
-              ${SED} -e "s,@@BASE@@,${BUILD_URL}/artifact/patchprocess,g")
+              ${SED} -e "s,@@BASE@@,[link|${BUILD_URL}artifact/patchprocess],g")
     printf "%s\n" "${comment}" >> "${commentfile}"
     ((i=i+1))
   done
 
   printf "\n\nThis message was automatically generated.\n\n" >> "${commentfile}"
 
-  export USER=hudson
-  ${JIRACLI} -s https://issues.apache.org/jira \
-             -a addcomment -u hadoopqa \
-             -p "${JIRA_PASSWD}" \
-             --comment "$(cat ${commentfile})" \
-             --issue "${ISSUE}"
-  ${JIRACLI} -s https://issues.apache.org/jira \
-             -a logout -u hadoopqa \
-             -p "${JIRA_PASSWD}"
+  if [[ ${OFFLINE} == false ]]; then
+    export USER=hudson
+    ${JIRACLI} -s https://issues.apache.org/jira \
+               -a addcomment -u hadoopqa \
+               -p "${JIRA_PASSWD}" \
+               --comment "$(cat ${commentfile})" \
+               --issue "${ISSUE}"
+    ${JIRACLI} -s https://issues.apache.org/jira \
+               -a logout -u hadoopqa \
+               -p "${JIRA_PASSWD}"
+  fi
 }
 
 ## @description  Clean the filesystem as appropriate and then exit
