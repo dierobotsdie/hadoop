@@ -17,14 +17,6 @@
  */
 package org.apache.hadoop.hdfs;
 
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY;
-
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationHandler;
@@ -40,8 +32,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hdfs.DFSClient.Conf;
 import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf;
 import org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
@@ -178,12 +170,12 @@ public class NameNodeProxies {
           UserGroupInformation.getCurrentUser(), true, fallbackToSimpleAuth);
     } else {
       // HA case
-      Conf config = new Conf(conf);
+      DfsClientConf config = new DfsClientConf(conf);
       T proxy = (T) RetryProxy.create(xface, failoverProxyProvider,
           RetryPolicies.failoverOnNetworkException(
-              RetryPolicies.TRY_ONCE_THEN_FAIL, config.maxFailoverAttempts,
-              config.maxRetryAttempts, config.failoverSleepBaseMillis,
-              config.failoverSleepMaxMillis));
+              RetryPolicies.TRY_ONCE_THEN_FAIL, config.getMaxFailoverAttempts(),
+              config.getMaxRetryAttempts(), config.getFailoverSleepBaseMillis(),
+              config.getFailoverSleepMaxMillis()));
 
       Text dtService;
       if (failoverProxyProvider.useLogicalURI()) {
@@ -230,14 +222,14 @@ public class NameNodeProxies {
 
     if (failoverProxyProvider != null) { // HA case
       int delay = config.getInt(
-          DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_KEY,
-          DFS_CLIENT_FAILOVER_SLEEPTIME_BASE_DEFAULT);
+          HdfsClientConfigKeys.Failover.SLEEPTIME_BASE_KEY,
+          HdfsClientConfigKeys.Failover.SLEEPTIME_BASE_DEFAULT);
       int maxCap = config.getInt(
-          DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_KEY,
-          DFS_CLIENT_FAILOVER_SLEEPTIME_MAX_DEFAULT);
+          HdfsClientConfigKeys.Failover.SLEEPTIME_MAX_KEY,
+          HdfsClientConfigKeys.Failover.SLEEPTIME_MAX_DEFAULT);
       int maxFailoverAttempts = config.getInt(
-          DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_KEY,
-          DFS_CLIENT_FAILOVER_MAX_ATTEMPTS_DEFAULT);
+          HdfsClientConfigKeys.Failover.MAX_ATTEMPTS_KEY,
+          HdfsClientConfigKeys.Failover.MAX_ATTEMPTS_DEFAULT);
       int maxRetryAttempts = config.getInt(
           HdfsClientConfigKeys.Retry.MAX_ATTEMPTS_KEY,
           HdfsClientConfigKeys.Retry.MAX_ATTEMPTS_DEFAULT);
@@ -469,9 +461,8 @@ public class NameNodeProxies {
       return null;
     }
     String host = nameNodeUri.getHost();
-  
-    String configKey = DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX + "."
-        + host;
+    String configKey = HdfsClientConfigKeys.Failover.PROXY_PROVIDER_KEY_PREFIX
+        + "." + host;
     try {
       @SuppressWarnings("unchecked")
       Class<FailoverProxyProvider<T>> ret = (Class<FailoverProxyProvider<T>>) conf

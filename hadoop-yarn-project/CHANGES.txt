@@ -60,6 +60,18 @@ Release 2.8.0 - UNRELEASED
     container-executor for outbound network traffic control. (Sidharta Seethana
     via vinodkv)
 
+    YARN-1376. NM need to notify the log aggregation status to RM through 
+    heartbeat. (Xuan Gong via junping_du)
+
+    YARN-3348. Add a 'yarn top' tool to help understand cluster usage. (Varun
+    Vasudev via jianhe)
+
+    YARN-3347. Improve YARN log command to get AMContainer logs as well as 
+    running containers logs. (Xuan Gong via junping_du)
+
+    YARN-3443. Create a 'ResourceHandler' subsystem to ease addition of support 
+    for new resource types on the NM. (Sidharta Seethana via junping_du)
+
   IMPROVEMENTS
 
     YARN-1880. Cleanup TestApplicationClientProtocolOnHA
@@ -104,10 +116,19 @@ Release 2.8.0 - UNRELEASED
     YARN-3294. Allow dumping of Capacity Scheduler debug logs via
     web UI for a fixed time period. (Varun Vasudev via xgong)
 
+    YARN-3293. Track and display capacity scheduler health metrics
+    in web UI. (Varun Vasudev via xgong)
+
+    YARN-3394. Enrich WebApplication proxy documentation. (Naganarasimha G R
+    via jianhe)
+
   OPTIMIZATIONS
 
     YARN-3339. TestDockerContainerExecutor should pull a single image and not
     the entire centos repository. (Ravindra Kumar Naik via raviprak)
+
+    YARN-3469. ZKRMStateStore: Avoid setting watches that are not required. 
+    (Jun Gong via kasha)
 
   BUG FIXES
 
@@ -164,6 +185,12 @@ Release 2.8.0 - UNRELEASED
 
     YARN-3465. Use LinkedHashMap to preserve order of resource requests. 
     (Zhihai Xu via kasha)
+
+    YARN-3382. Some of UserMetricsInfo metrics are incorrectly set to root
+    queue metrics. (Rohit Agarwal via jianhe)
+
+    YARN-3472. Fixed possible leak in DelegationTokenRenewer#allTokens.
+    (Rohith Sharmaks via jianhe)
 
 Release 2.7.1 - UNRELEASED
 
