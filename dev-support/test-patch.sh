@@ -660,9 +660,9 @@ function git_checkout
     # we need to explicitly fetch in case the
     # git ref hasn't been brought in tree yet
     if [[ ${OFFLINE} == false ]]; then
-      ${GIT} fetch --all
+      ${GIT} pull --rebase
       if [[ $? != 0 ]]; then
-        hadoop_error "ERROR: git fetch is failing"
+        hadoop_error "ERROR: git pull is failing"
         cleanup_and_exit 1
       fi
     fi
