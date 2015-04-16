@@ -40,15 +40,15 @@ function checkstyle_preapply
   big_console_header "checkstyle plugin: prepatch"
 
   start_clock
-  echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess" > "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" 2>&1
+  echo_and_redirect "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
   if [[ $? != 0 ]] ; then
     echo "Pre-patch ${PATCH_BRANCH} checkstyle compilation is broken?"
     add_jira_table -1 checkstyle "Pre-patch ${PATCH_BRANCH} checkstyle compilation may be broken."
     return 1
   fi
 
-  cp -p "${BASEDIR}/target/checkstyle-result.xml" "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml"
+  cp -p "${BASEDIR}/target/checkstyle-result.xml" \
+    "${PATCH_DIR}/checkstyle-result-${PATCH_BRANCH}.xml"
 
   # keep track of how much as elapsed for us already
   CHECKSTYLE_TIMER=$(stop_clock)
@@ -71,15 +71,15 @@ function checkstyle_postapply
   # by setting the clock back
   offset_clock "${CHECKSTYLE_TIMER}"
 
-  echo "${MVN} test checkstyle:checkstyle-aggregate -DskipTests -D${PROJECT_NAME}PatchProcess > ${PATCH_DIR}/patchcheckstyle.txt 2>&1"
-  ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess" > "${PATCH_DIR}/patchcheckstyle.txt" 2>&1
+  echo_and_redirect "${PATCH_DIR}/patchcheckstyle.txt" ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
   if [[ $? != 0 ]] ; then
     echo "Post-patch checkstyle compilation is broken."
     add_jira_table -1 checkstyle "Post-patch checkstyle compilation is broken."
     return 1
   fi
 
- cp -p "${BASEDIR}/target/checkstyle-result.xml" "${PATCH_DIR}/checkstyle-result-patch.xml"
+  cp -p "${BASEDIR}/target/checkstyle-result.xml" \
+    "${PATCH_DIR}/checkstyle-result-patch.xml"
 
   checkstyle_runcomparison
 

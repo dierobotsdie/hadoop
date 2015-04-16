@@ -45,7 +45,8 @@ function shellcheck_private_findbash
   while read line; do
     find "${line}" ! -name '*.cmd' -type f \
       | ${GREP} -E -v '(.orig$|.rej$)'
-  done < <(find . -d -name bin -o -name sbin)
+  done < <(find . -d -name bin -o -name sbin -o libexec -o shellprofile.d)
+  # shellcheck disable=SC2086
   echo ${SHELLCHECK_SPECIFICFILES}
 }
 
@@ -67,7 +68,7 @@ function shellcheck_preapply
   start_clock
 
   echo "Running shellcheck against all identifiable shell scripts"
-  pushd ${BASEDIR} >/dev/null
+  pushd "${BASEDIR}" >/dev/null
   for i in $(shellcheck_private_findbash | sort); do
     if [[ -f ${i} ]]; then
       ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
