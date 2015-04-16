@@ -1164,10 +1164,11 @@ function check_reexec
 
     if [[ ${OFFLINE} == false ]]; then
       export USER=hudson
-      ${JIRACLI} -s https://issues.apache.org/jira \
+      # shellcheck disable=SC2086
+      ${JIRACLI} --comment "$(cat ${commentfile})" \
+                 -s https://issues.apache.org/jira \
                  -a addcomment -u hadoopqa \
                  -p "${JIRA_PASSWD}" \
-                 --comment "$(cat ${commentfile})" \
                  --issue "${ISSUE}"
       ${JIRACLI} -s https://issues.apache.org/jira \
                  -a logout -u hadoopqa \
@@ -1992,10 +1993,11 @@ function output_to_jira
 
   if [[ ${OFFLINE} == false ]]; then
     export USER=hudson
-    ${JIRACLI} -s https://issues.apache.org/jira \
+    # shellcheck disable=SC2086
+    ${JIRACLI} --comment "$(cat "${commentfile}")" \
+               -s https://issues.apache.org/jira \
                -a addcomment -u hadoopqa \
                -p "${JIRA_PASSWD}" \
-               --comment "$(cat ${commentfile})" \
                --issue "${ISSUE}"
     ${JIRACLI} -s https://issues.apache.org/jira \
                -a logout -u hadoopqa \

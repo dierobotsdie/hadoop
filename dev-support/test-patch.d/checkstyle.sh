@@ -40,7 +40,7 @@ function checkstyle_preapply
   big_console_header "checkstyle plugin: prepatch"
 
   start_clock
-  echo_and_redirect "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
+  echo_and_redirect "${PATCH_DIR}/${PATCH_BRANCH}checkstyle.txt" "${MVN}" test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
   if [[ $? != 0 ]] ; then
     echo "Pre-patch ${PATCH_BRANCH} checkstyle compilation is broken?"
     add_jira_table -1 checkstyle "Pre-patch ${PATCH_BRANCH} checkstyle compilation may be broken."
@@ -71,7 +71,7 @@ function checkstyle_postapply
   # by setting the clock back
   offset_clock "${CHECKSTYLE_TIMER}"
 
-  echo_and_redirect "${PATCH_DIR}/patchcheckstyle.txt" ${MVN} test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
+  echo_and_redirect "${PATCH_DIR}/patchcheckstyle.txt" "${MVN}" test checkstyle:checkstyle-aggregate -DskipTests "-D${PROJECT_NAME}PatchProcess"
   if [[ $? != 0 ]] ; then
     echo "Post-patch checkstyle compilation is broken."
     add_jira_table -1 checkstyle "Post-patch checkstyle compilation is broken."
