@@ -428,12 +428,12 @@ function hadoop_usage
   echo "--debug                If set, then output some extra stuff to stderr"
   echo "--dirty-workspace      Allow the local git workspace to have uncommitted changes"
   echo "--findbugs-home=<path> Findbugs home directory (default FINDBUGS_HOME environment variable)"
-  echo "--modulelist=<list>    Specify additional modules to test (space delimited)"
+  echo "--modulelist=<list>    Specify additional modules to test (comma delimited)"
   echo "--offline              Avoid connecting to the Internet"
   echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp/${PROJECT_NAME}-test-patch/pid')"
   echo "--resetrepo            Forcibly clean the repo"
   echo "--run-tests            Run all relevant tests below the base directory"
-  echo "--testlist=<list>      Specify which subsystem tests to use (space delimited)"
+  echo "--testlist=<list>      Specify which subsystem tests to use (comma delimited)"
 
   echo "Shell binary overrides:"
   echo "--awk-cmd=<cmd>        The 'awk' command to use (default 'awk')"
@@ -463,6 +463,7 @@ function hadoop_usage
 function parse_args
 {
   local i
+  local j
 
   for i in "$@"; do
     case ${i} in
@@ -510,6 +511,8 @@ function parse_args
       ;;
       --modulelist=*)
         USER_MODULE_LIST=${i#*=}
+        USER_MODULE_LIST=${USER_MODULE_LIST//,/ }
+        hadoop_debug "Manually forcing modules ${USER_MODULE_LIST}"
       ;;
       --mvn-cmd=*)
         MVN=${i#*=}
@@ -537,9 +540,12 @@ function parse_args
       --run-tests)
         RUN_TESTS=true
       ;;
-      --testlist)
-        for j in ${i#*=}; do
-          add_test ${j}
+      --testlist=*)
+        testlist=${i#*=}
+        testlist=${testlist//,/ }
+        for j in ${testlist}; do
+          hadoop_debug "Manually adding patch test subsystem ${j}"
+          add_test "${j}"
         done
       ;;
       --wget-cmd=*)
@@ -569,7 +575,11 @@ function parse_args
     # shellcheck disable=SC2034
     ECLIPSE_PROPERTY="-Declipse.home=${ECLIPSE_HOME}"
   else
-    echo "Running in developer mode"
+    if [[ ${RESETREPO} == "true" ]] ; then
+      echo "Running in destructive (--resetrepo) developer mode"
+    else
+      echo "Running in developer mode"
+    fi
     JENKINS=false
   fi
 
@@ -827,19 +837,6 @@ function verify_valid_branch
   local check=$2
   local i
 
-  # determine branch doesn't support many
-  # types of minor version branches, but
-  # we should still try to prevent branch-2.x
-  # where x < 8 in case the code gets smarter
-  # later on
-
-  if [[ ${check} =~ branch-1
-    || ${check} =~ branch-0
-    || ${check} =~ branch-2.[0-7]
-    ]]; then
-    return 1
-  fi
-
   if [[ ${check} =~ ^git ]]; then
     ref=$(echo "${check}" | cut -f2 -dt)
     count=$(echo "${ref}" | wc -c | tr -d ' ')
@@ -997,7 +994,6 @@ function determine_needed_tests
   local i
 
   for i in ${CHANGED_FILES}; do
-
     if [[ ${i} =~ src/main/webapp ]]; then
       hadoop_debug "tests/webapp: ${i}"
     elif [[ ${i} =~ \.sh
@@ -1020,14 +1016,14 @@ function determine_needed_tests
       || ${i} =~ \.cmake$
       || ${i} =~ CMakeLists.txt
        ]]; then
-       hadoop_debug "tests/native: ${i}"
+       hadoop_debug "tests/units: ${i}"
        add_test javac
        add_test unit
     elif [[ ${i} =~ pom.xml$
       || ${i} =~ \.java$
       || ${i} =~ src/main
       ]]; then
-      hadoop_debug "tests/java: ${i}"
+      hadoop_debug "tests/javadoc+units: ${i}"
       add_test javadoc
       add_test javac
       add_test unit
@@ -1042,7 +1038,6 @@ function determine_needed_tests
         "${plugin}_filefilter" "${i}"
       fi
     done
-
   done
 
   add_jira_footer "Optional Tests" "${NEEDED_TESTS}"
@@ -1239,9 +1234,9 @@ function check_author
 
   authorTags=$("${GREP}" -c -i '@author' "${PATCH_DIR}/patch")
   echo "There appear to be ${authorTags} @author tags in the patch."
-  if [[ $authorTags != 0 ]] ; then
+  if [[ ${authorTags} != 0 ]] ; then
     add_jira_table -1 @author \
-      "The patch appears to contain $authorTags @author tags which the Hadoop" \
+      "The patch appears to contain ${authorTags} @author tags which the Hadoop" \
       " community has agreed to not allow in code contributions."
     return 1
   fi
@@ -1257,8 +1252,8 @@ function check_author
 ## @return       1 on failure
 function check_modified_unittests
 {
-  local testReferences
-  local patchIsDoc
+  local testReferences=0
+  local i
 
   verify_needed_test unit
 
@@ -1270,7 +1265,12 @@ function check_modified_unittests
 
   start_clock
 
-  testReferences=$("${GREP}" -c -i -e '^+++.*/test' "${PATCH_DIR}/patch")
+  for i in ${CHANGED_FILES}; do
+    if [[ ${i} =~ /test/ ]]; then
+      ((testReferences=testReferences + 1))
+    fi
+  done
+
   echo "There appear to be ${testReferences} test file(s) referenced in the patch."
   if [[ ${testReferences} == 0 ]] ; then
     add_jira_table -1 "tests included" \
@@ -1630,7 +1630,7 @@ function check_findbugs
   done < <(find "${BASEDIR}" -name findbugsXml.xml)
 
   if [[ ${findbugsWarnings} -gt 0 ]] ; then
-    add_jira_table -1 findbugs "The patch appears to introduce $findbugsWarnings new Findbugs (version ${findbugs_version}) warnings."
+    add_jira_table -1 findbugs "The patch appears to introduce ${findbugsWarnings} new Findbugs (version ${findbugs_version}) warnings."
     return 1
   fi
 

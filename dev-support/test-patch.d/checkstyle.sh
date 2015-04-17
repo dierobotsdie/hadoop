@@ -115,7 +115,7 @@ if len(sys.argv) != 3 :
 
 def path_key(x):
   path = x.attrib['name']
-  return path[path.find('hadoop-'):]
+  return path[path.find('${PROJECT_NAME}-'):]
 
 def print_row(path, master_errors, patch_errors):
     print '%s\t%s\t%s' % (k,master_dict[k],child_errors)
