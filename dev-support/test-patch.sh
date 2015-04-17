@@ -997,32 +997,32 @@ function determine_needed_tests
     if [[ ${i} =~ src/main/webapp ]]; then
       hadoop_debug "tests/webapp: ${i}"
     elif [[ ${i} =~ \.sh
-      || ${i} =~ \.cmd
-      ]]; then
+         || ${i} =~ \.cmd
+         ]]; then
       hadoop_debug "tests/shell: ${i}"
     elif [[ ${i} =~ \.md$
-      || ${i} =~ \.md\.vm$
-      || ${i} =~ src/site
-      || ${i} =~ src/main/docs
-      ]]; then
+         || ${i} =~ \.md\.vm$
+         || ${i} =~ src/site
+         || ${i} =~ src/main/docs
+         ]]; then
       hadoop_debug "tests/site: ${i}"
       add_test site
     elif [[ ${i} =~ \.c$
-      || ${i} =~ \.cc$
-      || ${i} =~ \.h$
-      || ${i} =~ \.hh$
-      || ${i} =~ \.proto$
-      || ${i} =~ src/test
-      || ${i} =~ \.cmake$
-      || ${i} =~ CMakeLists.txt
-       ]]; then
-       hadoop_debug "tests/units: ${i}"
-       add_test javac
-       add_test unit
+         || ${i} =~ \.cc$
+         || ${i} =~ \.h$
+         || ${i} =~ \.hh$
+         || ${i} =~ \.proto$
+         || ${i} =~ src/test
+         || ${i} =~ \.cmake$
+         || ${i} =~ CMakeLists.txt
+         ]]; then
+      hadoop_debug "tests/units: ${i}"
+      add_test javac
+      add_test unit
     elif [[ ${i} =~ pom.xml$
-      || ${i} =~ \.java$
-      || ${i} =~ src/main
-      ]]; then
+         || ${i} =~ \.java$
+         || ${i} =~ src/main
+         ]]; then
       hadoop_debug "tests/javadoc+units: ${i}"
       add_test javadoc
       add_test javac
