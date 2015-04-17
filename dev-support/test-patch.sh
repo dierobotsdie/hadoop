@@ -44,6 +44,7 @@ function setup_defaults
   BUILD_NATIVE=${BUILD_NATIVE:-true}
   PATCH_BRANCH=""
   CHANGED_MODULES=""
+  USER_MODULE_LIST=""
   OFFLINE=false
   CHANGED_FILES=""
   REEXECED=false
@@ -388,6 +389,8 @@ function find_java_home
 
 ## @description  Print the command to be executing to the screen. Then
 ## @description  run the command, sending stdout and stderr to the given filename
+## @description  This will also ensure that any directories in ${BASEDIR} have
+## @description  the exec bit set as a pre-exec step.
 ## @audience     public
 ## @stability    stable
 ## @param        filename
@@ -399,6 +402,7 @@ function echo_and_redirect
 {
   logfile=$1
   shift
+  find "${BASEDIR}" -type d -exec chmod +x {} \;
   echo "${*} > ${logfile} 2>&1"
   "${@}" > "${logfile}" 2>&1
 }
@@ -424,10 +428,12 @@ function hadoop_usage
   echo "--debug                If set, then output some extra stuff to stderr"
   echo "--dirty-workspace      Allow the local git workspace to have uncommitted changes"
   echo "--findbugs-home=<path> Findbugs home directory (default FINDBUGS_HOME environment variable)"
+  echo "--modulelist=<list>    Specify additional modules to test (space delimited)"
   echo "--offline              Avoid connecting to the Internet"
   echo "--patch-dir=<dir>      The directory for working and output files (default '/tmp/${PROJECT_NAME}-test-patch/pid')"
   echo "--resetrepo            Forcibly clean the repo"
-  echo "--run-tests            Run all tests below the base directory"
+  echo "--run-tests            Run all relevant tests below the base directory"
+  echo "--testlist=<list>      Specify which subsystem tests to use (space delimited)"
 
   echo "Shell binary overrides:"
   echo "--awk-cmd=<cmd>        The 'awk' command to use (default 'awk')"
@@ -502,6 +508,9 @@ function parse_args
       --jira-password=*)
         JIRA_PASSWD=${i#*=}
       ;;
+      --modulelist=*)
+        USER_MODULE_LIST=${i#*=}
+      ;;
       --mvn-cmd=*)
         MVN=${i#*=}
       ;;
@@ -527,6 +536,11 @@ function parse_args
       ;;
       --run-tests)
         RUN_TESTS=true
+      ;;
+      --testlist)
+        for j in ${i#*=}; do
+          add_test ${j}
+        done
       ;;
       --wget-cmd=*)
         WGET=${i#*=}
@@ -638,7 +652,7 @@ function find_changed_modules
   done
 
   #shellcheck disable=SC2086
-  CHANGED_MODULES=$(echo ${pommods} | tr ' ' '\n' | sort -u)
+  CHANGED_MODULES=$(echo ${pommods} ${USER_MODULE_LIST} | tr ' ' '\n' | sort -u)
 }
 
 ## @description  git checkout the appropriate branch to test.  Additionally, this calls
@@ -756,10 +770,6 @@ function precheck_without_patch
 
   if [[ $? == 1 ]]; then
     echo "Compiling ${mypwd}"
-    if [[ -d "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs" ]]; then
-      echo "Changing permission on ${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs to avoid broken builds"
-      chmod +x -R "${mypwd}/hadoop-hdfs-project/hadoop-hdfs/target/test/data/dfs"
-    fi
     echo_and_redirect "${PATCH_DIR}/${PATCH_BRANCH}JavacWarnings.txt" "${MVN}" clean test -DskipTests -D${PROJECT_NAME}PatchProcess -Ptest-patch
     if [[ $? != 0 ]] ; then
       echo "${PATCH_BRANCH} compilation is broken?"
@@ -1628,8 +1638,7 @@ function check_findbugs
   return 0
 }
 
-## @description  Some crazy people like Eclipse.  Make sure Maven's eclipse generation
-## @description  works so they don't freak out.
+## @description  Make sure Maven's eclipse generation works.
 ## @audience     private
 ## @stability    evolving
 ## @replaceable  no
