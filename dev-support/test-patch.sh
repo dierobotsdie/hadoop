@@ -667,6 +667,12 @@ function git_checkout
       cleanup_and_exit 1
     fi
 
+    ${GIT} checkout --force trunk
+    if [[ $? != 0 ]]; then
+      hadoop_error "ERROR: git checkout --force trunk is failing"
+      cleanup_and_exit 1
+    fi
+
     determine_branch
     if [[ ${PATCH_BRANCH} =~ ^git ]]; then
       PATCH_BRANCH=$(echo "${PATCH_BRANCH}" | cut -dt -f2)
@@ -810,6 +816,19 @@ function verify_valid_branch
   local branches=$1
   local check=$2
   local i
+
+  # determine branch doesn't support many
+  # types of minor version branches, but
+  # we should still try to prevent branch-2.x
+  # where x < 8 in case the code gets smarter
+  # later on
+
+  if [[ ${check} =~ branch-1
+    || ${check} =~ branch-0
+    || ${check} =~ branch-2.[0-7]
+    ]]; then
+    return 1
+  fi
 
   if [[ ${check} =~ ^git ]]; then
     ref=$(echo "${check}" | cut -f2 -dt)
@@ -1160,7 +1179,8 @@ function check_reexec
     rm "${commentfile}" 2>/dev/null
 
     echo "(!) A patch to test-patch or smart-apply-patch has been detected. " > "${commentfile}"
-    echo "Re-executing against the patched versions to perform further tests." >> "${commentfile}"
+    echo "Re-executing against the patched versions to perform further tests. " >> "${commentfile}"
+    echo "The console is at ${BUILD_URL}/console in case of problems." >> "${commentfile}"
 
     if [[ ${OFFLINE} == false ]]; then
       export USER=hudson
