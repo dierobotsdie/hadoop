@@ -974,6 +974,13 @@ function add_test
   fi
 }
 
+## @description  Verify if a given test was requested
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+## @param        test
+## @return       1 = yes
+## @return       0 = no
 function verify_needed_test
 {
   local i=$1
