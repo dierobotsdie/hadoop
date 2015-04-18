@@ -16,16 +16,28 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.yarn.server.api.records;
+package org.apache.hadoop.yarn.server.resourcemanager.webapp.dao;
 
-/**
- * <p>Status of Log aggregation.</p>
- */
-public enum LogAggregationStatus {
-  DISABLED,
-  NOT_START,
-  RUNNING,
-  FINISHED,
-  FAILED,
-  TIME_OUT
+import java.util.HashMap;
+import java.util.Map;
+
+import javax.xml.bind.annotation.XmlAccessType;
+import javax.xml.bind.annotation.XmlAccessorType;
+import javax.xml.bind.annotation.XmlRootElement;
+
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.NodeIDsInfo;
+
+@XmlRootElement(name = "labelsToNodesInfo")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class LabelsToNodesInfo {
+
+  protected Map<String, NodeIDsInfo> labelsToNodes =
+    new HashMap<String, NodeIDsInfo>();
+
+  public LabelsToNodesInfo() {
+  } // JAXB needs this
+
+  public Map<String, NodeIDsInfo> getLabelsToNodes() {
+   return labelsToNodes;
+  }
 }

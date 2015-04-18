@@ -15,13 +15,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hdfs.protocol;
 
-/**
- * @deprecated Please use {@link HdfsConstants}. This class
- * is left only for other ecosystem projects which depended on
- * it for SafemodeAction and DatanodeReport types.
- */
-@Deprecated
-public abstract class FSConstants extends HdfsConstants {
+package org.apache.hadoop.yarn.server.resourcemanager.webapp;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.xml.bind.annotation.XmlAccessType;
+import javax.xml.bind.annotation.XmlAccessorType;
+import javax.xml.bind.annotation.XmlRootElement;
+
+@XmlRootElement(name = "labelsToNodesInfo")
+@XmlAccessorType(XmlAccessType.FIELD)
+public class NodeIDsInfo {
+
+  /**
+   * Set doesn't support default no arg constructor which is req by JAXB
+   */
+  protected ArrayList<String> nodeIDsList = new ArrayList<String>();
+
+  public NodeIDsInfo() {
+  } // JAXB needs this
+
+  public NodeIDsInfo(List<String> nodeIdsList) {
+    this.nodeIDsList.addAll(nodeIdsList);
+  }
+
+  public ArrayList<String> getNodeIDs() {
+    return nodeIDsList;
+  }
 }

@@ -408,7 +408,7 @@ public abstract class AbstractYarnScheduler
     RMContainer rmContainer =
         new RMContainerImpl(container, attemptId, node.getNodeID(),
           applications.get(attemptId.getApplicationId()).getUser(), rmContext,
-          status.getCreationTime());
+          status.getCreationTime(), status.getNodeLabelExpression());
     return rmContainer;
   }
 
@@ -548,6 +548,10 @@ public abstract class AbstractYarnScheduler
     Resource newResource = resourceOption.getResource();
     Resource oldResource = node.getTotalResource();
     if(!oldResource.equals(newResource)) {
+      // Notify NodeLabelsManager about this change
+      rmContext.getNodeLabelManager().updateNodeResource(nm.getNodeID(),
+          newResource);
+      
       // Log resource change
       LOG.info("Update resource on node: " + node.getNodeName()
           + " from: " + oldResource + ", to: "

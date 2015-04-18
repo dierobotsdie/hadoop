@@ -25,7 +25,8 @@ Trunk (Unreleased)
 
   NEW FEATURES
 
-    HADOOP-6590. Add a username check for hadoop sub-commands (John Smith via aw)
+    HADOOP-6590. Add a username check for hadoop sub-commands (John Smith via
+    aw)
 
     HADOOP-11353. Add support for .hadooprc (aw)
 
@@ -40,6 +41,9 @@ Trunk (Unreleased)
     HADOOP-11554. Expose HadoopKerberosName as a hadoop subcommand (aw)
 
     HADOOP-11565. Add --slaves shell option (aw)
+
+    HADOOP-9642. Configuration to resolve environment variables via
+    ${env.VARIABLE} references (Kengo Seki via aw)
 
   IMPROVEMENTS
 
@@ -489,6 +493,9 @@ Release 2.8.0 - UNRELEASED
 
     HADOOP-7713. dfs -count -q should label output column (Jonathan Allen
     via aw)
+
+    HADOOP-11819. HttpServerFunctionalTest#prepareTestWebapp should create web
+    app directory if it does not exist. (Rohith via vinayakumarb)
 
   OPTIMIZATIONS
 
@@ -1240,6 +1247,9 @@ Release 2.7.0 - UNRELEASED
 
     HADOOP-11815. HttpServer2 should destroy SignerSecretProvider when it
     stops. (Rohith via wheat9)
+
+    HADOOP-11837. AuthenticationFilter should destroy SignerSecretProvider in
+    Tomcat deployments. (Bowen Zhang via wheat9)
 
 Release 2.6.1 - UNRELEASED
 
