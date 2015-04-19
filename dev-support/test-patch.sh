@@ -1373,6 +1373,7 @@ function check_javadoc
 ## @return       1 on failure
 function check_site
 {
+  local -r mypwd=$(pwd)
 
   verify_needed_test site
 
