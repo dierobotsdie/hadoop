@@ -45,7 +45,7 @@ function shellcheck_private_findbash
   while read line; do
     find "${line}" ! -name '*.cmd' -type f \
       | ${GREP} -E -v '(.orig$|.rej$)'
-  done < <(find . -d -name bin -o -name sbin -o -name libexec -o -name shellprofile.d)
+  done < <(find . -type -d -name bin -o -type -d -name sbin -o -type -d -name libexec -o -type -d -name shellprofile.d)
   # shellcheck disable=SC2086
   echo ${SHELLCHECK_SPECIFICFILES}
 }
@@ -66,6 +66,9 @@ function shellcheck_preapply
   fi
 
   start_clock
+
+  # shellcheck disable=SC2016
+  SHELLCHECK_VERSION=$(shellcheck --version | ${GREP} version: | ${AWK} '{print $NF}')
 
   echo "Running shellcheck against all identifiable shell scripts"
   pushd "${BASEDIR}" >/dev/null
@@ -107,8 +110,6 @@ function shellcheck_postapply
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
 
-
-
   # shellcheck disable=SC2016
   numPrepatch=$(wc -l "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt" | ${AWK} '{print $1}')
   # shellcheck disable=SC2016
@@ -124,11 +125,11 @@ function shellcheck_postapply
 
   if [[ ${diffPostpatch} -gt 0 ]] ; then
     add_jira_table -1 shellcheck "The applied patch generated "\
-      "${diffPostpatch} new shellcheck issues (total was ${numPrepatch}, now ${numPostpatch})."
+      "${diffPostpatch} new shellcheck (v${SHELLCHECK_VERSION}) issues (total was ${numPrepatch}, now ${numPostpatch})."
     add_jira_footer shellcheck "@@BASE@@/diffpatchshellcheck.txt"
     return 1
   fi
 
-  add_jira_table +1 shellcheck "There were no new shellcheck issues."
+  add_jira_table +1 shellcheck "There were no new shellcheck (v${SHELLCHECK_VERSION}) issues."
   return 0
 }

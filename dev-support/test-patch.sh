@@ -18,7 +18,7 @@
 
 this="${BASH_SOURCE-$0}"
 BINDIR=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
-CWD=$(PWD)
+CWD=$(pwd)
 USER_PARAMS=("$@")
 GLOBALTIMER=$(date +"%s")
 
@@ -132,8 +132,8 @@ function start_clock
 ## @replaceable  no
 function stop_clock
 {
-  local stoptime=$(date +"%s")
-  local elapsed=$((stoptime-TIMER))
+  local -r stoptime=$(date +"%s")
+  local -r elapsed=$((stoptime-TIMER))
   hadoop_debug "Stop clock"
 
   echo ${elapsed}
@@ -145,8 +145,8 @@ function stop_clock
 ## @replaceable  no
 function stop_global_clock
 {
-  local stoptime=$(date +"%s")
-  local elapsed=$((stoptime-GLOBALTIMER))
+  local -r stoptime=$(date +"%s")
+  local -r elapsed=$((stoptime-GLOBALTIMER))
   hadoop_debug "Stop global clock"
 
   echo ${elapsed}
@@ -197,7 +197,7 @@ function add_jira_table
   local color
   local calctime=0
 
-  local elapsed=$(stop_clock)
+  local -r elapsed=$(stop_clock)
 
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
@@ -240,7 +240,7 @@ function add_jira_table
 function close_jira_table
 {
 
-  local elapsed=$(stop_global_clock)
+  local -r elapsed=$(stop_global_clock)
 
   if [[ ${elapsed} -lt 0 ]]; then
     calctime="N/A"
@@ -345,6 +345,7 @@ function findlargest
   local i=0
 
   until [[ ${i} -gt ${sizeofa} ]]; do
+    # shellcheck disable=SC2086
     string=$( echo ${a[$i]} | cut -f$((column + 1)) -d\| )
     if [[ ${#string} -gt $maxlen ]]; then
       maxlen=${#string}
@@ -368,7 +369,8 @@ function find_java_home
       Darwin)
         if [[ -z "${JAVA_HOME}" ]]; then
           if [[ -x /usr/libexec/java_home ]]; then
-            export JAVA_HOME="$(/usr/libexec/java_home)"
+            JAVA_HOME="$(/usr/libexec/java_home)"
+            export JAVA_HOME
           else
             export JAVA_HOME=/Library/Java/Home
           fi
@@ -413,7 +415,7 @@ function echo_and_redirect
 ## @replaceable  no
 function hadoop_usage
 {
-  local up=$(echo ${PROJECT_NAME} | tr '[:lower:]' '[:upper:]')
+  local -r up=$(echo ${PROJECT_NAME} | tr '[:lower:]' '[:upper:]')
 
   echo "Usage: test-patch.sh [options] patch-file | issue-number | http"
   echo
@@ -601,7 +603,9 @@ function parse_args
 ## @return       directory containing the pom.xml
 function find_pom_dir
 {
-  local dir=$(dirname "$1")
+  local dir
+
+  dir=$(dirname "$1")
 
   hadoop_debug "Find pom dir for: ${dir}"
 
@@ -770,7 +774,7 @@ function git_checkout
 ## @return       1 on failure
 function precheck_without_patch
 {
-  local mypwd=$(pwd)
+  local -r mypwd=$(pwd)
 
   big_console_header "Pre-patch ${PATCH_BRANCH} Java verification"
 
@@ -1551,24 +1555,7 @@ function check_mvn_install
 ## @return       1 on failure
 function check_findbugs
 {
-  big_console_header "Determining number of patched Findbugs warnings."
-
-  if [[ ! -e "${FINDBUGS_HOME}/bin/findbugs" ]]; then
-    printf "\n\n%s is not executable.\n\n" "${FINDBUGS_HOME}/bin/findbugs"
-    add_jira_table -1 findbugs "Findbugs is not installed."
-    return 1
-  fi
-
-  verify_needed_test findbugs
-
-  if [[ $? == 0 ]]; then
-    echo "Patch does not touch any java files. Skipping findbugs."
-    return 0
-  fi
-
-  start_clock
-
-  local findbugs_version=$("${FINDBUGS_HOME}/bin/findbugs" -version)
+  local findbugs_version
   local modules=${CHANGED_MODULES}
   local rc=0
   local module_suffix
@@ -1579,6 +1566,25 @@ function check_findbugs
   local line
   local firstpart
   local secondpart
+
+  big_console_header "Determining number of patched Findbugs warnings."
+
+
+  verify_needed_test findbugs
+  if [[ $? == 0 ]]; then
+    echo "Patch does not touch any java files. Skipping findbugs."
+    return 0
+  fi
+
+  start_clock
+
+  if [[ ! -e "${FINDBUGS_HOME}/bin/findbugs" ]]; then
+    printf "\n\n%s is not executable.\n\n" "${FINDBUGS_HOME}/bin/findbugs"
+    add_jira_table -1 findbugs "Findbugs is not installed."
+    return 1
+  fi
+
+  findbugs_version=$("${FINDBUGS_HOME}/bin/findbugs" -version)
 
   for module in ${modules}
   do
@@ -1853,7 +1859,7 @@ function output_to_console
   local commentfile2="${PATCH_DIR}/comment.2"
   local normaltop
   local line
-  local seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
+  local seccoladj=0
   local spcfx=${PATCH_DIR}/spcl.txt
 
   if [[ ${result} == 0 ]]; then
@@ -1892,6 +1898,7 @@ function output_to_console
     rm "${spcfx}"
   fi
 
+  seccoladj=$(findlargest 2 "${JIRA_COMMENT_TABLE[@]}")
   if [[ ${seccoladj} -lt 10 ]]; then
     seccoladj=10
   fi
