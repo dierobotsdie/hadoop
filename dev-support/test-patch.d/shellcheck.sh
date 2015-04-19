@@ -45,7 +45,7 @@ function shellcheck_private_findbash
   while read line; do
     find "${line}" ! -name '*.cmd' -type f \
       | ${GREP} -E -v '(.orig$|.rej$)'
-  done < <(find . -type -d -name bin -o -type -d -name sbin -o -type -d -name libexec -o -type -d -name shellprofile.d)
+  done < <(find . -type d -name bin -o -type d -name sbin -o -type d -name libexec -o -type d -name shellprofile.d)
   # shellcheck disable=SC2086
   echo ${SHELLCHECK_SPECIFICFILES}
 }

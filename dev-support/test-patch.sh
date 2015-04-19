@@ -1889,9 +1889,9 @@ function output_to_console
 
   if [[ -f ${spcfx} ]]; then
     if which base64 >/dev/null 2>&1; then
-      base64 --decode "${spcfx}"
+      base64 --decode "${spcfx}" 2>/dev/null
     elif which openssl >/dev/null 2>&1; then
-      openssl enc -A -d -base64 -in "${spcfx}"
+      openssl enc -A -d -base64 -in "${spcfx}" 2>/dev/null
     fi
     echo
     echo
