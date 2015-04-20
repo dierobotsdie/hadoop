@@ -591,7 +591,7 @@ function parse_args
       echo "${PATCH_DIR} has been created"
     else
       echo "Unable to create ${PATCH_DIR}"
-      cleanup_and_exit 0
+      cleanup_and_exit 1
     fi
   fi
 }
@@ -1076,13 +1076,13 @@ function locate_patch
 
       if [[ $? != 0 ]];then
         hadoop_error "ERROR: Unable to determine what ${PATCH_OR_ISSUE} may reference."
-        cleanup_and_exit 0
+        cleanup_and_exit 1
       fi
 
       if [[ $(${GREP} -c 'Patch Available' "${PATCH_DIR}/jira") == 0 ]] ; then
         if [[ ${JENKINS} == true ]]; then
           hadoop_error "ERROR: ${PATCH_OR_ISSUE} is not \"Patch Available\"."
-          cleanup_and_exit 0
+          cleanup_and_exit 1
         else
           hadoop_error "WARNING: ${PATCH_OR_ISSUE} is not \"Patch Available\"."
         fi
@@ -1092,7 +1092,7 @@ function locate_patch
       patchURL="http://issues.apache.org${relativePatchURL}"
       if [[ ! ${patchURL} =~ \.patch$ ]]; then
         hadoop_error "ERROR: ${patchURL} is not a patch file."
-        cleanup_and_exit 0
+        cleanup_and_exit 1
       fi
       patchNum=$(echo "${patchURL}" | ${GREP} -o '[0-9]*/' | ${GREP} -o '[0-9]*')
       echo "${ISSUE} patch is being downloaded at $(date) from"
@@ -1102,7 +1102,7 @@ function locate_patch
     ${WGET} -q -O "${PATCH_DIR}/patch" "${patchURL}"
     if [[ $? != 0 ]];then
       hadoop_error "ERROR: ${PATCH_OR_ISSUE} could not be downloaded."
-      cleanup_and_exit 0
+      cleanup_and_exit 1
     fi
     PATCH_FILE="${PATCH_DIR}/patch"
   fi
@@ -1113,7 +1113,7 @@ function locate_patch
       echo "Patch file ${PATCH_FILE} copied to ${PATCH_DIR}"
     else
       hadoop_error "ERROR: Could not copy ${PATCH_FILE} to ${PATCH_DIR}"
-      cleanup_and_exit 0
+      cleanup_and_exit 1
     fi
   fi
 }

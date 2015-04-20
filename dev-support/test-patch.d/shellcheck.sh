@@ -41,13 +41,16 @@ function shellcheck_filefilter
 function shellcheck_private_findbash
 {
   local i
+  local value
+  local list
 
   while read line; do
-    find "${line}" ! -name '*.cmd' -type f \
-      | ${GREP} -E -v '(.orig$|.rej$)'
+    value=$(find "${line}" ! -name '*.cmd' -type f \
+      | ${GREP} -E -v '(.orig$|.rej$)')
+    list="${list} ${value}"
   done < <(find . -type d -name bin -o -type d -name sbin -o -type d -name libexec -o -type d -name shellprofile.d)
   # shellcheck disable=SC2086
-  echo ${SHELLCHECK_SPECIFICFILES}
+  echo ${list} ${SHELLCHECK_SPECIFICFILES} | tr ' ' '\n' | sort -u
 }
 
 function shellcheck_preapply
@@ -72,7 +75,7 @@ function shellcheck_preapply
 
   echo "Running shellcheck against all identifiable shell scripts"
   pushd "${BASEDIR}" >/dev/null
-  for i in $(shellcheck_private_findbash | sort -u); do
+  for i in $(shellcheck_private_findbash); do
     if [[ -f ${i} ]]; then
       ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
     fi
@@ -106,7 +109,7 @@ function shellcheck_postapply
 
   echo "Running shellcheck against all identifiable shell scripts"
   # we re-check this in case one has been added
-  for i in $(shellcheck_private_findbash | sort -u); do
+  for i in $(shellcheck_private_findbash); do
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
 
