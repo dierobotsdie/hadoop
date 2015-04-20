@@ -106,7 +106,7 @@ function shellcheck_postapply
 
   echo "Running shellcheck against all identifiable shell scripts"
   # we re-check this in case one has been added
-  for i in $(shellcheck_private_findbash | sort); do
+  for i in $(shellcheck_private_findbash | sort -u); do
     ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/patchshellcheck-result.txt"
   done
 
