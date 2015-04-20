@@ -35,6 +35,52 @@ import org.junit.Test;
 public class TestMRTimelineEventHandling {
 
   @Test
+  public void testTimelineServiceStartInMiniCluster() throws Exception {
+    Configuration conf = new YarnConfiguration();
+
+    /*
+     * Timeline service should not start if the config is set to false
+     * Regardless to the value of MAPREDUCE_JOB_EMIT_TIMELINE_DATA
+     */
+    conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, false);
+    conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_EMIT_TIMELINE_DATA, true);
+    MiniMRYarnCluster cluster = null;
+    try {
+      cluster = new MiniMRYarnCluster(
+          TestJobHistoryEventHandler.class.getSimpleName(), 1);
+      cluster.init(conf);
+      cluster.start();
+
+      //verify that the timeline service is not started.
+      Assert.assertNull("Timeline Service should not have been started",
+          cluster.getApplicationHistoryServer());
+    }
+    finally {
+      if(cluster != null) {
+        cluster.stop();
+      }
+    }
+    conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, false);
+    conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_EMIT_TIMELINE_DATA, false);
+    cluster = null;
+    try {
+      cluster = new MiniMRYarnCluster(
+          TestJobHistoryEventHandler.class.getSimpleName(), 1);
+      cluster.init(conf);
+      cluster.start();
+
+      //verify that the timeline service is not started.
+      Assert.assertNull("Timeline Service should not have been started",
+          cluster.getApplicationHistoryServer());
+    }
+    finally {
+      if(cluster != null) {
+        cluster.stop();
+      }
+    }
+  }
+
+  @Test
   public void testMRTimelineEventHandling() throws Exception {
     Configuration conf = new YarnConfiguration();
     conf.setBoolean(YarnConfiguration.TIMELINE_SERVICE_ENABLED, true);
@@ -42,7 +88,7 @@ public class TestMRTimelineEventHandling {
     MiniMRYarnCluster cluster = null;
     try {
       cluster = new MiniMRYarnCluster(
-              TestJobHistoryEventHandler.class.getSimpleName(), 1, true);
+          TestJobHistoryEventHandler.class.getSimpleName(), 1);
       cluster.init(conf);
       cluster.start();
       TimelineStore ts = cluster.getApplicationHistoryServer()
@@ -55,7 +101,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.SUCCEEDED,
               job.getJobStatus().getState().getValue());
       TimelineEntities entities = ts.getEntities("MAPREDUCE_JOB", null, null,
-              null, null, null, null, null, null);
+              null, null, null, null, null, null, null);
       Assert.assertEquals(1, entities.getEntities().size());
       TimelineEntity tEntity = entities.getEntities().get(0);
       Assert.assertEquals(job.getID().toString(), tEntity.getEntityId());
@@ -70,7 +116,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.FAILED,
               job.getJobStatus().getState().getValue());
       entities = ts.getEntities("MAPREDUCE_JOB", null, null, null, null, null,
-              null, null, null);
+              null, null, null, null);
       Assert.assertEquals(2, entities.getEntities().size());
       tEntity = entities.getEntities().get(0);
       Assert.assertEquals(job.getID().toString(), tEntity.getEntityId());
@@ -96,7 +142,7 @@ public class TestMRTimelineEventHandling {
     MiniMRYarnCluster cluster = null;
     try {
       cluster = new MiniMRYarnCluster(
-          TestJobHistoryEventHandler.class.getSimpleName(), 1, true);
+          TestJobHistoryEventHandler.class.getSimpleName(), 1);
       cluster.init(conf);
       cluster.start();
       TimelineStore ts = cluster.getApplicationHistoryServer()
@@ -109,7 +155,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.SUCCEEDED,
           job.getJobStatus().getState().getValue());
       TimelineEntities entities = ts.getEntities("MAPREDUCE_JOB", null, null,
-          null, null, null, null, null, null);
+          null, null, null, null, null, null, null);
       Assert.assertEquals(0, entities.getEntities().size());
 
       conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_EMIT_TIMELINE_DATA, true);
@@ -117,7 +163,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.SUCCEEDED,
           job.getJobStatus().getState().getValue());
       entities = ts.getEntities("MAPREDUCE_JOB", null, null, null, null, null,
-          null, null, null);
+          null, null, null, null);
       Assert.assertEquals(1, entities.getEntities().size());
       TimelineEntity tEntity = entities.getEntities().get(0);
       Assert.assertEquals(job.getID().toString(), tEntity.getEntityId());
@@ -133,7 +179,7 @@ public class TestMRTimelineEventHandling {
     cluster = null;
     try {
       cluster = new MiniMRYarnCluster(
-          TestJobHistoryEventHandler.class.getSimpleName(), 1, true);
+          TestJobHistoryEventHandler.class.getSimpleName(), 1);
       cluster.init(conf);
       cluster.start();
       TimelineStore ts = cluster.getApplicationHistoryServer()
@@ -148,7 +194,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.SUCCEEDED,
           job.getJobStatus().getState().getValue());
       TimelineEntities entities = ts.getEntities("MAPREDUCE_JOB", null, null,
-          null, null, null, null, null, null);
+          null, null, null, null, null, null, null);
       Assert.assertEquals(0, entities.getEntities().size());
 
       conf.setBoolean(MRJobConfig.MAPREDUCE_JOB_EMIT_TIMELINE_DATA, true);
@@ -156,7 +202,7 @@ public class TestMRTimelineEventHandling {
       Assert.assertEquals(JobStatus.SUCCEEDED,
           job.getJobStatus().getState().getValue());
       entities = ts.getEntities("MAPREDUCE_JOB", null, null, null, null, null,
-          null, null, null);
+          null, null, null, null);
       Assert.assertEquals(1, entities.getEntities().size());
       TimelineEntity tEntity = entities.getEntities().get(0);
       Assert.assertEquals(job.getID().toString(), tEntity.getEntityId());

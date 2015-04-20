@@ -36,6 +36,8 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.protocol.datatransfer.DataTransferProtocol;
 import org.apache.hadoop.hdfs.server.datanode.SimulatedFSDataset;
 import org.apache.hadoop.io.IOUtils;
@@ -53,6 +55,8 @@ import org.mockito.stubbing.Answer;
 public class TestPread {
   static final long seed = 0xDEADBEEFL;
   static final int blockSize = 4096;
+  static final int numBlocksPerFile = 12;
+  static final int fileSize = numBlocksPerFile * blockSize;
   boolean simulatedStorage;
   boolean isHedgedRead;
 
@@ -65,10 +69,10 @@ public class TestPread {
   private void writeFile(FileSystem fileSys, Path name) throws IOException {
     int replication = 3;// We need > 1 blocks to test out the hedged reads.
     // test empty file open and read
-    DFSTestUtil.createFile(fileSys, name, 12 * blockSize, 0,
+    DFSTestUtil.createFile(fileSys, name, fileSize, 0,
       blockSize, (short)replication, seed);
     FSDataInputStream in = fileSys.open(name);
-    byte[] buffer = new byte[12 * blockSize];
+    byte[] buffer = new byte[fileSize];
     in.readFully(0, buffer, 0, 0);
     IOException res = null;
     try { // read beyond the end of the file
@@ -83,7 +87,7 @@ public class TestPread {
       assertTrue("Cannot delete file", false);
     
     // now create the real file
-    DFSTestUtil.createFile(fileSys, name, 12 * blockSize, 12 * blockSize,
+    DFSTestUtil.createFile(fileSys, name, fileSize, fileSize,
         blockSize, (short) replication, seed);
   }
   
@@ -127,11 +131,13 @@ public class TestPread {
   
   private void pReadFile(FileSystem fileSys, Path name) throws IOException {
     FSDataInputStream stm = fileSys.open(name);
-    byte[] expected = new byte[12 * blockSize];
+    byte[] expected = new byte[fileSize];
     if (simulatedStorage) {
-      for (int i= 0; i < expected.length; i++) {  
-        expected[i] = SimulatedFSDataset.DEFAULT_DATABYTE;
-      }
+      assert fileSys instanceof DistributedFileSystem;
+      DistributedFileSystem dfs = (DistributedFileSystem) fileSys;
+      LocatedBlocks lbs = dfs.getClient().getLocatedBlocks(name.toString(),
+          0, fileSize);
+      DFSTestUtil.fillExpectedBuf(lbs, expected);
     } else {
       Random rand = new Random(seed);
       rand.nextBytes(expected);
@@ -267,8 +273,8 @@ public class TestPread {
   public void testHedgedPreadDFSBasic() throws IOException {
     isHedgedRead = true;
     Configuration conf = new Configuration();
-    conf.setInt(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THREADPOOL_SIZE, 5);
-    conf.setLong(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THRESHOLD_MILLIS, 1);
+    conf.setInt(HdfsClientConfigKeys.HedgedRead.THREADPOOL_SIZE_KEY, 5);
+    conf.setLong(HdfsClientConfigKeys.HedgedRead.THRESHOLD_MILLIS_KEY, 1);
     dfsPreadTest(conf, false, true); // normal pread
     dfsPreadTest(conf, true, true); // trigger read code path without
                                     // transferTo.
@@ -280,11 +286,11 @@ public class TestPread {
     int numHedgedReadPoolThreads = 5;
     final int hedgedReadTimeoutMillis = 50;
 
-    conf.setInt(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THREADPOOL_SIZE,
+    conf.setInt(HdfsClientConfigKeys.HedgedRead.THREADPOOL_SIZE_KEY,
         numHedgedReadPoolThreads);
-    conf.setLong(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THRESHOLD_MILLIS,
+    conf.setLong(HdfsClientConfigKeys.HedgedRead.THRESHOLD_MILLIS_KEY,
         hedgedReadTimeoutMillis);
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 0);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 0);
     // Set up the InjectionHandler
     DFSClientFaultInjector.instance = Mockito
         .mock(DFSClientFaultInjector.class);
@@ -356,9 +362,9 @@ public class TestPread {
     int numHedgedReadPoolThreads = 5;
     final int initialHedgedReadTimeoutMillis = 50000;
     final int fixedSleepIntervalMillis = 50;
-    conf.setInt(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THREADPOOL_SIZE,
+    conf.setInt(HdfsClientConfigKeys.HedgedRead.THREADPOOL_SIZE_KEY,
         numHedgedReadPoolThreads);
-    conf.setLong(DFSConfigKeys.DFS_DFSCLIENT_HEDGED_READ_THRESHOLD_MILLIS,
+    conf.setLong(HdfsClientConfigKeys.HedgedRead.THRESHOLD_MILLIS_KEY,
         initialHedgedReadTimeoutMillis);
 
     // Set up the InjectionHandler
@@ -398,7 +404,14 @@ public class TestPread {
        * that there were hedged reads. But, none of the reads had to run in the
        * current thread.
        */
-      dfsClient.setHedgedReadTimeout(50); // 50ms
+      {
+        Configuration conf2 =  new Configuration(cluster.getConfiguration(0));
+        conf2.setBoolean("fs.hdfs.impl.disable.cache", true);
+        conf2.setLong(HdfsClientConfigKeys.HedgedRead.THRESHOLD_MILLIS_KEY, 50);
+        fileSys.close();
+        fileSys = (DistributedFileSystem)FileSystem.get(cluster.getURI(0), conf2);
+        metrics = fileSys.getClient().getHedgedReadMetrics();
+      }
       pReadFile(fileSys, file1);
       // assert that there were hedged reads
       assertTrue(metrics.getHedgedReadOps() > 0);
@@ -433,9 +446,9 @@ public class TestPread {
   private void dfsPreadTest(Configuration conf, boolean disableTransferTo, boolean verifyChecksum)
       throws IOException {
     conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, 4096);
-    conf.setLong(DFSConfigKeys.DFS_CLIENT_READ_PREFETCH_SIZE_KEY, 4096);
+    conf.setLong(HdfsClientConfigKeys.Read.PREFETCH_SIZE_KEY, 4096);
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 0);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 0);
     if (simulatedStorage) {
       SimulatedFSDataset.setFactory(conf);
     }
@@ -446,7 +459,7 @@ public class TestPread {
     FileSystem fileSys = cluster.getFileSystem();
     fileSys.setVerifyChecksum(verifyChecksum);
     try {
-      Path file1 = new Path("preadtest.dat");
+      Path file1 = new Path("/preadtest.dat");
       writeFile(fileSys, file1);
       pReadFile(fileSys, file1);
       datanodeRestartTest(cluster, fileSys, file1);

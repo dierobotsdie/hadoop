@@ -39,9 +39,11 @@
     <!-- number of threads/forks to use when running tests in parallel, see parallel-tests profile -->
     <testsThreadCount>4</testsThreadCount>
 
-    <!-- These 2 versions are defined here becuase they are used -->
+    <!-- These 2 versions are defined here because they are used -->
     <!-- JDIFF generation from embedded ant in the antrun plugin -->
     <jdiff.version>1.0.9</jdiff.version>
+    <!-- Version number for xerces used by JDiff -->
+    <xerces.jdiff.version>2.11.0</xerces.jdiff.version>
 
     <hadoop.assemblies.version>${project.version}</hadoop.assemblies.version>
 
@@ -156,6 +158,11 @@
       <dependency>
         <groupId>org.apache.hadoop</groupId>
         <artifactId>hadoop-hdfs</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-hdfs-client</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
@@ -833,6 +840,10 @@
             <groupId>org.jboss.netty</groupId>
             <artifactId>netty</artifactId>
           </exclusion>
+          <exclusion>
+            <groupId>jline</groupId>
+            <artifactId>jline</artifactId>
+          </exclusion>
         </exclusions>
       </dependency>
       <dependency>
@@ -902,9 +913,9 @@
       </dependency>
 
       <dependency>
-        <groupId>com.microsoft.windowsazure.storage</groupId>
-        <artifactId>microsoft-windowsazure-storage-sdk</artifactId>
-        <version>0.6.0</version>
+        <groupId>com.microsoft.azure</groupId>
+        <artifactId>azure-storage</artifactId>
+        <version>2.0.0</version>
      </dependency>
 
      <dependency>
@@ -940,6 +951,19 @@
        <scope>test</scope>
      </dependency>
       
+      <dependency>
+          <groupId>com.nimbusds</groupId>
+          <artifactId>nimbus-jose-jwt</artifactId>
+          <version>3.9</version>
+          <scope>compile</scope>
+          <exclusions>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+
     </dependencies>
   </dependencyManagement>
 

@@ -701,6 +701,8 @@ public class FairScheduler extends
           appRejectMsg = queueName + " is not a leaf queue";
         }
       }
+    } catch (InvalidQueueNameException qne) {
+      appRejectMsg = qne.getMessage();
     } catch (IOException ioe) {
       appRejectMsg = "Error assigning app to queue " + queueName;
     }
@@ -896,11 +898,8 @@ public class FairScheduler extends
         clusterResource, minimumAllocation, getMaximumResourceCapability(),
         incrAllocation);
 
-    // Set amResource for this app
-    if (!application.getUnmanagedAM() && ask.size() == 1
-        && application.getLiveContainers().isEmpty()) {
-      application.setAMResource(ask.get(0).getCapability());
-    }
+    // Record container allocation start time
+    application.recordContainerRequestTime(getClock().getTime());
 
     // Release containers
     releaseContainers(release, application);
@@ -929,7 +928,7 @@ public class FairScheduler extends
         LOG.debug("Preempting " + application.getPreemptionContainers().size()
             + " container(s)");
       }
-      
+
       Set<ContainerId> preemptionContainerIds = new HashSet<ContainerId>();
       for (RMContainer container : application.getPreemptionContainers()) {
         preemptionContainerIds.add(container.getContainerId());
@@ -938,9 +937,16 @@ public class FairScheduler extends
       application.updateBlacklist(blacklistAdditions, blacklistRemovals);
       ContainersAndNMTokensAllocation allocation =
           application.pullNewlyAllocatedContainersAndNMTokens();
-      return new Allocation(allocation.getContainerList(),
-        application.getHeadroom(), preemptionContainerIds, null, null,
-        allocation.getNMTokenList());
+
+      // Record container allocation time
+      if (!(allocation.getContainerList().isEmpty())) {
+        application.recordContainerAllocationTime(getClock().getTime());
+      }
+
+      Resource headroom = application.getHeadroom();
+      application.setApplicationHeadroomForMetrics(headroom);
+      return new Allocation(allocation.getContainerList(), headroom,
+          preemptionContainerIds, null, null, allocation.getNMTokenList());
     }
   }
   
@@ -1477,6 +1483,7 @@ public class FairScheduler extends
         allocConf = queueInfo;
         allocConf.getDefaultSchedulingPolicy().initialize(clusterResource);
         queueMgr.updateAllocationConfiguration(allocConf);
+        maxRunningEnforcer.updateRunnabilityOnReload();
       }
     }
   }

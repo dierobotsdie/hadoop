@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hdfs.server.namenode;
 
+import com.google.common.base.Preconditions;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
@@ -26,10 +27,13 @@ import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 public class ContentSummaryComputationContext {
   private FSDirectory dir = null;
   private FSNamesystem fsn = null;
-  private Content.Counts counts = null;
+  private BlockStoragePolicySuite bsps = null;
+  private ContentCounts counts = null;
   private long nextCountLimit = 0;
   private long limitPerRun = 0;
   private long yieldCount = 0;
+  private long sleepMilliSec = 0;
+  private int sleepNanoSec = 0;
 
   /**
    * Constructor
@@ -41,17 +45,20 @@ public class ContentSummaryComputationContext {
    *        no limit (i.e. no yielding)
    */
   public ContentSummaryComputationContext(FSDirectory dir,
-      FSNamesystem fsn, long limitPerRun) {
+      FSNamesystem fsn, long limitPerRun, long sleepMicroSec) {
     this.dir = dir;
     this.fsn = fsn;
     this.limitPerRun = limitPerRun;
     this.nextCountLimit = limitPerRun;
-    this.counts = Content.Counts.newInstance();
+    this.counts = new ContentCounts.Builder().build();
+    this.sleepMilliSec = sleepMicroSec/1000;
+    this.sleepNanoSec = (int)((sleepMicroSec%1000)*1000);
   }
 
   /** Constructor for blocking computation. */
-  public ContentSummaryComputationContext() {
-    this(null, null, 0);
+  public ContentSummaryComputationContext(BlockStoragePolicySuite bsps) {
+    this(null, null, 0, 1000);
+    this.bsps = bsps;
   }
 
   /** Return current yield count */
@@ -73,10 +80,10 @@ public class ContentSummaryComputationContext {
     }
 
     // Have we reached the limit?
-    long currentCount = counts.get(Content.FILE) +
-        counts.get(Content.SYMLINK) +
-        counts.get(Content.DIRECTORY) +
-        counts.get(Content.SNAPSHOTTABLE_DIRECTORY);
+    long currentCount = counts.getFileCount() +
+        counts.getSymlinkCount() +
+        counts.getDirectoryCount() +
+        counts.getSnapshotableDirectoryCount();
     if (currentCount <= nextCountLimit) {
       return false;
     }
@@ -102,7 +109,7 @@ public class ContentSummaryComputationContext {
     fsn.readUnlock();
 
     try {
-      Thread.sleep(1);
+      Thread.sleep(sleepMilliSec, sleepNanoSec);
     } catch (InterruptedException ie) {
     } finally {
       // reacquire
@@ -114,11 +121,15 @@ public class ContentSummaryComputationContext {
   }
 
   /** Get the content counts */
-  public Content.Counts getCounts() {
+  public ContentCounts getCounts() {
     return counts;
   }
 
   public BlockStoragePolicySuite getBlockStoragePolicySuite() {
-      return fsn.getBlockManager().getStoragePolicySuite();
+    Preconditions.checkState((bsps != null || fsn != null),
+        "BlockStoragePolicySuite must be either initialized or available via" +
+            " FSNameSystem");
+    return (bsps != null) ? bsps:
+        fsn.getBlockManager().getStoragePolicySuite();
   }
 }

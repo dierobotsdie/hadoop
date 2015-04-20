@@ -142,7 +142,7 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
     // Update usage metrics 
     Resource containerResource = rmContainer.getContainer().getResource();
     queue.getMetrics().releaseResources(getUser(), 1, containerResource);
-    Resources.subtractFrom(currentConsumption, containerResource);
+    this.attemptResourceUsage.decUsed(containerResource);
 
     // remove from preemption map if it is completed
     preemptionMap.remove(rmContainer);
@@ -164,11 +164,12 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
     resetReReservations(priority);
 
     Resource resource = reservedContainer.getContainer().getResource();
-    Resources.subtractFrom(currentReservation, resource);
+    this.attemptResourceUsage.decReserved(resource);
 
     LOG.info("Application " + getApplicationId() + " unreserved " + " on node "
-        + node + ", currently has " + reservedContainers.size() + " at priority "
-        + priority + "; currentReservation " + currentReservation);
+        + node + ", currently has " + reservedContainers.size()
+        + " at priority " + priority + "; currentReservation "
+        + this.attemptResourceUsage.getReserved());
   }
 
   @Override
@@ -339,7 +340,7 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
     // Update consumption and track allocations
     List<ResourceRequest> resourceRequestList = appSchedulingInfo.allocate(
         type, node, priority, request, container);
-    Resources.addTo(currentConsumption, container.getResource());
+    this.attemptResourceUsage.incUsed(container.getResource());
 
     // Update resource requests related to "request" and store in RMContainer
     ((RMContainerImpl) rmContainer).setResourceRequests(resourceRequestList);
@@ -522,8 +523,11 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
       // Inform the node
       node.allocateContainer(allocatedContainer);
 
-      // If this container is used to run AM, update the leaf queue's AM usage
-      if (getLiveContainers().size() == 1 && !getUnmanagedAM()) {
+      // If not running unmanaged, the first container we allocate is always
+      // the AM. Set the amResource for this app and update the leaf queue's AM
+      // usage
+      if (!isAmRunning() && !getUnmanagedAM()) {
+        setAMResource(container.getResource());
         getQueue().addAMResourceUsage(container.getResource());
         setAmRunning(true);
       }
@@ -550,6 +554,19 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
       LOG.debug("Node offered to app: " + getName() + " reserved: " + reserved);
     }
 
+    // Check the AM resource usage for the leaf queue
+    if (!isAmRunning() && !getUnmanagedAM()) {
+      List<ResourceRequest> ask = appSchedulingInfo.getAllResourceRequests();
+      if (ask.isEmpty() || !getQueue().canRunAppAM(
+          ask.get(0).getCapability())) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Skipping allocation because maxAMShare limit would " +
+              "be exceeded");
+        }
+        return Resources.none();
+      }
+    }
+
     Collection<Priority> prioritiesToTry = (reserved) ?
         Arrays.asList(node.getReservedContainer().getReservedPriority()) :
         getPriorities();
@@ -565,13 +582,6 @@ public class FSAppAttempt extends SchedulerApplicationAttempt
         }
 
         addSchedulingOpportunity(priority);
-
-        // Check the AM resource usage for the leaf queue
-        if (getLiveContainers().size() == 0 && !getUnmanagedAM()) {
-          if (!getQueue().canRunAppAM(getAMResource())) {
-            return Resources.none();
-          }
-        }
 
         ResourceRequest rackLocalRequest = getResourceRequest(priority,
             node.getRackName());

@@ -35,17 +35,16 @@ import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
+import org.apache.hadoop.hdfs.protocol.HdfsConstantsClient;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeDescriptor;
-import org.apache.hadoop.hdfs.server.common.GenerationStamp;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.DataNodeTestUtils;
 import org.apache.hadoop.hdfs.server.namenode.NameNode;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations.BlockWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.NamenodeProtocol;
 import org.apache.hadoop.ipc.RemoteException;
-import org.apache.hadoop.util.Time;
 import org.junit.Test;
 
 /**
@@ -132,7 +131,8 @@ public class TestGetBlocks {
       staleNodeInfo = cluster.getNameNode().getNamesystem().getBlockManager()
           .getDatanodeManager()
           .getDatanode(staleNode.getDatanodeId());
-      staleNodeInfo.setLastUpdate(Time.now() - staleInterval - 1);
+      DFSTestUtil.resetLastUpdatesWithOffset(staleNodeInfo,
+          -(staleInterval + 1));
 
       LocatedBlocks blocksAfterStale = client.getNamenode().getBlockLocations(
           fileName.toString(), 0, blockSize);
@@ -143,8 +143,7 @@ public class TestGetBlocks {
       // restart the staleNode's heartbeat
       DataNodeTestUtils.setHeartbeatsDisabledForTests(staleNode, false);
       // reset the first node as non-stale, so as to avoid two stale nodes
-      staleNodeInfo.setLastUpdate(Time.now());
-
+      DFSTestUtil.resetLastUpdatesWithOffset(staleNodeInfo, 0);
       LocatedBlock lastBlock = client.getLocatedBlocks(fileName.toString(), 0,
           Long.MAX_VALUE).getLastLocatedBlock();
       nodes = lastBlock.getLocations();
@@ -153,10 +152,10 @@ public class TestGetBlocks {
       staleNode = this.stopDataNodeHeartbeat(cluster, nodes[0].getHostName());
       assertNotNull(staleNode);
       // set the node as stale
-      cluster.getNameNode().getNamesystem().getBlockManager()
-          .getDatanodeManager()
-          .getDatanode(staleNode.getDatanodeId())
-          .setLastUpdate(Time.now() - staleInterval - 1);
+      DatanodeDescriptor dnDesc = cluster.getNameNode().getNamesystem()
+          .getBlockManager().getDatanodeManager()
+          .getDatanode(staleNode.getDatanodeId());
+      DFSTestUtil.resetLastUpdatesWithOffset(dnDesc, -(staleInterval + 1));
 
       LocatedBlock lastBlockAfterStale = client.getLocatedBlocks(
           fileName.toString(), 0, Long.MAX_VALUE).getLastLocatedBlock();
@@ -279,7 +278,7 @@ public class TestGetBlocks {
 
     for (int i = 0; i < blkids.length; i++) {
       Block b = new Block(blkids[i], 0,
-          GenerationStamp.GRANDFATHER_GENERATION_STAMP);
+          HdfsConstantsClient.GRANDFATHER_GENERATION_STAMP);
       Long v = map.get(b);
       System.out.println(b + " => " + v);
       assertEquals(blkids[i], v.longValue());

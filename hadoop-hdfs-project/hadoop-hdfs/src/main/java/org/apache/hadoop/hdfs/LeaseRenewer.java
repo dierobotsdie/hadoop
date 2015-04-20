@@ -30,6 +30,7 @@ import java.util.Map;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.HadoopIllegalArgumentException;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Daemon;
@@ -68,6 +69,7 @@ import com.google.common.annotations.VisibleForTesting;
  * </ul>
  * </p>
  */
+@InterfaceAudience.Private
 class LeaseRenewer {
   static final Log LOG = LogFactory.getLog(LeaseRenewer.class);
 
@@ -223,8 +225,9 @@ class LeaseRenewer {
     dfsclients.add(dfsc);
 
     //update renewal time
-    if (dfsc.getHdfsTimeout() > 0) {
-      final long half = dfsc.getHdfsTimeout()/2;
+    final int hdfsTimeout = dfsc.getConf().getHdfsTimeout();
+    if (hdfsTimeout > 0) {
+      final long half = hdfsTimeout/2;
       if (half < renewal) {
         this.renewal = half;
       }
@@ -278,7 +281,7 @@ class LeaseRenewer {
   /** Is the empty period longer than the grace period? */  
   private synchronized boolean isRenewerExpired() {
     return emptyTime != Long.MAX_VALUE
-        && Time.now() - emptyTime > gracePeriod;
+        && Time.monotonicNow() - emptyTime > gracePeriod;
   }
 
   synchronized void put(final long inodeId, final DFSOutputStream out,
@@ -346,7 +349,7 @@ class LeaseRenewer {
           }
         }
         //discover the first time that all file-being-written maps are empty.
-        emptyTime = Time.now();
+        emptyTime = Time.monotonicNow();
       }
     }
   }
@@ -361,19 +364,17 @@ class LeaseRenewer {
       }
       if (emptyTime == Long.MAX_VALUE) {
         //discover the first time that the client list is empty.
-        emptyTime = Time.now();
+        emptyTime = Time.monotonicNow();
       }
     }
 
     //update renewal time
-    if (renewal == dfsc.getHdfsTimeout()/2) {
+    if (renewal == dfsc.getConf().getHdfsTimeout()/2) {
       long min = HdfsConstants.LEASE_SOFTLIMIT_PERIOD;
       for(DFSClient c : dfsclients) {
-        if (c.getHdfsTimeout() > 0) {
-          final long timeout = c.getHdfsTimeout();
-          if (timeout < min) {
-            min = timeout;
-          }
+        final int timeout = c.getConf().getHdfsTimeout();
+        if (timeout > 0 && timeout < min) {
+          min = timeout;
         }
       }
       renewal = min/2;
@@ -434,9 +435,9 @@ class LeaseRenewer {
    * when the lease period is half over.
    */
   private void run(final int id) throws InterruptedException {
-    for(long lastRenewed = Time.now(); !Thread.interrupted();
+    for(long lastRenewed = Time.monotonicNow(); !Thread.interrupted();
         Thread.sleep(getSleepPeriod())) {
-      final long elapsed = Time.now() - lastRenewed;
+      final long elapsed = Time.monotonicNow() - lastRenewed;
       if (elapsed >= getRenewalTime()) {
         try {
           renew();
@@ -444,7 +445,7 @@ class LeaseRenewer {
             LOG.debug("Lease renewer daemon for " + clientsString()
                 + " with renew id " + id + " executed");
           }
-          lastRenewed = Time.now();
+          lastRenewed = Time.monotonicNow();
         } catch (SocketTimeoutException ie) {
           LOG.warn("Failed to renew lease for " + clientsString() + " for "
               + (elapsed/1000) + " seconds.  Aborting ...", ie);
@@ -479,7 +480,7 @@ class LeaseRenewer {
         // registered with this renewer, stop the daemon after the grace
         // period.
         if (!clientsRunning() && emptyTime == Long.MAX_VALUE) {
-          emptyTime = Time.now();
+          emptyTime = Time.monotonicNow();
         }
       }
     }

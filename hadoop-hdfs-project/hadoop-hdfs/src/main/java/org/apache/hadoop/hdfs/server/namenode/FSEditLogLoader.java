@@ -19,7 +19,7 @@ package org.apache.hadoop.hdfs.server.namenode;
 
 import static org.apache.hadoop.hdfs.server.namenode.FSEditLogOp.TruncateOp;
 import static org.apache.hadoop.hdfs.server.namenode.FSImageFormat.renameReservedPathsOnUpgrade;
-import static org.apache.hadoop.util.Time.now;
+import static org.apache.hadoop.util.Time.monotonicNow;
 
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -34,6 +34,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.fs.XAttrSetFlag;
+import org.apache.hadoop.hdfs.protocol.HdfsConstantsClient;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.protocol.Block;
@@ -136,13 +137,13 @@ public class FSEditLogLoader {
     prog.beginStep(Phase.LOADING_EDITS, step);
     fsNamesys.writeLock();
     try {
-      long startTime = now();
+      long startTime = monotonicNow();
       FSImage.LOG.info("Start loading edits file " + edits.getName());
       long numEdits = loadEditRecords(edits, false, expectedStartingTxId,
           startOpt, recovery);
       FSImage.LOG.info("Edits file " + edits.getName() 
           + " of size " + edits.length() + " edits # " + numEdits 
-          + " loaded in " + (now()-startTime)/1000 + " seconds");
+          + " loaded in " + (monotonicNow()-startTime)/1000 + " seconds");
       return numEdits;
     } finally {
       edits.close();
@@ -177,7 +178,7 @@ public class FSEditLogLoader {
     Step step = createStartupProgressStep(in);
     prog.setTotal(Phase.LOADING_EDITS, step, numTxns);
     Counter counter = prog.getCounter(Phase.LOADING_EDITS, step);
-    long lastLogTime = now();
+    long lastLogTime = monotonicNow();
     long lastInodeId = fsNamesys.dir.getLastInodeId();
     
     try {
@@ -257,7 +258,7 @@ public class FSEditLogLoader {
           }
           // log progress
           if (op.hasTransactionId()) {
-            long now = now();
+            long now = monotonicNow();
             if (now - lastLogTime > REPLAY_TRANSACTION_LOG_INTERVAL) {
               long deltaTxId = lastAppliedTxId - expectedStartingTxId + 1;
               int percent = Math.round((float) deltaTxId / numTxns * 100);
@@ -301,7 +302,7 @@ public class FSEditLogLoader {
       long lastInodeId) throws IOException {
     long inodeId = inodeIdFromOp;
 
-    if (inodeId == INodeId.GRANDFATHER_INODE_ID) {
+    if (inodeId == HdfsConstantsClient.GRANDFATHER_INODE_ID) {
       if (NameNodeLayoutVersion.supports(
           LayoutVersion.Feature.ADD_INODE_ID, logVersion)) {
         throw new IOException("The layout version " + logVersion
@@ -321,7 +322,7 @@ public class FSEditLogLoader {
   @SuppressWarnings("deprecation")
   private long applyEditLogOp(FSEditLogOp op, FSDirectory fsDir,
       StartupOption startOpt, int logVersion, long lastInodeId) throws IOException {
-    long inodeId = INodeId.GRANDFATHER_INODE_ID;
+    long inodeId = HdfsConstantsClient.GRANDFATHER_INODE_ID;
     if (LOG.isTraceEnabled()) {
       LOG.trace("replaying edit log: " + op);
     }
@@ -378,7 +379,7 @@ public class FSEditLogLoader {
         // add the op into retry cache if necessary
         if (toAddRetryCache) {
           HdfsFileStatus stat = FSDirStatAndListingOp.createFileStatus(
-              fsNamesys.dir, HdfsFileStatus.EMPTY_NAME, newFile,
+              fsNamesys.dir, path, HdfsFileStatus.EMPTY_NAME, newFile,
               BlockStoragePolicySuite.ID_UNSPECIFIED, Snapshot.CURRENT_STATE_ID,
               false, iip);
           fsNamesys.addCacheEntryWithPayload(addCloseOp.rpcClientId,
@@ -397,7 +398,7 @@ public class FSEditLogLoader {
           // add the op into retry cache if necessary
           if (toAddRetryCache) {
             HdfsFileStatus stat = FSDirStatAndListingOp.createFileStatus(
-                fsNamesys.dir,
+                fsNamesys.dir, path,
                 HdfsFileStatus.EMPTY_NAME, newFile,
                 BlockStoragePolicySuite.ID_UNSPECIFIED,
                 Snapshot.CURRENT_STATE_ID, false, iip);
@@ -471,7 +472,7 @@ public class FSEditLogLoader {
         // add the op into retry cache if necessary
         if (toAddRetryCache) {
           HdfsFileStatus stat = FSDirStatAndListingOp.createFileStatus(
-              fsNamesys.dir, HdfsFileStatus.EMPTY_NAME, file,
+              fsNamesys.dir, path, HdfsFileStatus.EMPTY_NAME, file,
               BlockStoragePolicySuite.ID_UNSPECIFIED,
               Snapshot.CURRENT_STATE_ID, false, iip);
           fsNamesys.addCacheEntryWithPayload(appendOp.rpcClientId,

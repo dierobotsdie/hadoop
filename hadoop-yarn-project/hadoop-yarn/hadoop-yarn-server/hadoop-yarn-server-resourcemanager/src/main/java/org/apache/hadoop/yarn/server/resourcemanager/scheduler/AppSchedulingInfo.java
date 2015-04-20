@@ -20,8 +20,6 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -75,10 +73,11 @@ public class AppSchedulingInfo {
   /* Allocated by scheduler */
   boolean pending = true; // for app metrics
   
+  private ResourceUsage appResourceUsage;
  
   public AppSchedulingInfo(ApplicationAttemptId appAttemptId,
       String user, Queue queue, ActiveUsersManager activeUsersManager,
-      long epoch) {
+      long epoch, ResourceUsage appResourceUsage) {
     this.applicationAttemptId = appAttemptId;
     this.applicationId = appAttemptId.getApplicationId();
     this.queue = queue;
@@ -86,6 +85,7 @@ public class AppSchedulingInfo {
     this.user = user;
     this.activeUsersManager = activeUsersManager;
     this.containerIdCounter = new AtomicLong(epoch << EPOCH_BIT_SHIFT);
+    this.appResourceUsage = appResourceUsage;
   }
 
   public ApplicationId getApplicationId() {
@@ -191,6 +191,22 @@ public class AppSchedulingInfo {
             request.getCapability());
         metrics.decrPendingResources(user, lastRequestContainers,
             lastRequestCapability);
+        
+        // update queue:
+        Resource increasedResource = Resources.multiply(request.getCapability(),
+            request.getNumContainers());
+        queue.incPendingResource(
+            request.getNodeLabelExpression(),
+            increasedResource);
+        appResourceUsage.incPending(request.getNodeLabelExpression(), increasedResource);
+        if (lastRequest != null) {
+          Resource decreasedResource =
+              Resources.multiply(lastRequestCapability, lastRequestContainers);
+          queue.decPendingResource(lastRequest.getNodeLabelExpression(),
+              decreasedResource);
+          appResourceUsage.decPending(lastRequest.getNodeLabelExpression(),
+              decreasedResource);
+        }
       }
     }
   }
@@ -239,7 +255,7 @@ public class AppSchedulingInfo {
 
   public synchronized Resource getResource(Priority priority) {
     ResourceRequest request = getResourceRequest(priority, ResourceRequest.ANY);
-    return request.getCapability();
+    return (request == null) ? null : request.getCapability();
   }
 
   public synchronized boolean isBlacklisted(String resourceName) {
@@ -376,15 +392,22 @@ public class AppSchedulingInfo {
     if (numOffSwitchContainers == 0) {
       checkForDeactivation();
     }
+    
+    appResourceUsage.decPending(offSwitchRequest.getNodeLabelExpression(),
+        offSwitchRequest.getCapability());
+    queue.decPendingResource(offSwitchRequest.getNodeLabelExpression(),
+        offSwitchRequest.getCapability());
   }
   
   synchronized private void checkForDeactivation() {
     boolean deactivate = true;
     for (Priority priority : getPriorities()) {
       ResourceRequest request = getResourceRequest(priority, ResourceRequest.ANY);
-      if (request.getNumContainers() > 0) {
-        deactivate = false;
-        break;
+      if (request != null) {
+        if (request.getNumContainers() > 0) {
+          deactivate = false;
+          break;
+        }
       }
     }
     if (deactivate) {
@@ -402,6 +425,12 @@ public class AppSchedulingInfo {
             request.getCapability());
         newMetrics.incrPendingResources(user, request.getNumContainers(),
             request.getCapability());
+        
+        Resource delta = Resources.multiply(request.getCapability(),
+            request.getNumContainers()); 
+        // Update Queue
+        queue.decPendingResource(request.getNodeLabelExpression(), delta);
+        newQueue.incPendingResource(request.getNodeLabelExpression(), delta);
       }
     }
     oldMetrics.moveAppFrom(this);
@@ -421,6 +450,12 @@ public class AppSchedulingInfo {
       if (request != null) {
         metrics.decrPendingResources(user, request.getNumContainers(),
             request.getCapability());
+        
+        // Update Queue
+        queue.decPendingResource(
+            request.getNodeLabelExpression(),
+            Resources.multiply(request.getCapability(),
+                request.getNumContainers()));
       }
     }
     metrics.finishAppAttempt(applicationId, pending, user);
@@ -435,6 +470,10 @@ public class AppSchedulingInfo {
 
   public synchronized Set<String> getBlackList() {
     return this.blacklist;
+  }
+
+  public synchronized Set<String> getBlackListCopy() {
+    return new HashSet<>(this.blacklist);
   }
 
   public synchronized void transferStateFromPreviousAppSchedulingInfo(
@@ -463,9 +502,10 @@ public class AppSchedulingInfo {
   }
   
   public ResourceRequest cloneResourceRequest(ResourceRequest request) {
-    ResourceRequest newRequest = ResourceRequest.newInstance(
-        request.getPriority(), request.getResourceName(),
-        request.getCapability(), 1, request.getRelaxLocality());
+    ResourceRequest newRequest =
+        ResourceRequest.newInstance(request.getPriority(),
+            request.getResourceName(), request.getCapability(), 1,
+            request.getRelaxLocality(), request.getNodeLabelExpression());
     return newRequest;
   }
 }

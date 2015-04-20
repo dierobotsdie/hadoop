@@ -23,6 +23,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience.Private;
 import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -31,6 +33,7 @@ import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueACL;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
 import org.apache.hadoop.yarn.api.records.QueueState;
+import org.apache.hadoop.yarn.api.records.QueueStatistics;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
@@ -41,6 +44,9 @@ import org.apache.hadoop.yarn.util.resource.Resources;
 @Private
 @Unstable
 public abstract class FSQueue implements Queue, Schedulable {
+  private static final Log LOG = LogFactory.getLog(
+      FSQueue.class.getName());
+
   private Resource fairShare = Resources.createResource(0, 0);
   private Resource steadyFairShare = Resources.createResource(0, 0);
   private final String name;
@@ -147,7 +153,29 @@ public abstract class FSQueue implements Queue, Schedulable {
     }
     queueInfo.setChildQueues(childQueueInfos);
     queueInfo.setQueueState(QueueState.RUNNING);
+    queueInfo.setQueueStatistics(getQueueStatistics());
     return queueInfo;
+  }
+
+  public QueueStatistics getQueueStatistics() {
+    QueueStatistics stats =
+        recordFactory.newRecordInstance(QueueStatistics.class);
+    stats.setNumAppsSubmitted(getMetrics().getAppsSubmitted());
+    stats.setNumAppsRunning(getMetrics().getAppsRunning());
+    stats.setNumAppsPending(getMetrics().getAppsPending());
+    stats.setNumAppsCompleted(getMetrics().getAppsCompleted());
+    stats.setNumAppsKilled(getMetrics().getAppsKilled());
+    stats.setNumAppsFailed(getMetrics().getAppsFailed());
+    stats.setNumActiveUsers(getMetrics().getActiveUsers());
+    stats.setAvailableMemoryMB(getMetrics().getAvailableMB());
+    stats.setAllocatedMemoryMB(getMetrics().getAllocatedMB());
+    stats.setPendingMemoryMB(getMetrics().getPendingMB());
+    stats.setReservedMemoryMB(getMetrics().getReservedMB());
+    stats.setAvailableVCores(getMetrics().getAvailableVirtualCores());
+    stats.setAllocatedVCores(getMetrics().getAllocatedVirtualCores());
+    stats.setPendingVCores(getMetrics().getPendingVirtualCores());
+    stats.setReservedVCores(getMetrics().getReservedVirtualCores());
+    return stats;
   }
   
   @Override
@@ -164,6 +192,9 @@ public abstract class FSQueue implements Queue, Schedulable {
   public void setFairShare(Resource fairShare) {
     this.fairShare = fairShare;
     metrics.setFairShare(fairShare);
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("The updated fairShare for " + getName() + " is " + fairShare);
+    }
   }
 
   /** Get the steady fair share assigned to this Schedulable. */
@@ -290,5 +321,13 @@ public abstract class FSQueue implements Queue, Schedulable {
   public String getDefaultNodeLabelExpression() {
     // TODO, add implementation for FS
     return null;
+  }
+  
+  @Override
+  public void incPendingResource(String nodeLabel, Resource resourceToInc) {
+  }
+  
+  @Override
+  public void decPendingResource(String nodeLabel, Resource resourceToDec) {
   }
 }

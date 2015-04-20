@@ -26,6 +26,7 @@ import java.util.EnumSet;
 import java.util.List;
 
 import com.google.common.base.Preconditions;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -36,16 +37,19 @@ import org.apache.hadoop.hdfs.DFSTestUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
+import org.apache.hadoop.hdfs.protocol.BlockListAsLongs.BlockReportReplica;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+import org.apache.hadoop.hdfs.protocol.HdfsConstantsClient;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManagerTestUtil;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.DataStorage;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
+import org.apache.hadoop.hdfs.server.protocol.BlockReportContext;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeCommand;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeProtocol;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
@@ -592,7 +596,7 @@ public class NNThroughputBenchmark implements Tool {
       long end = Time.now();
       for(boolean written = !closeUponCreate; !written; 
         written = nameNodeProto.complete(fileNames[daemonId][inputIdx],
-                                    clientName, null, INodeId.GRANDFATHER_INODE_ID));
+                                    clientName, null, HdfsConstantsClient.GRANDFATHER_INODE_ID));
       return end-start;
     }
 
@@ -891,9 +895,9 @@ public class NNThroughputBenchmark implements Tool {
     NamespaceInfo nsInfo;
     DatanodeRegistration dnRegistration;
     DatanodeStorage storage; //only one storage 
-    final ArrayList<Block> blocks;
+    final ArrayList<BlockReportReplica> blocks;
     int nrBlocks; // actual number of blocks
-    long[] blockReportList;
+    BlockListAsLongs blockReportList;
     final int dnIdx;
 
     private static int getNodePort(int num) throws IOException {
@@ -904,7 +908,7 @@ public class NNThroughputBenchmark implements Tool {
 
     TinyDatanode(int dnIdx, int blockCapacity) throws IOException {
       this.dnIdx = dnIdx;
-      this.blocks = new ArrayList<Block>(blockCapacity);
+      this.blocks = new ArrayList<BlockReportReplica>(blockCapacity);
       this.nrBlocks = 0;
     }
 
@@ -934,11 +938,11 @@ public class NNThroughputBenchmark implements Tool {
       //first block reports
       storage = new DatanodeStorage(DatanodeStorage.generateUuid());
       final StorageBlockReport[] reports = {
-          new StorageBlockReport(storage,
-              new BlockListAsLongs(null, null).getBlockListAsLongs())
+          new StorageBlockReport(storage, BlockListAsLongs.EMPTY)
       };
       nameNodeProto.blockReport(dnRegistration, 
-          nameNode.getNamesystem().getBlockPoolId(), reports);
+          nameNode.getNamesystem().getBlockPoolId(), reports,
+              new BlockReportContext(1, 0, System.nanoTime()));
     }
 
     /**
@@ -968,19 +972,21 @@ public class NNThroughputBenchmark implements Tool {
         }
         return false;
       }
-      blocks.set(nrBlocks, blk);
+      blocks.set(nrBlocks, new BlockReportReplica(blk));
       nrBlocks++;
       return true;
     }
 
     void formBlockReport() {
       // fill remaining slots with blocks that do not exist
-      for(int idx = blocks.size()-1; idx >= nrBlocks; idx--)
-        blocks.set(idx, new Block(blocks.size() - idx, 0, 0));
-      blockReportList = new BlockListAsLongs(blocks).getBlockListAsLongs();
+      for (int idx = blocks.size()-1; idx >= nrBlocks; idx--) {
+        Block block = new Block(blocks.size() - idx, 0, 0);
+        blocks.set(idx, new BlockReportReplica(block));
+      }
+      blockReportList = BlockListAsLongs.EMPTY;
     }
 
-    long[] getBlockReportList() {
+    BlockListAsLongs getBlockReportList() {
       return blockReportList;
     }
 
@@ -1136,7 +1142,7 @@ public class NNThroughputBenchmark implements Tool {
             new EnumSetWritable<CreateFlag>(EnumSet.of(CreateFlag.CREATE, CreateFlag.OVERWRITE)), true, replication,
             BLOCK_SIZE, null);
         ExtendedBlock lastBlock = addBlocks(fileName, clientName);
-        nameNodeProto.complete(fileName, clientName, lastBlock, INodeId.GRANDFATHER_INODE_ID);
+        nameNodeProto.complete(fileName, clientName, lastBlock, HdfsConstantsClient.GRANDFATHER_INODE_ID);
       }
       // prepare block reports
       for(int idx=0; idx < nrDatanodes; idx++) {
@@ -1149,7 +1155,7 @@ public class NNThroughputBenchmark implements Tool {
       ExtendedBlock prevBlock = null;
       for(int jdx = 0; jdx < blocksPerFile; jdx++) {
         LocatedBlock loc = nameNodeProto.addBlock(fileName, clientName,
-            prevBlock, null, INodeId.GRANDFATHER_INODE_ID, null);
+            prevBlock, null, HdfsConstantsClient.GRANDFATHER_INODE_ID, null);
         prevBlock = loc.getBlock();
         for(DatanodeInfo dnInfo : loc.getLocations()) {
           int dnIdx = Arrays.binarySearch(datanodes, dnInfo.getXferAddr());
@@ -1181,8 +1187,9 @@ public class NNThroughputBenchmark implements Tool {
       long start = Time.now();
       StorageBlockReport[] report = { new StorageBlockReport(
           dn.storage, dn.getBlockReportList()) };
-      nameNodeProto.blockReport(dn.dnRegistration, nameNode.getNamesystem()
-          .getBlockPoolId(), report);
+      nameNodeProto.blockReport(dn.dnRegistration,
+          nameNode.getNamesystem().getBlockPoolId(), report,
+          new BlockReportContext(1, 0, System.nanoTime()));
       long end = Time.now();
       return end-start;
     }

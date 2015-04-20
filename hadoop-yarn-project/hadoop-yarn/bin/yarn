@@ -25,6 +25,7 @@ function hadoop_usage
   echo "  applicationattempt                    prints applicationattempt(s) report"
   echo "  classpath                             prints the class path needed to get the"
   echo "                                        Hadoop jar and the required libraries"
+  echo "  cluster                               prints cluster information"
   echo "  container                             prints container(s) report"
   echo "  daemonlog                             get/set the log level for each daemon"
   echo "  jar <jar>                             run a jar file"
@@ -39,6 +40,7 @@ function hadoop_usage
   echo "  scmadmin                              SharedCacheManager admin tools"
   echo "  sharedcachemanager                    run the SharedCacheManager daemon"
   echo "  timelineserver                        run the timeline server"
+  echo "  top                                   view cluster information"
   echo "  version                               print the version"
   echo ""
   echo "Most commands print help when invoked w/o parameters."
@@ -81,7 +83,12 @@ case "${COMMAND}" in
     set -- "${COMMAND}" "$@"
   ;;
   classpath)
-    hadoop_do_classpath_subcommand "$@"
+    hadoop_do_classpath_subcommand CLASS "$@"
+  ;;
+  cluster)
+    CLASS=org.apache.hadoop.yarn.client.cli.ClusterCLI
+    hadoop_debug "Append YARN_CLIENT_OPTS onto YARN_OPTS"
+    YARN_OPTS="${YARN_OPTS} ${YARN_CLIENT_OPTS}"
   ;;
   daemonlog)
     CLASS=org.apache.hadoop.log.LogLevel
@@ -173,6 +180,37 @@ case "${COMMAND}" in
   ;;
   version)
     CLASS=org.apache.hadoop.util.VersionInfo
+    hadoop_debug "Append YARN_CLIENT_OPTS onto HADOOP_OPTS"
+    HADOOP_OPTS="${HADOOP_OPTS} ${YARN_CLIENT_OPTS}"
+  ;;
+  top)
+    doNotSetCols=0
+    doNotSetRows=0
+    for i in "$@"; do
+      if [[ $i == "-cols" ]]; then
+        doNotSetCols=1
+      fi
+      if [[ $i == "-rows" ]]; then
+        doNotSetRows=1
+      fi
+    done
+    if [ $doNotSetCols == 0 ] && [ -n "${TERM}" ]; then
+      cols=$(tput cols)
+      if [ -n "$cols" ]; then
+        args=( $@ )
+        args=("${args[@]}" "-cols" "$cols")
+        set -- "${args[@]}"
+      fi
+    fi
+    if [ $doNotSetRows == 0 ] && [ -n "${TERM}" ]; then
+      rows=$(tput lines)
+      if [ -n "$rows" ]; then
+        args=( $@ )
+        args=("${args[@]}" "-rows" "$rows")
+        set -- "${args[@]}"
+      fi
+    fi
+    CLASS=org.apache.hadoop.yarn.client.cli.TopCLI
     hadoop_debug "Append YARN_CLIENT_OPTS onto HADOOP_OPTS"
     HADOOP_OPTS="${HADOOP_OPTS} ${YARN_CLIENT_OPTS}"
   ;;

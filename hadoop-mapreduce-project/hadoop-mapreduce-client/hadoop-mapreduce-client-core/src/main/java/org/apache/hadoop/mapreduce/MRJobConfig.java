@@ -49,6 +49,11 @@ public interface MRJobConfig {
 
   public static final String TASK_CLEANUP_NEEDED = "mapreduce.job.committer.task.cleanup.needed";
 
+  public static final String TASK_PROGRESS_REPORT_INTERVAL =
+      "mapreduce.task.progress-report.interval";
+  /** The number of milliseconds between progress reports. */
+  public static final int DEFAULT_TASK_PROGRESS_REPORT_INTERVAL = 3000;
+
   public static final String JAR = "mapreduce.job.jar";
 
   public static final String ID = "mapreduce.job.id";
@@ -305,6 +310,7 @@ public interface MRJobConfig {
     = "mapreduce.reduce.shuffle.memory.limit.percent";
 
   public static final String SHUFFLE_MERGE_PERCENT = "mapreduce.reduce.shuffle.merge.percent";
+  public static final float DEFAULT_SHUFFLE_MERGE_PERCENT = 0.66f;
 
   public static final String REDUCE_FAILURES_MAXPERCENT = "mapreduce.reduce.failures.maxpercent";
 
@@ -360,6 +366,8 @@ public interface MRJobConfig {
   public static final String COMBINE_RECORDS_BEFORE_PROGRESS = "mapreduce.task.combine.progress.records";
 
   public static final String JOB_NAMENODES = "mapreduce.job.hdfs-servers";
+
+  public static final String JOB_NAMENODES_TOKEN_RENEWAL_EXCLUDE = "mapreduce.job.hdfs-servers.token-renewal.exclude";
 
   public static final String JOB_JOBTRACKER_ID = "mapreduce.job.kerberos.jtprinicipal";
 
@@ -504,6 +512,14 @@ public interface MRJobConfig {
   public static final int DEFAULT_MR_AM_CONTAINERLAUNCHER_THREAD_COUNT_LIMIT = 
       500;
 
+  /**
+   * The initial size of thread pool to launch containers in the app master
+   */
+  public static final String MR_AM_CONTAINERLAUNCHER_THREADPOOL_INITIAL_SIZE =
+      MR_AM_PREFIX+"containerlauncher.threadpool-initial-size";
+  public static final int DEFAULT_MR_AM_CONTAINERLAUNCHER_THREADPOOL_INITIAL_SIZE =
+      10;
+
   /** Number of threads to handle job client RPC requests.*/
   public static final String MR_AM_JOB_CLIENT_THREAD_COUNT =
     MR_AM_PREFIX + "job.client.thread-count";
@@ -643,6 +659,11 @@ public interface MRJobConfig {
       MR_AM_PREFIX + "history.use-batched-flush.queue-size.threshold";
   public static final int DEFAULT_MR_AM_HISTORY_USE_BATCHED_FLUSH_QUEUE_SIZE_THRESHOLD =
       50;
+
+  public static final String MR_AM_HARD_KILL_TIMEOUT_MS =
+      MR_AM_PREFIX + "hard-kill-timeout-ms";
+  public static final long DEFAULT_MR_AM_HARD_KILL_TIMEOUT_MS =
+      10 * 1000l;
 
   /**
    * The threshold in terms of seconds after which an unsatisfied mapper request

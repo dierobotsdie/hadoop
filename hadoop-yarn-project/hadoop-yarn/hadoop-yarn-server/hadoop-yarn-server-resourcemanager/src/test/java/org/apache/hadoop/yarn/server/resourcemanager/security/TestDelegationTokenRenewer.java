@@ -89,6 +89,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppState;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.TestUtils;
+import org.apache.hadoop.yarn.server.resourcemanager.security.DelegationTokenRenewer.DelegationTokenToRenew;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
 import org.junit.After;
 import org.junit.Assert;
@@ -109,7 +110,8 @@ import com.google.common.base.Supplier;
 public class TestDelegationTokenRenewer {
   private static final Log LOG = 
       LogFactory.getLog(TestDelegationTokenRenewer.class);
-  private static final Text KIND = new Text("HDFS_DELEGATION_TOKEN");
+  private static final Text KIND =
+      DelegationTokenRenewer.HDFS_DELEGATION_KIND;
   
   private static BlockingQueue<Event> eventQueue;
   private static volatile AtomicInteger counter;
@@ -123,7 +125,7 @@ public class TestDelegationTokenRenewer {
       counter = 0;
       lastRenewed = null;
       tokenToRenewIn2Sec = null;
-
+      cancelled = false;
     }
 
     @Override
@@ -287,9 +289,16 @@ public class TestDelegationTokenRenewer {
    * exception
    */
   static class MyFS extends DistributedFileSystem {
-    
-    public MyFS() {}
-    public void close() {}
+    private static AtomicInteger instanceCounter = new AtomicInteger();
+    public MyFS() {
+      instanceCounter.incrementAndGet();
+    }
+    public void close() {
+      instanceCounter.decrementAndGet();
+    }
+    public static int getInstanceCounter() {
+      return instanceCounter.get();
+    }
     @Override
     public void initialize(URI uri, Configuration conf) throws IOException {}
     
@@ -298,6 +307,11 @@ public class TestDelegationTokenRenewer {
       MyToken result = createTokens(new Text(renewer));
       LOG.info("Called MYDFS.getdelegationtoken " + result);
       return result;
+    }
+
+    public Token<?>[] addDelegationTokens(
+        final String renewer, Credentials credentials) throws IOException {
+      return new Token<?>[0];
     }
   }
   
@@ -467,7 +481,26 @@ public class TestDelegationTokenRenewer {
     }
     fail("App submission with a cancelled token should have failed");
   }
-  
+
+  // Testcase for YARN-3021, let RM skip renewing token if the renewer string
+  // is empty
+  @Test(timeout=60000)
+  public void testAppTokenWithNonRenewer() throws Exception {
+    MyFS dfs = (MyFS)FileSystem.get(conf);
+    LOG.info("dfs="+(Object)dfs.hashCode() + ";conf="+conf.hashCode());
+
+    // Test would fail if using non-empty renewer string here
+    MyToken token = dfs.getDelegationToken("");
+    token.cancelToken();
+
+    Credentials ts = new Credentials();
+    ts.addToken(token.getKind(), token);
+    
+    // register the tokens for renewal
+    ApplicationId appId =  BuilderUtils.newApplicationId(0, 0);
+    delegationTokenRenewer.addApplicationSync(appId, ts, true, "user");
+  }
+
   /**
    * Basic idea of the test:
    * 1. register a token for 2 seconds with no cancel at the end
@@ -708,7 +741,7 @@ public class TestDelegationTokenRenewer {
       throws IOException, InterruptedException, BrokenBarrierException {
     final Credentials credsx = new Credentials();
     final Token<DelegationTokenIdentifier> tokenx = mock(Token.class);
-    when(tokenx.getKind()).thenReturn(new Text("HDFS_DELEGATION_TOKEN"));
+    when(tokenx.getKind()).thenReturn(KIND);
     DelegationTokenIdentifier dtId1 = 
         new DelegationTokenIdentifier(new Text("user1"), new Text("renewer"),
           new Text("user1"));
@@ -752,7 +785,7 @@ public class TestDelegationTokenRenewer {
     // this token uses barriers to block during renew                          
     final Credentials creds1 = new Credentials();                              
     final Token<DelegationTokenIdentifier> token1 = mock(Token.class);    
-    when(token1.getKind()).thenReturn(new Text("HDFS_DELEGATION_TOKEN"));
+    when(token1.getKind()).thenReturn(KIND);
     DelegationTokenIdentifier dtId1 = 
         new DelegationTokenIdentifier(new Text("user1"), new Text("renewer"),
           new Text("user1"));
@@ -770,7 +803,7 @@ public class TestDelegationTokenRenewer {
     // this dummy token fakes renewing                                         
     final Credentials creds2 = new Credentials();                              
     final Token<DelegationTokenIdentifier> token2 = mock(Token.class);           
-    when(token2.getKind()).thenReturn(new Text("HDFS_DELEGATION_TOKEN"));
+    when(token2.getKind()).thenReturn(KIND);
     when(token2.decodeIdentifier()).thenReturn(dtId1);
     creds2.addToken(new Text("token"), token2);                                
     doReturn(true).when(token2).isManaged();                                   
@@ -893,7 +926,16 @@ public class TestDelegationTokenRenewer {
           new HashMap<ApplicationAccessType, String>(), false, "default", 1,
           credentials);
 
-    // wait for the initial expiring hdfs token to be removed.
+    // wait for the initial expiring hdfs token to be removed from allTokens
+    GenericTestUtils.waitFor(new Supplier<Boolean>() {
+      public Boolean get() {
+        return
+            rm.getRMContext().getDelegationTokenRenewer().getAllTokens()
+            .get(token1) == null;
+      }
+    }, 1000, 20000);
+
+    // wait for the initial expiring hdfs token to be removed from appTokens
     GenericTestUtils.waitFor(new Supplier<Boolean>() {
       public Boolean get() {
         return !rm.getRMContext().getDelegationTokenRenewer()
@@ -1021,5 +1063,101 @@ public class TestDelegationTokenRenewer {
     MockRM.finishAMAndVerifyAppState(app1, rm, nm1, am1);
     // app2 completes, app1 is still running, check the token is not cancelled
     Assert.assertFalse(Renewer.cancelled);
+  }
+
+  // Test FileSystem memory leak in obtainSystemTokensForUser.
+  @Test
+  public void testFSLeakInObtainSystemTokensForUser() throws Exception{
+    Credentials credentials = new Credentials();
+    String user = "test";
+    int oldCounter = MyFS.getInstanceCounter();
+    delegationTokenRenewer.obtainSystemTokensForUser(user, credentials);
+    delegationTokenRenewer.obtainSystemTokensForUser(user, credentials);
+    delegationTokenRenewer.obtainSystemTokensForUser(user, credentials);
+    Assert.assertEquals(oldCounter, MyFS.getInstanceCounter());
+  }
+  
+  // Test submitting an application with the token obtained by a previously
+  // submitted application that is set to be cancelled.  Token should be
+  // renewed while all apps are running, and then cancelled when all apps
+  // complete
+  @Test (timeout = 30000)
+  public void testCancelWithMultipleAppSubmissions() throws Exception{
+    MockRM rm = new TestSecurityMockRM(conf, null);
+    rm.start();
+    final MockNM nm1 =
+        new MockNM("127.0.0.1:1234", 15120, rm.getResourceTrackerService());
+    nm1.registerNode();
+
+    //MyFS fs = (MyFS)FileSystem.get(conf);
+    //MyToken token1 = fs.getDelegationToken("user123");
+
+    // create Token1:
+    Text userText1 = new Text("user");
+    DelegationTokenIdentifier dtId1 =
+        new DelegationTokenIdentifier(userText1, new Text("renewer1"),
+          userText1);
+    final Token<DelegationTokenIdentifier> token1 =
+        new Token<DelegationTokenIdentifier>(dtId1.getBytes(),
+          "password1".getBytes(), dtId1.getKind(), new Text("service1"));
+
+    Credentials credentials = new Credentials();
+    credentials.addToken(token1.getService(), token1);
+
+    DelegationTokenRenewer renewer =
+        rm.getRMContext().getDelegationTokenRenewer();
+    Assert.assertTrue(renewer.getAllTokens().isEmpty());
+    Assert.assertFalse(Renewer.cancelled);
+
+    RMApp app1 =
+        rm.submitApp(200, "name", "user", null, false, null, 2, credentials,
+          null, true, false, false, null, 0, null, true);
+    MockAM am1 = MockRM.launchAndRegisterAM(app1, rm, nm1);
+    rm.waitForState(app1.getApplicationId(), RMAppState.RUNNING);
+
+    DelegationTokenToRenew dttr = renewer.getAllTokens().get(token1);
+    Assert.assertNotNull(dttr);
+    Assert.assertTrue(dttr.referringAppIds.contains(app1.getApplicationId()));
+    RMApp app2 =
+        rm.submitApp(200, "name", "user", null, false, null, 2, credentials,
+          null, true, false, false, null, 0, null, true);
+    MockAM am2 = MockRM.launchAndRegisterAM(app2, rm, nm1);
+    rm.waitForState(app2.getApplicationId(), RMAppState.RUNNING);
+    Assert.assertTrue(renewer.getAllTokens().containsKey(token1));
+    Assert.assertTrue(dttr.referringAppIds.contains(app2.getApplicationId()));
+    Assert.assertTrue(dttr.referringAppIds.contains(app2.getApplicationId()));
+    Assert.assertFalse(Renewer.cancelled);
+
+    MockRM.finishAMAndVerifyAppState(app2, rm, nm1, am2);
+    // app2 completes, app1 is still running, check the token is not cancelled
+    Assert.assertTrue(renewer.getAllTokens().containsKey(token1));
+    Assert.assertTrue(dttr.referringAppIds.contains(app1.getApplicationId()));
+    Assert.assertFalse(dttr.referringAppIds.contains(app2.getApplicationId()));
+    Assert.assertFalse(dttr.isTimerCancelled());
+    Assert.assertFalse(Renewer.cancelled);
+
+    RMApp app3 =
+        rm.submitApp(200, "name", "user", null, false, null, 2, credentials,
+          null, true, false, false, null, 0, null, true);
+    MockAM am3 = MockRM.launchAndRegisterAM(app3, rm, nm1);
+    rm.waitForState(app3.getApplicationId(), RMAppState.RUNNING);
+    Assert.assertTrue(renewer.getAllTokens().containsKey(token1));
+    Assert.assertTrue(dttr.referringAppIds.contains(app1.getApplicationId()));
+    Assert.assertTrue(dttr.referringAppIds.contains(app3.getApplicationId()));
+    Assert.assertFalse(dttr.isTimerCancelled());
+    Assert.assertFalse(Renewer.cancelled);
+
+    MockRM.finishAMAndVerifyAppState(app1, rm, nm1, am1);
+    Assert.assertTrue(renewer.getAllTokens().containsKey(token1));
+    Assert.assertFalse(dttr.referringAppIds.contains(app1.getApplicationId()));
+    Assert.assertTrue(dttr.referringAppIds.contains(app3.getApplicationId()));
+    Assert.assertFalse(dttr.isTimerCancelled());
+    Assert.assertFalse(Renewer.cancelled);
+
+    MockRM.finishAMAndVerifyAppState(app3, rm, nm1, am3);
+    Assert.assertFalse(renewer.getAllTokens().containsKey(token1));
+    Assert.assertTrue(dttr.referringAppIds.isEmpty());
+    Assert.assertTrue(dttr.isTimerCancelled());
+    Assert.assertTrue(Renewer.cancelled);
   }
 }

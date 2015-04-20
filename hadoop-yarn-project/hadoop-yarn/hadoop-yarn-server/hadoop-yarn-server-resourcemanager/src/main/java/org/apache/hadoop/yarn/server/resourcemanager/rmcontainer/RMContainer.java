@@ -79,4 +79,7 @@ public interface RMContainer extends EventHandler<RMContainerEvent> {
   
   List<ResourceRequest> getResourceRequests();
 
+  String getNodeHttpAddress();
+  
+  String getNodeLabelExpression();
 }

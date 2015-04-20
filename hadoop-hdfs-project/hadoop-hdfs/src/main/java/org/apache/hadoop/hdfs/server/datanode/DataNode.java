@@ -38,11 +38,9 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_IPC_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_KERBEROS_PRINCIPAL_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_KEYTAB_FILE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_NETWORK_COUNTS_CACHE_MAX_SIZE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_NETWORK_COUNTS_CACHE_MAX_SIZE_DEFAULT;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_NETWORK_COUNTS_CACHE_MAX_SIZE_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_PLUGINS_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_DEFAULT;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_STARTUP_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_MAX_NUM_BLOCKS_TO_LOG_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_MAX_NUM_BLOCKS_TO_LOG_KEY;
@@ -53,6 +51,7 @@ import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -73,6 +72,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -87,10 +87,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.management.ObjectName;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
-import com.google.common.cache.LoadingCache;
-import com.google.common.collect.Lists;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -102,13 +98,14 @@ import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.fs.StorageType;
-import org.apache.hadoop.hdfs.client.BlockReportOptions;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.HDFSPolicyProvider;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
+import org.apache.hadoop.hdfs.client.BlockReportOptions;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.net.DomainPeerServer;
 import org.apache.hadoop.hdfs.net.TcpPeerServer;
 import org.apache.hadoop.hdfs.protocol.Block;
@@ -142,8 +139,8 @@ import org.apache.hadoop.hdfs.protocolPB.InterDatanodeProtocolTranslatorPB;
 import org.apache.hadoop.hdfs.protocolPB.PBHelper;
 import org.apache.hadoop.hdfs.security.token.block.BlockPoolTokenSecretManager;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
+import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier.AccessMode;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenSecretManager;
-import org.apache.hadoop.hdfs.security.token.block.BlockTokenSecretManager.AccessMode;
 import org.apache.hadoop.hdfs.security.token.block.DataEncryptionKey;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.security.token.block.InvalidBlockTokenException;
@@ -186,7 +183,10 @@ import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod;
 import org.apache.hadoop.security.authorize.AccessControlList;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
+import org.apache.hadoop.tracing.SpanReceiverHost;
+import org.apache.hadoop.tracing.SpanReceiverInfo;
 import org.apache.hadoop.tracing.TraceAdminPB.TraceAdminService;
+import org.apache.hadoop.tracing.TraceAdminProtocol;
 import org.apache.hadoop.tracing.TraceAdminProtocolPB;
 import org.apache.hadoop.tracing.TraceAdminProtocolServerSideTranslatorPB;
 import org.apache.hadoop.util.Daemon;
@@ -198,14 +198,15 @@ import org.apache.hadoop.util.ServicePlugin;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.Time;
 import org.apache.hadoop.util.VersionInfo;
-import org.apache.hadoop.tracing.SpanReceiverHost;
-import org.apache.hadoop.tracing.SpanReceiverInfo;
-import org.apache.hadoop.tracing.TraceAdminProtocol;
 import org.mortbay.util.ajax.JSON;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Lists;
 import com.google.protobuf.BlockingService;
 
 /**********************************************************
@@ -353,6 +354,9 @@ public class DataNode extends ReconfigurableBase
   private String dnUserName = null;
 
   private SpanReceiverHost spanReceiverHost;
+  private static final int NUM_CORES = Runtime.getRuntime()
+      .availableProcessors();
+  private static final double CONGESTION_RATIO = 1.5;
 
   /**
    * Creates a dummy DataNode for testing purpose.
@@ -407,8 +411,8 @@ public class DataNode extends ReconfigurableBase
         conf.get("hadoop.hdfs.configuration.version", "UNSPECIFIED");
 
     // Determine whether we should try to pass file descriptors to clients.
-    if (conf.getBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,
-              DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_DEFAULT)) {
+    if (conf.getBoolean(HdfsClientConfigKeys.Read.ShortCircuit.KEY,
+              HdfsClientConfigKeys.Read.ShortCircuit.DEFAULT)) {
       String reason = DomainSocket.getLoadingFailureReason();
       if (reason != null) {
         LOG.warn("File descriptor passing is disabled because " + reason);
@@ -483,8 +487,13 @@ public class DataNode extends ReconfigurableBase
    * </ul>
    */
   public PipelineAck.ECN getECN() {
-    return pipelineSupportECN ? PipelineAck.ECN.SUPPORTED : PipelineAck.ECN
-      .DISABLED;
+    if (!pipelineSupportECN) {
+      return PipelineAck.ECN.DISABLED;
+    }
+    double load = ManagementFactory.getOperatingSystemMXBean()
+        .getSystemLoadAverage();
+    return load > NUM_CORES * CONGESTION_RATIO ? PipelineAck.ECN.CONGESTED :
+        PipelineAck.ECN.SUPPORTED;
   }
 
   /**
@@ -613,20 +622,16 @@ public class DataNode extends ReconfigurableBase
             errorMessageBuilder.append(
                 String.format("FAILED to ADD: %s: %s%n", volume,
                               e.toString()));
+            LOG.error("Failed to add volume: " + volume, e);
           }
         }
       }
 
-      if (!changedVolumes.deactivateLocations.isEmpty()) {
-        LOG.info("Deactivating volumes: " +
-            Joiner.on(",").join(changedVolumes.deactivateLocations));
-
-        data.removeVolumes(changedVolumes.deactivateLocations);
-        try {
-          storage.removeVolumes(changedVolumes.deactivateLocations);
-        } catch (IOException e) {
-          errorMessageBuilder.append(e.getMessage());
-        }
+      try {
+        removeVolumes(changedVolumes.deactivateLocations);
+      } catch (IOException e) {
+        errorMessageBuilder.append(e.getMessage());
+        LOG.error("Failed to remove volume: " + e.getMessage(), e);
       }
 
       if (errorMessageBuilder.length() > 0) {
@@ -636,6 +641,83 @@ public class DataNode extends ReconfigurableBase
       conf.set(DFS_DATANODE_DATA_DIR_KEY,
           Joiner.on(",").join(effectiveVolumes));
       dataDirs = getStorageLocations(conf);
+
+      // Send a full block report to let NN acknowledge the volume changes.
+      triggerBlockReport(new BlockReportOptions.Factory()
+          .setIncremental(false).build());
+    }
+  }
+
+  /**
+   * Remove volumes from DataNode.
+   * See {@link removeVolumes(final Set<File>, boolean)} for details.
+   *
+   * @param locations the StorageLocations of the volumes to be removed.
+   * @throws IOException
+   */
+  private void removeVolumes(final Collection<StorageLocation> locations)
+    throws IOException {
+    if (locations.isEmpty()) {
+      return;
+    }
+    Set<File> volumesToRemove = new HashSet<>();
+    for (StorageLocation loc : locations) {
+      volumesToRemove.add(loc.getFile().getAbsoluteFile());
+    }
+    removeVolumes(volumesToRemove, true);
+  }
+
+  /**
+   * Remove volumes from DataNode.
+   *
+   * It does three things:
+   * <li>
+   *   <ul>Remove volumes and block info from FsDataset.</ul>
+   *   <ul>Remove volumes from DataStorage.</ul>
+   *   <ul>Reset configuration DATA_DIR and {@link dataDirs} to represent
+   *   active volumes.</ul>
+   * </li>
+   * @param absoluteVolumePaths the absolute path of volumes.
+   * @param clearFailure if true, clears the failure information related to the
+   *                     volumes.
+   * @throws IOException
+   */
+  private synchronized void removeVolumes(
+      final Set<File> absoluteVolumePaths, boolean clearFailure)
+      throws IOException {
+    for (File vol : absoluteVolumePaths) {
+      Preconditions.checkArgument(vol.isAbsolute());
+    }
+
+    if (absoluteVolumePaths.isEmpty()) {
+      return;
+    }
+
+    LOG.info(String.format("Deactivating volumes (clear failure=%b): %s",
+        clearFailure, Joiner.on(",").join(absoluteVolumePaths)));
+
+    IOException ioe = null;
+    // Remove volumes and block infos from FsDataset.
+    data.removeVolumes(absoluteVolumePaths, clearFailure);
+
+    // Remove volumes from DataStorage.
+    try {
+      storage.removeVolumes(absoluteVolumePaths);
+    } catch (IOException e) {
+      ioe = e;
+    }
+
+    // Set configuration and dataDirs to reflect volume changes.
+    for (Iterator<StorageLocation> it = dataDirs.iterator(); it.hasNext(); ) {
+      StorageLocation loc = it.next();
+      if (absoluteVolumePaths.contains(loc.getFile().getAbsoluteFile())) {
+        it.remove();
+      }
+    }
+    conf.set(DFS_DATANODE_DATA_DIR_KEY, Joiner.on(",").join(dataDirs));
+
+    if (ioe != null) {
+      throw ioe;
     }
   }
 
@@ -846,8 +928,8 @@ public class DataNode extends ReconfigurableBase
     this.dataXceiverServer = new Daemon(threadGroup, xserver);
     this.threadGroup.setDaemon(true); // auto destroy when empty
 
-    if (conf.getBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,
-              DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_DEFAULT) ||
+    if (conf.getBoolean(HdfsClientConfigKeys.Read.ShortCircuit.KEY,
+              HdfsClientConfigKeys.Read.ShortCircuit.DEFAULT) ||
         conf.getBoolean(DFSConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC,
               DFSConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC_DEFAULT)) {
       DomainPeerServer domainPeerServer =
@@ -862,14 +944,14 @@ public class DataNode extends ReconfigurableBase
     this.shortCircuitRegistry = new ShortCircuitRegistry(conf);
   }
 
-  static DomainPeerServer getDomainPeerServer(Configuration conf,
+  private static DomainPeerServer getDomainPeerServer(Configuration conf,
       int port) throws IOException {
     String domainSocketPath =
         conf.getTrimmed(DFSConfigKeys.DFS_DOMAIN_SOCKET_PATH_KEY,
             DFSConfigKeys.DFS_DOMAIN_SOCKET_PATH_DEFAULT);
     if (domainSocketPath.isEmpty()) {
-      if (conf.getBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY,
-            DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_DEFAULT) &&
+      if (conf.getBoolean(HdfsClientConfigKeys.Read.ShortCircuit.KEY,
+            HdfsClientConfigKeys.Read.ShortCircuit.DEFAULT) &&
          (!conf.getBoolean(DFSConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL,
           DFSConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL_DEFAULT))) {
         LOG.warn("Although short-circuit local reads are configured, " +
@@ -1102,6 +1184,20 @@ public class DataNode extends ReconfigurableBase
     if (!UserGroupInformation.isSecurityEnabled()) {
       return;
     }
+
+    // Abort out of inconsistent state if Kerberos is enabled
+    // but block access tokens are not enabled.
+    boolean isEnabled = conf.getBoolean(
+        DFSConfigKeys.DFS_BLOCK_ACCESS_TOKEN_ENABLE_KEY,
+        DFSConfigKeys.DFS_BLOCK_ACCESS_TOKEN_ENABLE_DEFAULT);
+    if (!isEnabled) {
+      String errMessage = "Security is enabled but block access tokens " +
+          "(via " + DFSConfigKeys.DFS_BLOCK_ACCESS_TOKEN_ENABLE_KEY + ") " +
+          "aren't enabled. This may cause issues " +
+          "when clients attempt to connect to a DataNode. Aborting DataNode";
+      throw new RuntimeException(errMessage);
+    }
+
     SaslPropertiesResolver saslPropsResolver = dnConf.getSaslPropsResolver();
     if (resources != null && saslPropsResolver == null) {
       return;
@@ -1278,12 +1374,12 @@ public class DataNode extends ReconfigurableBase
     blockScanner.enableBlockPoolId(bpos.getBlockPoolId());
   }
 
-  BPOfferService[] getAllBpOs() {
+  List<BPOfferService> getAllBpOs() {
     return blockPoolManager.getAllNamenodeThreads();
   }
   
   int getBpOsCount() {
-    return blockPoolManager.getAllNamenodeThreads().length;
+    return blockPoolManager.getAllNamenodeThreads().size();
   }
   
   /**
@@ -1458,7 +1554,7 @@ public class DataNode extends ReconfigurableBase
   public BlockLocalPathInfo getBlockLocalPathInfo(ExtendedBlock block,
       Token<BlockTokenIdentifier> token) throws IOException {
     checkBlockLocalPathAccess();
-    checkBlockToken(block, token, BlockTokenSecretManager.AccessMode.READ);
+    checkBlockToken(block, token, BlockTokenIdentifier.AccessMode.READ);
     Preconditions.checkNotNull(data, "Storage not yet initialized");
     BlockLocalPathInfo info = data.getBlockLocalPathInfo(block);
     if (LOG.isDebugEnabled()) {
@@ -1503,7 +1599,7 @@ public class DataNode extends ReconfigurableBase
       throw new ShortCircuitFdsUnsupportedException(
           fileDescriptorPassingDisabledReason);
     }
-    checkBlockToken(blk, token, BlockTokenSecretManager.AccessMode.READ);
+    checkBlockToken(blk, token, BlockTokenIdentifier.AccessMode.READ);
     int blkVersion = CURRENT_BLOCK_FORMAT_VERSION;
     if (maxVersion < blkVersion) {
       throw new ShortCircuitFdsVersionException("Your client is too old " +
@@ -1540,7 +1636,7 @@ public class DataNode extends ReconfigurableBase
     // Check access for each block
     for (int i = 0; i < blockIds.length; i++) {
       checkBlockToken(new ExtendedBlock(bpId, blockIds[i]),
-          tokens.get(i), BlockTokenSecretManager.AccessMode.READ);
+          tokens.get(i), BlockTokenIdentifier.AccessMode.READ);
     }
 
     DataNodeFaultInjector.get().getHdfsBlocksMetadata();
@@ -1580,11 +1676,8 @@ public class DataNode extends ReconfigurableBase
       }
     }
     
-    // We need to make a copy of the original blockPoolManager#offerServices to
-    // make sure blockPoolManager#shutDownAll() can still access all the 
-    // BPOfferServices, since after setting DataNode#shouldRun to false the 
-    // offerServices may be modified.
-    BPOfferService[] bposArray = this.blockPoolManager == null ? null
+    List<BPOfferService> bposArray = (this.blockPoolManager == null)
+        ? new ArrayList<BPOfferService>()
         : this.blockPoolManager.getAllNamenodeThreads();
     // If shutdown is not for restart, set shouldRun to false early. 
     if (!shutdownForUpgrade) {
@@ -1653,8 +1746,9 @@ public class DataNode extends ReconfigurableBase
         // termination of receiver threads.
         if (!this.shutdownForUpgrade ||
             (this.shutdownForUpgrade && (Time.monotonicNow() - timeNotified
-                > 2500))) {
+                > 1000))) {
           this.threadGroup.interrupt();
+          break;
         }
         LOG.info("Waiting for threadgroup to exit, active threads is " +
                  this.threadGroup.activeCount());
@@ -1665,8 +1759,8 @@ public class DataNode extends ReconfigurableBase
           Thread.sleep(sleepMs);
         } catch (InterruptedException e) {}
         sleepMs = sleepMs * 3 / 2; // exponential backoff
-        if (sleepMs > 1000) {
-          sleepMs = 1000;
+        if (sleepMs > 200) {
+          sleepMs = 200;
         }
       }
       this.threadGroup = null;
@@ -2044,7 +2138,7 @@ public class DataNode extends ReconfigurableBase
         Token<BlockTokenIdentifier> accessToken = BlockTokenSecretManager.DUMMY_TOKEN;
         if (isBlockTokenEnabled) {
           accessToken = blockPoolTokenSecretManager.generateToken(b, 
-              EnumSet.of(BlockTokenSecretManager.AccessMode.WRITE));
+              EnumSet.of(BlockTokenIdentifier.AccessMode.WRITE));
         }
 
         long writeTimeout = dnConf.socketWriteTimeout + 
@@ -2094,6 +2188,8 @@ public class DataNode extends ReconfigurableBase
                   + Arrays.asList(targets));
             }
           }
+        } else {
+          metrics.incrBlocksReplicated();
         }
       } catch (IOException ie) {
         LOG.warn(bpReg + ":Failed to transfer " + b + " to " +
@@ -2263,8 +2359,7 @@ public class DataNode extends ReconfigurableBase
     while (shouldRun) {
       try {
         blockPoolManager.joinAll();
-        if (blockPoolManager.getAllNamenodeThreads() != null
-            && blockPoolManager.getAllNamenodeThreads().length == 0) {
+        if (blockPoolManager.getAllNamenodeThreads().size() == 0) {
           shouldRun = false;
         }
         // Terminate if shutdown is complete or 2 seconds after all BPs
@@ -2424,6 +2519,10 @@ public class DataNode extends ReconfigurableBase
     return blockScanner;
   }
 
+  @VisibleForTesting
+  DirectoryScanner getDirectoryScanner() {
+    return directoryScanner;
+  }
 
   public static void secureMain(String args[], SecureResources resources) {
     int errorCode = 0;
@@ -2762,7 +2861,7 @@ public class DataNode extends ReconfigurableBase
           LOG.debug("Got: " + id.toString());
         }
         blockPoolTokenSecretManager.checkAccess(id, null, block,
-            BlockTokenSecretManager.AccessMode.READ);
+            BlockTokenIdentifier.AccessMode.READ);
       }
     }
   }
@@ -3076,10 +3175,20 @@ public class DataNode extends ReconfigurableBase
    * Check the disk error
    */
   private void checkDiskError() {
-    try {
-      data.checkDataDir();
-    } catch (DiskErrorException de) {
-      handleDiskError(de.getMessage());
+    Set<File> unhealthyDataDirs = data.checkDataDir();
+    if (unhealthyDataDirs != null && !unhealthyDataDirs.isEmpty()) {
+      try {
+        // Remove all unhealthy volumes from DataNode.
+        removeVolumes(unhealthyDataDirs, false);
+      } catch (IOException e) {
+        LOG.warn("Error occurred when removing unhealthy storage dirs: "
+            + e.getMessage(), e);
+      }
+      StringBuilder sb = new StringBuilder("DataNode failed volumes:");
+      for (File dataDir : unhealthyDataDirs) {
+        sb.append(dataDir.getAbsolutePath() + ";");
+      }
+      handleDiskError(sb.toString());
     }
   }
 

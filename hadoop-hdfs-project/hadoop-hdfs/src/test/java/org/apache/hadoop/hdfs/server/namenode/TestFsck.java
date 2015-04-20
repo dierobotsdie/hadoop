@@ -70,6 +70,7 @@ import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.fs.StorageType;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.CorruptFileBlocks;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -630,7 +631,7 @@ public class TestFsck {
     Configuration conf = new HdfsConfiguration();
     conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 1000);
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 10);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 10);
     FileSystem fs = null;
     DFSClient dfsClient = null;
     LocatedBlocks blocks = null;
@@ -705,7 +706,7 @@ public class TestFsck {
     Configuration conf = new HdfsConfiguration();
     conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 1000);
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 10);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 10);
     // Set minReplication to 2
     short minReplication=2;
     conf.setInt(DFSConfigKeys.DFS_NAMENODE_REPLICATION_MIN_KEY,minReplication);
@@ -1305,7 +1306,7 @@ public class TestFsck {
           .getBlockManager().getBlockCollection(eb.getLocalBlock())
           .getBlocks()[0].getDatanode(0);
       cluster.getNameNode().getNamesystem().getBlockManager()
-          .getDatanodeManager().startDecommission(dn);
+          .getDatanodeManager().getDecomManager().startDecommission(dn);
       String dnName = dn.getXferAddr();
 
       //wait for decommission start
@@ -1345,8 +1346,6 @@ public class TestFsck {
     short NUM_DN = 1;
     final long blockSize = 512;
     Random random = new Random();
-    DFSClient dfsClient;
-    LocatedBlocks blocks;
     ExtendedBlock block;
     short repFactor = 1;
     String [] racks = {"/rack1"};
@@ -1355,7 +1354,7 @@ public class TestFsck {
     Configuration conf = new Configuration();
     conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 1000);
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 10);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 10);
     conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, blockSize);
     conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY, 1);
 
@@ -1460,6 +1459,87 @@ public class TestFsck {
       assertTrue(outStr.contains("ARCHIVE:3(COLD)"));
       assertFalse(outStr.contains("All blocks satisfy specified storage policy."));
      } finally {
+      if (cluster != null) {
+        cluster.shutdown();
+      }
+    }
+  }
+
+  /**
+   * Test for blocks on decommissioning hosts are not shown as missing
+   */
+  @Test
+  public void testFsckWithDecommissionedReplicas() throws Exception {
+
+    final short REPL_FACTOR = 1;
+    short NUM_DN = 2;
+    final long blockSize = 512;
+    final long fileSize = 1024;
+    boolean checkDecommissionInProgress = false;
+    String [] racks = {"/rack1", "/rack2"};
+    String [] hosts = {"host1", "host2"};
+
+    Configuration conf = new Configuration();
+    conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, blockSize);
+    conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY, 1);
+
+    MiniDFSCluster cluster;
+    DistributedFileSystem dfs ;
+    cluster =
+        new MiniDFSCluster.Builder(conf).numDataNodes(NUM_DN).hosts(hosts)
+            .racks(racks).build();
+
+    assertNotNull("Failed Cluster Creation", cluster);
+    cluster.waitClusterUp();
+    dfs = cluster.getFileSystem();
+    assertNotNull("Failed to get FileSystem", dfs);
+
+    DFSTestUtil util = new DFSTestUtil.Builder().
+        setName(getClass().getSimpleName()).setNumFiles(1).build();
+
+    //create files
+    final String testFile = new String("/testfile");
+    final Path path = new Path(testFile);
+    util.createFile(dfs, path, fileSize, REPL_FACTOR, 1000L);
+    util.waitReplication(dfs, path, REPL_FACTOR);
+    try {
+      // make sure datanode that has replica is fine before decommission
+      String outStr = runFsck(conf, 0, true, testFile);
+      System.out.println(outStr);
+      assertTrue(outStr.contains(NamenodeFsck.HEALTHY_STATUS));
+
+      // decommission datanode
+      ExtendedBlock eb = util.getFirstBlock(dfs, path);
+      DatanodeDescriptor dn = cluster.getNameNode().getNamesystem()
+          .getBlockManager().getBlockCollection(eb.getLocalBlock())
+          .getBlocks()[0].getDatanode(0);
+      cluster.getNameNode().getNamesystem().getBlockManager()
+          .getDatanodeManager().getDecomManager().startDecommission(dn);
+      String dnName = dn.getXferAddr();
+
+      // wait for decommission start
+      DatanodeInfo datanodeInfo = null;
+      int count = 0;
+      do {
+        Thread.sleep(2000);
+        for (DatanodeInfo info : dfs.getDataNodeStats()) {
+          if (dnName.equals(info.getXferAddr())) {
+            datanodeInfo = info;
+          }
+        }
+        // check the replica status should be healthy(0)
+        // instead of corruption (1) during decommissioning
+        if(!checkDecommissionInProgress && datanodeInfo != null
+            && datanodeInfo.isDecommissionInProgress()) {
+          String fsckOut = runFsck(conf, 0, true, testFile);
+          checkDecommissionInProgress =  true;
+        }
+      } while (datanodeInfo != null && !datanodeInfo.isDecommissioned());
+
+      // check the replica status should be healthy(0) after decommission
+      // is done
+      String fsckOut = runFsck(conf, 0, true, testFile);
+    } finally {
       if (cluster != null) {
         cluster.shutdown();
       }

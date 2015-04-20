@@ -21,21 +21,26 @@ package org.apache.hadoop.yarn.server.resourcemanager.webapp;
 import static org.apache.hadoop.yarn.util.StringHelper.join;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerHealth;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CSQueue;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.UserInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.CapacitySchedulerInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.CapacitySchedulerLeafQueueInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.CapacitySchedulerQueueInfo;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ResourceInfo;
+import org.apache.hadoop.yarn.util.Times;
 import org.apache.hadoop.yarn.webapp.ResponseInfo;
 import org.apache.hadoop.yarn.webapp.SubView;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.DIV;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.LI;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.TABLE;
+import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.TBODY;
 import org.apache.hadoop.yarn.webapp.hamlet.Hamlet.UL;
 import org.apache.hadoop.yarn.webapp.view.HtmlBlock;
 import org.apache.hadoop.yarn.webapp.view.InfoBlock;
@@ -66,41 +71,8 @@ class CapacitySchedulerPage extends RmView {
       lqinfo = (CapacitySchedulerLeafQueueInfo) info.qinfo;
     }
 
-    //Return a string describing one resource as a percentage of another
-    private String getPercentage(ResourceInfo numerator, ResourceInfo denominator) {
-      StringBuilder percentString = new StringBuilder("Memory: ");
-      if (numerator != null) {
-        percentString.append(numerator.getMemory());
-      }
-      if (denominator.getMemory() != 0) {
-        percentString.append(" (<span title='of used resources in this queue'>")
-          .append(StringUtils.format("%.2f", numerator.getMemory() * 100.0 /
-            denominator.getMemory()) + "%</span>)");
-      }
-      percentString.append(", vCores: ");
-      if (numerator != null) {
-        percentString.append(numerator.getvCores());
-      }
-      if (denominator.getvCores() != 0) {
-        percentString.append(" (<span title='of used resources in this queue'>")
-          .append(StringUtils.format("%.2f", numerator.getvCores() * 100.0 /
-          denominator.getvCores()) + "%</span>)");
-      }
-      return percentString.toString();
-    }
-
     @Override
     protected void render(Block html) {
-      StringBuilder activeUserList = new StringBuilder("");
-      ResourceInfo usedResources = lqinfo.getResourcesUsed();
-      ArrayList<UserInfo> users = lqinfo.getUsers().getUsersList();
-      for (UserInfo entry: users) {
-        activeUserList.append(entry.getUsername()).append(" &lt;")
-          .append(getPercentage(entry.getResourcesUsed(), usedResources))
-          .append(", Schedulable Apps: " + entry.getNumActiveApplications())
-          .append(", Non-Schedulable Apps: " + entry.getNumPendingApplications())
-          .append("&gt;<br style='display:block'>"); //Force line break
-      }
 
       ResponseInfo ri = info("\'" + lqinfo.getQueuePath().substring(5) + "\' Queue Status").
           _("Queue State:", lqinfo.getQueueState()).
@@ -115,12 +87,12 @@ class CapacitySchedulerPage extends RmView {
           _("Max Applications:", Integer.toString(lqinfo.getMaxApplications())).
           _("Max Applications Per User:", Integer.toString(lqinfo.getMaxApplicationsPerUser())).
           _("Max Application Master Resources:", lqinfo.getAMResourceLimit().toString()).
+          _("Used Application Master Resources:", lqinfo.getUsedAMResource().toString()).
           _("Max Application Master Resources Per User:", lqinfo.getUserAMResourceLimit().toString()).
           _("Configured Capacity:", percent(lqinfo.getCapacity() / 100)).
           _("Configured Max Capacity:", percent(lqinfo.getMaxCapacity() / 100)).
           _("Configured Minimum User Limit Percent:", Integer.toString(lqinfo.getUserLimit()) + "%").
           _("Configured User Limit Factor:", String.format("%.1f", lqinfo.getUserLimitFactor())).
-          _r("Active Users: ", activeUserList.toString()).
           _("Accessible Node Labels:", StringUtils.join(",", lqinfo.getNodeLabels())).
           _("Preemption:", lqinfo.getPreemptionDisabled() ? "disabled" : "enabled");
 
@@ -128,6 +100,44 @@ class CapacitySchedulerPage extends RmView {
 
       // clear the info contents so this queue's info doesn't accumulate into another queue's info
       ri.clear();
+    }
+  }
+
+  static class QueueUsersInfoBlock extends HtmlBlock {
+    final CapacitySchedulerLeafQueueInfo lqinfo;
+
+    @Inject
+    QueueUsersInfoBlock(ViewContext ctx, CSQInfo info) {
+      super(ctx);
+      lqinfo = (CapacitySchedulerLeafQueueInfo) info.qinfo;
+    }
+
+    @Override
+    protected void render(Block html) {
+      TBODY<TABLE<Hamlet>> tbody =
+          html.table("#userinfo").thead().$class("ui-widget-header").tr().th()
+              .$class("ui-state-default")._("User Name")._().th()
+              .$class("ui-state-default")._("Max Resource")._().th()
+              .$class("ui-state-default")._("Used Resource")._().th()
+              .$class("ui-state-default")._("Max AM Resource")._().th()
+              .$class("ui-state-default")._("Used AM Resource")._().th()
+              .$class("ui-state-default")._("Schedulable Apps")._().th()
+              .$class("ui-state-default")._("Non-Schedulable Apps")._()._()._()
+              .tbody();
+
+      ArrayList<UserInfo> users = lqinfo.getUsers().getUsersList();
+      for (UserInfo userInfo : users) {
+        tbody.tr().td(userInfo.getUsername())
+            .td(userInfo.getUserResourceLimit().toString())
+            .td(userInfo.getResourcesUsed().toString())
+            .td(lqinfo.getUserAMResourceLimit().toString())
+            .td(userInfo.getAMResourcesUsed().toString())
+            .td(Integer.toString(userInfo.getNumActiveApplications()))
+            .td(Integer.toString(userInfo.getNumPendingApplications()))._();
+      }
+
+      html.div().$class("usersinfo").h5("Active Users Info")._();
+      tbody._()._();
     }
   }
 
@@ -165,6 +175,7 @@ class CapacitySchedulerPage extends RmView {
         csqinfo.qinfo = info;
         if (info.getQueues() == null) {
           li.ul("#lq").li()._(LeafQueueInfoBlock.class)._()._();
+          li.ul("#lq").li()._(QueueUsersInfoBlock.class)._()._();
         } else {
           li._(QueueBlock.class);
         }
@@ -187,6 +198,40 @@ class CapacitySchedulerPage extends RmView {
     @Override
     public void render(Block html) {
       html._(MetricsOverviewTable.class);
+      // Dump CapacityScheduler debug logs
+      html.div()
+          .button()
+          .$onclick("confirmAction()").b("Dump scheduler logs")._()
+          .select().$id("time")
+            .option().$value("60")._("1 min")._()
+            .option().$value("300")._("5 min")._()
+            .option().$value("600")._("10 min")._()
+          ._()._();
+
+      StringBuilder script = new StringBuilder();
+      script.append("function confirmAction() {")
+          .append(" b = confirm(\"Are you sure you wish to generate scheduler logs?\");")
+          .append(" if (b == true) {")
+          .append(" var timePeriod = $(\"#time\").val();")
+          .append(" $.ajax({")
+          .append(" type: 'POST',")
+          .append(" url: '/ws/v1/cluster/scheduler/logs',")
+          .append(" contentType: 'text/plain',")
+          .append(" data: 'time=' + timePeriod,")
+          .append(" dataType: 'text'")
+          .append(" }).done(function(data){")
+          .append(" setTimeout(function(){")
+          .append(" alert(\"Scheduler log is being generated.\");")
+          .append(" }, 1000);")
+          .append(" }).fail(function(data){")
+          .append(" alert(\"Scheduler log generation failed. Please check the ResourceManager log for more informtion.\");")
+          .append(" console.log(data);")
+          .append(" });")
+          .append(" }")
+          .append("}");
+
+      html.script().$type("text/javascript")._(script.toString())._();
+
       UL<DIV<DIV<Hamlet>>> ul = html.
         div("#cs-wrapper.ui-widget").
           div(".ui-widget-header.ui-corner-top").
@@ -201,7 +246,7 @@ class CapacitySchedulerPage extends RmView {
               span(".q", "default")._()._();
       } else {
         CSQueue root = cs.getRootQueue();
-        CapacitySchedulerInfo sinfo = new CapacitySchedulerInfo(root);
+        CapacitySchedulerInfo sinfo = new CapacitySchedulerInfo(root, cs);
         csqinfo.csinfo = sinfo;
         csqinfo.qinfo = null;
 
@@ -230,7 +275,96 @@ class CapacitySchedulerPage extends RmView {
       ul._()._().
       script().$type("text/javascript").
           _("$('#cs').hide();")._()._().
-      _(AppsBlock.class);
+      _(RMAppsBlock.class);
+      html._(HealthBlock.class);
+    }
+  }
+
+  public static class HealthBlock extends HtmlBlock {
+
+    final CapacityScheduler cs;
+
+    @Inject
+    HealthBlock(ResourceManager rm) {
+      cs = (CapacityScheduler) rm.getResourceScheduler();
+    }
+
+    @Override
+    public void render(HtmlBlock.Block html) {
+      SchedulerHealth healthInfo = cs.getSchedulerHealth();
+      DIV<Hamlet> div = html.div("#health");
+      div.h4("Aggregate scheduler counts");
+      TBODY<TABLE<DIV<Hamlet>>> tbody =
+          div.table("#lastrun").thead().$class("ui-widget-header").tr().th()
+            .$class("ui-state-default")._("Total Container Allocations(count)")
+            ._().th().$class("ui-state-default")
+            ._("Total Container Releases(count)")._().th()
+            .$class("ui-state-default")
+            ._("Total Fulfilled Reservations(count)")._().th()
+            .$class("ui-state-default")._("Total Container Preemptions(count)")
+            ._()._()._().tbody();
+      tbody
+        .$class("ui-widget-content")
+        .tr()
+        .td(
+          String.valueOf(cs.getRootQueueMetrics()
+            .getAggregateAllocatedContainers()))
+        .td(
+          String.valueOf(cs.getRootQueueMetrics()
+            .getAggegatedReleasedContainers()))
+        .td(healthInfo.getAggregateFulFilledReservationsCount().toString())
+        .td(healthInfo.getAggregatePreemptionCount().toString())._()._()._();
+      div.h4("Last scheduler run");
+      tbody =
+          div.table("#lastrun").thead().$class("ui-widget-header").tr().th()
+            .$class("ui-state-default")._("Time")._().th()
+            .$class("ui-state-default")._("Allocations(count - resources)")._()
+            .th().$class("ui-state-default")._("Reservations(count - resources)")
+            ._().th().$class("ui-state-default")._("Releases(count - resources)")
+            ._()._()._().tbody();
+      tbody
+        .$class("ui-widget-content")
+        .tr()
+        .td(Times.format(healthInfo.getLastSchedulerRunTime()))
+        .td(
+          healthInfo.getAllocationCount().toString() + " - "
+              + healthInfo.getResourcesAllocated().toString())
+        .td(
+          healthInfo.getReservationCount().toString() + " - "
+              + healthInfo.getResourcesReserved().toString())
+        .td(
+          healthInfo.getReleaseCount().toString() + " - "
+              + healthInfo.getResourcesReleased().toString())._()._()._();
+      Map<String, SchedulerHealth.DetailedInformation> info = new HashMap<>();
+      info.put("Allocation", healthInfo.getLastAllocationDetails());
+      info.put("Reservation", healthInfo.getLastReservationDetails());
+      info.put("Release", healthInfo.getLastReleaseDetails());
+      info.put("Preemption", healthInfo.getLastPreemptionDetails());
+
+      for (Map.Entry<String, SchedulerHealth.DetailedInformation> entry : info
+        .entrySet()) {
+        String containerId = "N/A";
+        String nodeId = "N/A";
+        String queue = "N/A";
+        String table = "#" + entry.getKey();
+        div.h4("Last " + entry.getKey());
+        tbody =
+            div.table(table).thead().$class("ui-widget-header").tr().th()
+              .$class("ui-state-default")._("Time")._().th()
+              .$class("ui-state-default")._("Container Id")._().th()
+              .$class("ui-state-default")._("Node Id")._().th()
+              .$class("ui-state-default")._("Queue")._()._()._().tbody();
+        SchedulerHealth.DetailedInformation di = entry.getValue();
+        if (di.getTimestamp() != 0) {
+          containerId = di.getContainerId().toString();
+          nodeId = di.getNodeId().toString();
+          queue = di.getQueue();
+        }
+        tbody.$class("ui-widget-content").tr()
+          .td(Times.format(di.getTimestamp())).td(containerId).td(nodeId)
+          .td(queue)._()._()._();
+      }
+      div._();
     }
   }
 

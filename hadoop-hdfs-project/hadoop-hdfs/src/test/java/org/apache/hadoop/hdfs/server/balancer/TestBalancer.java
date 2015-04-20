@@ -23,6 +23,7 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.junit.Assume.assumeTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -262,7 +263,7 @@ public class TestBalancer {
   throws IOException, TimeoutException {
     long timeout = TIMEOUT;
     long failtime = (timeout <= 0L) ? Long.MAX_VALUE
-             : Time.now() + timeout;
+             : Time.monotonicNow() + timeout;
     
     while (true) {
       long[] status = client.getStats();
@@ -274,7 +275,7 @@ public class TestBalancer {
           && usedSpaceVariance < CAPACITY_ALLOWED_VARIANCE)
         break; //done
 
-      if (Time.now() > failtime) {
+      if (Time.monotonicNow() > failtime) {
         throw new TimeoutException("Cluster failed to reached expected values of "
             + "totalSpace (current: " + status[0] 
             + ", expected: " + expectedTotalSpace 
@@ -309,6 +310,11 @@ public class TestBalancer {
    */
   @Test(timeout=100000)
   public void testBalancerWithPinnedBlocks() throws Exception {
+    // This test assumes stick-bit based block pin mechanism available only
+    // in Linux/Unix. It can be unblocked on Windows when HDFS-7759 is ready to
+    // provide a different mechanism for Windows.
+    assumeTrue(!Path.WINDOWS);
+
     final Configuration conf = new HdfsConfiguration();
     initConf(conf);
     conf.setBoolean(DFS_DATANODE_BLOCK_PINNING_ENABLED, true);
@@ -369,7 +375,7 @@ public class TestBalancer {
       int expectedExcludedNodes) throws IOException, TimeoutException {
     long timeout = TIMEOUT;
     long failtime = (timeout <= 0L) ? Long.MAX_VALUE
-        : Time.now() + timeout;
+        : Time.monotonicNow() + timeout;
     if (!p.nodesToBeIncluded.isEmpty()) {
       totalCapacity = p.nodesToBeIncluded.size() * CAPACITY;
     }
@@ -399,7 +405,7 @@ public class TestBalancer {
         }
         if (Math.abs(avgUtilization - nodeUtilization) > BALANCE_ALLOWED_VARIANCE) {
           balanced = false;
-          if (Time.now() > failtime) {
+          if (Time.monotonicNow() > failtime) {
             throw new TimeoutException(
                 "Rebalancing expected avg utilization to become "
                 + avgUtilization + ", but on datanode " + datanode

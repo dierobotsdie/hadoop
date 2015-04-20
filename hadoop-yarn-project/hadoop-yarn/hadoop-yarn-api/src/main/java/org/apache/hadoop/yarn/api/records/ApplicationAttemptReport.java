@@ -24,24 +24,19 @@ import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.yarn.util.Records;
 
 /**
- * <p>
- * <code>ApplicationAttemptReport</code> is a report of an application attempt.
- * </p>
- * 
+ * {@code ApplicationAttemptReport} is a report of an application attempt.
  * <p>
  * It includes details such as:
  * <ul>
- * <li>{@link ApplicationAttemptId} of the application.</li>
- * <li>Host on which the <code>ApplicationMaster</code> of this attempt is
- * running.</li>
- * <li>RPC port of the <code>ApplicationMaster</code> of this attempt.</li>
- * <li>Tracking URL.</li>
- * <li>Diagnostic information in case of errors.</li>
- * <li>{@link YarnApplicationAttemptState} of the application attempt.</li>
- * <li>{@link ContainerId} of the master Container.</li>
+ *   <li>{@link ApplicationAttemptId} of the application.</li>
+ *   <li>Host on which the <code>ApplicationMaster</code> of this attempt is
+ *   running.</li>
+ *   <li>RPC port of the <code>ApplicationMaster</code> of this attempt.</li>
+ *   <li>Tracking URL.</li>
+ *   <li>Diagnostic information in case of errors.</li>
+ *   <li>{@link YarnApplicationAttemptState} of the application attempt.</li>
+ *   <li>{@link ContainerId} of the master Container.</li>
  * </ul>
- * </p>
- * 
  */
 @Public
 @Unstable
@@ -52,7 +47,8 @@ public abstract class ApplicationAttemptReport {
   public static ApplicationAttemptReport newInstance(
       ApplicationAttemptId applicationAttemptId, String host, int rpcPort,
       String url, String oUrl, String diagnostics,
-      YarnApplicationAttemptState state, ContainerId amContainerId) {
+      YarnApplicationAttemptState state, ContainerId amContainerId,
+      long startTime, long finishTime) {
     ApplicationAttemptReport report =
         Records.newRecord(ApplicationAttemptReport.class);
     report.setApplicationAttemptId(applicationAttemptId);
@@ -63,7 +59,17 @@ public abstract class ApplicationAttemptReport {
     report.setDiagnostics(diagnostics);
     report.setYarnApplicationAttemptState(state);
     report.setAMContainerId(amContainerId);
+    report.setStartTime(startTime);
+    report.setFinishTime(finishTime);
     return report;
+  }
+
+  public static ApplicationAttemptReport newInstance(
+      ApplicationAttemptId applicationAttemptId, String host, int rpcPort,
+      String url, String oUrl, String diagnostics,
+      YarnApplicationAttemptState state, ContainerId amContainerId) {
+    return newInstance(applicationAttemptId, host, rpcPort, url, oUrl,
+        diagnostics, state, amContainerId, 0L, 0L);
   }
 
   /**
@@ -176,4 +182,25 @@ public abstract class ApplicationAttemptReport {
   @Private
   @Unstable
   public abstract void setAMContainerId(ContainerId amContainerId);
+
+  @Public
+  @Unstable
+  public abstract long getStartTime();
+
+  @Private
+  @Unstable
+  public abstract void setStartTime(long startTime);
+
+  /**
+   * Get the <em>finish time</em> of the application.
+   * 
+   * @return <em>finish time</em> of the application
+   */
+  @Public
+  @Unstable
+  public abstract long getFinishTime();
+
+  @Private
+  @Unstable
+  public abstract void setFinishTime(long finishTime);
 }

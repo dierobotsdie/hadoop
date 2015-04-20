@@ -41,7 +41,7 @@ import org.apache.hadoop.yarn.api.records.ResourceRequest;
 import org.apache.hadoop.yarn.event.EventHandler;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
-import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
+import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsManager;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMAppRunningOnNodeEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.event.RMAppAttemptContainerAllocatedEvent;
@@ -154,6 +154,7 @@ public class RMContainerImpl implements RMContainer {
   private final EventHandler eventHandler;
   private final ContainerAllocationExpirer containerAllocationExpirer;
   private final String user;
+  private final String nodeLabelExpression;
 
   private Resource reservedResource;
   private NodeId reservedNode;
@@ -163,17 +164,24 @@ public class RMContainerImpl implements RMContainer {
   private ContainerStatus finishedStatus;
   private boolean isAMContainer;
   private List<ResourceRequest> resourceRequests;
-
+  
   public RMContainerImpl(Container container,
       ApplicationAttemptId appAttemptId, NodeId nodeId, String user,
       RMContext rmContext) {
     this(container, appAttemptId, nodeId, user, rmContext, System
-      .currentTimeMillis());
+        .currentTimeMillis(), "");
   }
 
   public RMContainerImpl(Container container,
-      ApplicationAttemptId appAttemptId, NodeId nodeId,
-      String user, RMContext rmContext, long creationTime) {
+      ApplicationAttemptId appAttemptId, NodeId nodeId, String user,
+      RMContext rmContext, String nodeLabelExpression) {
+    this(container, appAttemptId, nodeId, user, rmContext, System
+      .currentTimeMillis(), nodeLabelExpression);
+  }
+
+  public RMContainerImpl(Container container,
+      ApplicationAttemptId appAttemptId, NodeId nodeId, String user,
+      RMContext rmContext, long creationTime, String nodeLabelExpression) {
     this.stateMachine = stateMachineFactory.make(this);
     this.containerId = container.getId();
     this.nodeId = nodeId;
@@ -186,6 +194,7 @@ public class RMContainerImpl implements RMContainer {
     this.containerAllocationExpirer = rmContext.getContainerAllocationExpirer();
     this.isAMContainer = false;
     this.resourceRequests = null;
+    this.nodeLabelExpression = nodeLabelExpression;
 
     ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     this.readLock = lock.readLock();
@@ -573,10 +582,37 @@ public class RMContainerImpl implements RMContainer {
           this.getAllocatedResource(), this.getAllocatedNode(),
           this.getAllocatedPriority(), this.getCreationTime(),
           this.getFinishTime(), this.getDiagnosticsInfo(), this.getLogURL(),
-          this.getContainerExitStatus(), this.getContainerState());
+          this.getContainerExitStatus(), this.getContainerState(),
+          this.getNodeHttpAddress());
     } finally {
       this.readLock.unlock();
     }
     return containerReport;
+  }
+
+  @Override
+  public String getNodeHttpAddress() {
+    try {
+      readLock.lock();
+      if (container.getNodeHttpAddress() != null) {
+        StringBuilder httpAddress = new StringBuilder();
+        httpAddress.append(WebAppUtils.getHttpSchemePrefix(rmContext
+            .getYarnConfiguration()));
+        httpAddress.append(container.getNodeHttpAddress());
+        return httpAddress.toString();
+      } else {
+        return null;
+      }
+    } finally {
+      readLock.unlock();
+    }
+  }
+
+  @Override
+  public String getNodeLabelExpression() {
+    if (nodeLabelExpression == null) {
+      return RMNodeLabelsManager.NO_LABEL;
+    }
+    return nodeLabelExpression;
   }
 }

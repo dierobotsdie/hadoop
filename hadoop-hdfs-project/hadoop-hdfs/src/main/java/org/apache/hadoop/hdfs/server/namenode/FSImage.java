@@ -212,7 +212,7 @@ public class FSImage implements Closeable {
     // check whether all is consistent before transitioning.
     Map<StorageDirectory, StorageState> dataDirStates = 
              new HashMap<StorageDirectory, StorageState>();
-    boolean isFormatted = recoverStorageDirs(startOpt, dataDirStates);
+    boolean isFormatted = recoverStorageDirs(startOpt, storage, dataDirStates);
 
     if (LOG.isTraceEnabled()) {
       LOG.trace("Data dir states:\n  " +
@@ -301,8 +301,9 @@ public class FSImage implements Closeable {
    * @param dataDirStates output of storage directory states
    * @return true if there is at least one valid formatted storage directory
    */
-  private boolean recoverStorageDirs(StartupOption startOpt,
-      Map<StorageDirectory, StorageState> dataDirStates) throws IOException {
+  public static boolean recoverStorageDirs(StartupOption startOpt,
+      NNStorage storage, Map<StorageDirectory, StorageState> dataDirStates)
+      throws IOException {
     boolean isFormatted = false;
     // This loop needs to be over all storage dirs, even shared dirs, to make
     // sure that we properly examine their state, but we make sure we don't
@@ -352,7 +353,7 @@ public class FSImage implements Closeable {
   }
 
   /** Check if upgrade is in progress. */
-  void checkUpgrade(FSNamesystem target) throws IOException {
+  public static void checkUpgrade(NNStorage storage) throws IOException {
     // Upgrade or rolling upgrade is allowed only if there are 
     // no previous fs states in any of the local directories
     for (Iterator<StorageDirectory> it = storage.dirIterator(false); it.hasNext();) {
@@ -362,6 +363,10 @@ public class FSImage implements Closeable {
             "previous fs state should not exist during upgrade. "
             + "Finalize or rollback first.");
     }
+  }
+
+  void checkUpgrade() throws IOException {
+    checkUpgrade(storage);
   }
 
   /**
@@ -381,7 +386,7 @@ public class FSImage implements Closeable {
   }
 
   void doUpgrade(FSNamesystem target) throws IOException {
-    checkUpgrade(target);
+    checkUpgrade();
 
     // load the latest image
 
@@ -406,7 +411,7 @@ public class FSImage implements Closeable {
     for (Iterator<StorageDirectory> it = storage.dirIterator(false); it.hasNext();) {
       StorageDirectory sd = it.next();
       try {
-        NNUpgradeUtil.doPreUpgrade(sd);
+        NNUpgradeUtil.doPreUpgrade(conf, sd);
       } catch (Exception e) {
         LOG.error("Failed to move aside pre-upgrade storage " +
             "in image directory " + sd.getRoot(), e);
@@ -707,6 +712,8 @@ public class FSImage implements Closeable {
         true);
     // purge all the checkpoints after the marker
     archivalManager.purgeCheckpoinsAfter(NameNodeFile.IMAGE, ckptId);
+    // HDFS-7939: purge all old fsimage_rollback_*
+    archivalManager.purgeCheckpoints(NameNodeFile.IMAGE_ROLLBACK);
     String nameserviceId = DFSUtil.getNamenodeNameServiceId(conf);
     if (HAUtil.isHAEnabled(conf, nameserviceId)) {
       // close the editlog since it is currently open for write
@@ -793,7 +800,7 @@ public class FSImage implements Closeable {
         DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_PERIOD_KEY, 
         DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_PERIOD_DEFAULT);
     final long checkpointTxnCount = conf.getLong(
-        DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_TXNS_KEY, 
+        DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_TXNS_KEY,
         DFSConfigKeys.DFS_NAMENODE_CHECKPOINT_TXNS_DEFAULT);
     long checkpointAge = Time.now() - imageFile.lastModified();
 
@@ -856,23 +863,27 @@ public class FSImage implements Closeable {
    */
   static void updateCountForQuota(BlockStoragePolicySuite bsps,
                                   INodeDirectory root) {
-    updateCountForQuotaRecursively(bsps, root, new QuotaCounts.Builder().build());
+    updateCountForQuotaRecursively(bsps, root.getStoragePolicyID(), root,
+        new QuotaCounts.Builder().build());
  }
 
   private static void updateCountForQuotaRecursively(BlockStoragePolicySuite bsps,
-      INodeDirectory dir, QuotaCounts counts) {
+      byte blockStoragePolicyId, INodeDirectory dir, QuotaCounts counts) {
     final long parentNamespace = counts.getNameSpace();
     final long parentStoragespace = counts.getStorageSpace();
     final EnumCounters<StorageType> parentTypeSpaces = counts.getTypeSpaces();
 
-    dir.computeQuotaUsage4CurrentDirectory(bsps, counts);
+    dir.computeQuotaUsage4CurrentDirectory(bsps, blockStoragePolicyId, counts);
     
     for (INode child : dir.getChildrenList(Snapshot.CURRENT_STATE_ID)) {
+      final byte childPolicyId = child.getStoragePolicyIDForQuota(blockStoragePolicyId);
       if (child.isDirectory()) {
-        updateCountForQuotaRecursively(bsps, child.asDirectory(), counts);
+        updateCountForQuotaRecursively(bsps, childPolicyId,
+            child.asDirectory(), counts);
       } else {
         // file or symlink: count here to reduce recursive calls.
-        child.computeQuotaUsage(bsps, counts, false);
+        child.computeQuotaUsage(bsps, childPolicyId, counts, false,
+            Snapshot.CURRENT_STATE_ID);
       }
     }
       
@@ -1062,11 +1073,35 @@ public class FSImage implements Closeable {
   }
 
   /**
+   * @param timeWindow a checkpoint is done if the latest checkpoint
+   *                   was done more than this number of seconds ago.
+   * @param txGap a checkpoint is done also if the gap between the latest tx id
+   *              and the latest checkpoint is greater than this number.
+   * @return true if a checkpoint has been made
    * @see #saveNamespace(FSNamesystem, NameNodeFile, Canceler)
    */
-  public synchronized void saveNamespace(FSNamesystem source)
-      throws IOException {
+  public synchronized boolean saveNamespace(long timeWindow, long txGap,
+      FSNamesystem source) throws IOException {
+    if (timeWindow > 0 || txGap > 0) {
+      final FSImageStorageInspector inspector = storage.readAndInspectDirs(
+          EnumSet.of(NameNodeFile.IMAGE, NameNodeFile.IMAGE_ROLLBACK),
+          StartupOption.REGULAR);
+      FSImageFile image = inspector.getLatestImages().get(0);
+      File imageFile = image.getFile();
+
+      final long checkpointTxId = image.getCheckpointTxId();
+      final long checkpointAge = Time.now() - imageFile.lastModified();
+      if (checkpointAge <= timeWindow * 1000 &&
+          checkpointTxId >= this.getLastAppliedOrWrittenTxId() - txGap) {
+        return false;
+      }
+    }
     saveNamespace(source, NameNodeFile.IMAGE, null);
+    return true;
+  }
+
+  public void saveNamespace(FSNamesystem source) throws IOException {
+    saveNamespace(0, 0, source);
   }
   
   /**

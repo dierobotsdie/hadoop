@@ -31,6 +31,7 @@ import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.server.namenode.AclStorage;
 import org.apache.hadoop.hdfs.server.namenode.Content;
+import org.apache.hadoop.hdfs.server.namenode.ContentCounts;
 import org.apache.hadoop.hdfs.server.namenode.ContentSummaryComputationContext;
 import org.apache.hadoop.hdfs.server.namenode.FSImageSerialization;
 import org.apache.hadoop.hdfs.server.namenode.INode;
@@ -640,29 +641,32 @@ public class DirectoryWithSnapshotFeature implements INode.Feature {
   }
 
   public QuotaCounts computeQuotaUsage4CurrentDirectory(
-    BlockStoragePolicySuite bsps, QuotaCounts counts) {
+      BlockStoragePolicySuite bsps, byte storagePolicyId,
+      QuotaCounts counts) {
     for(DirectoryDiff d : diffs) {
       for(INode deleted : d.getChildrenDiff().getList(ListType.DELETED)) {
-        deleted.computeQuotaUsage(bsps, counts, false, Snapshot.CURRENT_STATE_ID);
+        final byte childPolicyId = deleted.getStoragePolicyIDForQuota(storagePolicyId);
+        deleted.computeQuotaUsage(bsps, childPolicyId, counts, false,
+            Snapshot.CURRENT_STATE_ID);
       }
     }
     return counts;
   }
 
   public void computeContentSummary4Snapshot(final BlockStoragePolicySuite bsps,
-      final Content.Counts counts) {
+      final ContentCounts counts) {
     // Create a new blank summary context for blocking processing of subtree.
     ContentSummaryComputationContext summary = 
-        new ContentSummaryComputationContext();
+        new ContentSummaryComputationContext(bsps);
     for(DirectoryDiff d : diffs) {
       for(INode deleted : d.getChildrenDiff().getList(ListType.DELETED)) {
         deleted.computeContentSummary(summary);
       }
     }
     // Add the counts from deleted trees.
-    counts.add(summary.getCounts());
+    counts.addContents(summary.getCounts());
     // Add the deleted directory count.
-    counts.add(Content.DIRECTORY, diffs.asList().size());
+    counts.addContent(Content.DIRECTORY, diffs.asList().size());
   }
   
   /**

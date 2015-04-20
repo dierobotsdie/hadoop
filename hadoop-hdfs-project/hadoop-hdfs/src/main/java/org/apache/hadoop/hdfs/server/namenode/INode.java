@@ -432,9 +432,9 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
       BlocksMapUpdateInfo collectedBlocks, List<INode> removedINodes);
 
   /** Compute {@link ContentSummary}. Blocking call */
-  public final ContentSummary computeContentSummary() {
+  public final ContentSummary computeContentSummary(BlockStoragePolicySuite bsps) {
     return computeAndConvertContentSummary(
-        new ContentSummaryComputationContext());
+        new ContentSummaryComputationContext(bsps));
   }
 
   /**
@@ -442,17 +442,22 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
    */
   public final ContentSummary computeAndConvertContentSummary(
       ContentSummaryComputationContext summary) {
-    Content.Counts counts = computeContentSummary(summary).getCounts();
+    ContentCounts counts = computeContentSummary(summary).getCounts();
     final QuotaCounts q = getQuotaCounts();
-    return new ContentSummary(counts.get(Content.LENGTH),
-        counts.get(Content.FILE) + counts.get(Content.SYMLINK),
-        counts.get(Content.DIRECTORY), q.getNameSpace(),
-        counts.get(Content.DISKSPACE), q.getStorageSpace());
-    // TODO: storage type quota reporting HDFS-7701.
+    return new ContentSummary.Builder().
+        length(counts.getLength()).
+        fileCount(counts.getFileCount() + counts.getSymlinkCount()).
+        directoryCount(counts.getDirectoryCount()).
+        quota(q.getNameSpace()).
+        spaceConsumed(counts.getStoragespace()).
+        spaceQuota(q.getStorageSpace()).
+        typeConsumed(counts.getTypeSpaces()).
+        typeQuota(q.getTypeSpaces().asArray()).
+        build();
   }
 
   /**
-   * Count subtree content summary with a {@link Content.Counts}.
+   * Count subtree content summary with a {@link ContentCounts}.
    *
    * @param summary the context object holding counts for the subtree.
    * @return The same objects as summary.
@@ -500,9 +505,14 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
 
   /**
    * Count subtree {@link Quota#NAMESPACE} and {@link Quota#STORAGESPACE} usages.
+   * Entry point for FSDirectory where blockStoragePolicyId is given its initial
+   * value.
    */
   public final QuotaCounts computeQuotaUsage(BlockStoragePolicySuite bsps) {
-    return computeQuotaUsage(bsps, new QuotaCounts.Builder().build(), true);
+    final byte storagePolicyId = isSymlink() ?
+        BlockStoragePolicySuite.ID_UNSPECIFIED : getStoragePolicyID();
+    return computeQuotaUsage(bsps, storagePolicyId,
+        new QuotaCounts.Builder().build(), true, Snapshot.CURRENT_STATE_ID);
   }
 
   /**
@@ -527,6 +537,7 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
    * <pre>
    *
    * @param bsps Block storage policy suite to calculate intended storage type usage
+   * @param blockStoragePolicyId block storage policy id of the current INode
    * @param counts The subtree counts for returning.
    * @param useCache Whether to use cached quota usage. Note that 
    *                 {@link WithName} node never uses cache for its subtree.
@@ -537,12 +548,15 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
    * @return The same objects as the counts parameter.
    */
   public abstract QuotaCounts computeQuotaUsage(
-    BlockStoragePolicySuite bsps,
+    BlockStoragePolicySuite bsps, byte blockStoragePolicyId,
     QuotaCounts counts, boolean useCache, int lastSnapshotId);
 
   public final QuotaCounts computeQuotaUsage(
     BlockStoragePolicySuite bsps, QuotaCounts counts, boolean useCache) {
-    return computeQuotaUsage(bsps, counts, useCache, Snapshot.CURRENT_STATE_ID);
+    final byte storagePolicyId = isSymlink() ?
+        BlockStoragePolicySuite.ID_UNSPECIFIED : getStoragePolicyID();
+    return computeQuotaUsage(bsps, storagePolicyId, counts,
+        useCache, Snapshot.CURRENT_STATE_ID);
   }
 
   /**
@@ -701,6 +715,20 @@ public abstract class INode implements INodeAttributes, Diff.Element<byte[]> {
    * been specified.
    */
   public abstract byte getLocalStoragePolicyID();
+
+  /**
+   * Get the storage policy ID while computing quota usage
+   * @param parentStoragePolicyId the storage policy ID of the parent directory
+   * @return the storage policy ID of this INode. Note that for an
+   * {@link INodeSymlink} we return {@link BlockStoragePolicySuite#ID_UNSPECIFIED}
+   * instead of throwing Exception
+   */
+  public byte getStoragePolicyIDForQuota(byte parentStoragePolicyId) {
+    byte localId = isSymlink() ?
+        BlockStoragePolicySuite.ID_UNSPECIFIED : getLocalStoragePolicyID();
+    return localId != BlockStoragePolicySuite.ID_UNSPECIFIED ?
+        localId : parentStoragePolicyId;
+  }
 
   /**
    * Breaks {@code path} into components.

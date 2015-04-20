@@ -326,9 +326,10 @@ public abstract class INodeReference extends INode {
 
   @Override
   public QuotaCounts computeQuotaUsage(
-    BlockStoragePolicySuite bsps,
+    BlockStoragePolicySuite bsps, byte blockStoragePolicyId,
     QuotaCounts counts, boolean useCache, int lastSnapshotId) {
-    return referred.computeQuotaUsage(bsps, counts, useCache, lastSnapshotId);
+    return referred.computeQuotaUsage(bsps, blockStoragePolicyId, counts,
+        useCache, lastSnapshotId);
   }
 
   @Override
@@ -511,14 +512,17 @@ public abstract class INodeReference extends INode {
         ContentSummaryComputationContext summary) {
       //only count storagespace for WithName
       final QuotaCounts q = new QuotaCounts.Builder().build();
-      computeQuotaUsage(summary.getBlockStoragePolicySuite(), q, false, lastSnapshotId);
-      summary.getCounts().add(Content.DISKSPACE, q.getStorageSpace());
+      computeQuotaUsage(summary.getBlockStoragePolicySuite(),
+          getStoragePolicyID(), q, false, lastSnapshotId);
+      summary.getCounts().addContent(Content.DISKSPACE, q.getStorageSpace());
+      summary.getCounts().addTypeSpaces(q.getTypeSpaces());
       return summary;
     }
 
     @Override
     public final QuotaCounts computeQuotaUsage(BlockStoragePolicySuite bsps,
-        QuotaCounts counts, boolean useCache, int lastSnapshotId) {
+        byte blockStoragePolicyId, QuotaCounts counts, boolean useCache,
+        int lastSnapshotId) {
       // if this.lastSnapshotId < lastSnapshotId, the rename of the referred 
       // node happened before the rename of its ancestor. This should be 
       // impossible since for WithName node we only count its children at the 
@@ -533,7 +537,8 @@ public abstract class INodeReference extends INode {
       // been updated by changes in the current tree.
       int id = lastSnapshotId != Snapshot.CURRENT_STATE_ID ? 
           lastSnapshotId : this.lastSnapshotId;
-      return referred.computeQuotaUsage(bsps, counts, false, id);
+      return referred.computeQuotaUsage(bsps, blockStoragePolicyId, counts,
+          false, id);
     }
     
     @Override

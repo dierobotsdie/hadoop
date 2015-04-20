@@ -36,7 +36,6 @@ import java.net.URLConnection;
 import java.security.PrivilegedExceptionAction;
 import java.util.Map;
 
-import org.apache.commons.httpclient.HttpConnection;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
@@ -205,7 +204,6 @@ public class TestWebHdfsTokens {
       String keystoresDir;
       String sslConfDir;
 	    
-      clusterConf.setBoolean(DFSConfigKeys.DFS_WEBHDFS_ENABLED_KEY, true);
       clusterConf.set(DFSConfigKeys.DFS_HTTP_POLICY_KEY, HttpConfig.Policy.HTTPS_ONLY.name());
       clusterConf.set(DFSConfigKeys.DFS_NAMENODE_HTTPS_ADDRESS_KEY, "localhost:0");
       clusterConf.set(DFSConfigKeys.DFS_DATANODE_HTTPS_ADDRESS_KEY, "localhost:0");
@@ -282,7 +280,7 @@ public class TestWebHdfsTokens {
             @Override
             Token<DelegationTokenIdentifier> decodeResponse(Map<?, ?> json)
                 throws IOException {
-              return JsonUtil.toDelegationToken(json);
+              return JsonUtilClient.toDelegationToken(json);
             }
           }.run();
 

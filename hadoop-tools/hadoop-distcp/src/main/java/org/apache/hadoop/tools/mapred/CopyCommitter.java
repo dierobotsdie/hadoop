@@ -90,8 +90,7 @@ public class CopyCommitter extends FileOutputCommitter {
     }
 
     try {
-      if (conf.getBoolean(DistCpConstants.CONF_LABEL_DELETE_MISSING, false)
-          && !(conf.getBoolean(DistCpConstants.CONF_LABEL_DIFF, false))) {
+      if (conf.getBoolean(DistCpConstants.CONF_LABEL_DELETE_MISSING, false)) {
         deleteMissing(conf);
       } else if (conf.getBoolean(DistCpConstants.CONF_LABEL_ATOMIC_COPY, false)) {
         commitData(conf);
@@ -133,6 +132,9 @@ public class CopyCommitter extends FileOutputCommitter {
   private void deleteAttemptTempFiles(Path targetWorkPath,
                                       FileSystem targetFS,
                                       String jobId) throws IOException {
+    if (targetWorkPath == null) {
+      return;
+    }
 
     FileStatus[] tempFiles = targetFS.globStatus(
         new Path(targetWorkPath, ".distcp.tmp." + jobId.replaceAll("job","attempt") + "*"));

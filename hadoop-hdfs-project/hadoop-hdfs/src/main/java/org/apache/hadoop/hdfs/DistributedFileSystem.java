@@ -63,11 +63,13 @@ import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.client.HdfsAdmin;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
+import org.apache.hadoop.hdfs.client.impl.CorruptFileBlockIterator;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveEntry;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveInfo;
 import org.apache.hadoop.hdfs.protocol.CachePoolEntry;
 import org.apache.hadoop.hdfs.protocol.CachePoolInfo;
+import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.DirectoryListing;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
@@ -158,12 +160,12 @@ public class DistributedFileSystem extends FileSystem {
 
   @Override
   public long getDefaultBlockSize() {
-    return dfs.getDefaultBlockSize();
+    return dfs.getConf().getDefaultBlockSize();
   }
 
   @Override
   public short getDefaultReplication() {
-    return dfs.getDefaultReplication();
+    return dfs.getConf().getDefaultReplication();
   }
 
   @Override
@@ -1181,13 +1183,24 @@ public class DistributedFileSystem extends FileSystem {
 
   /**
    * Save namespace image.
-   * 
-   * @see org.apache.hadoop.hdfs.protocol.ClientProtocol#saveNamespace()
+   *
+   * @param timeWindow NameNode can ignore this command if the latest
+   *                   checkpoint was done within the given time period (in
+   *                   seconds).
+   * @return true if a new checkpoint has been made
+   * @see ClientProtocol#saveNamespace(long, long)
    */
-  public void saveNamespace() throws AccessControlException, IOException {
-    dfs.saveNamespace();
+  public boolean saveNamespace(long timeWindow, long txGap) throws IOException {
+    return dfs.saveNamespace(timeWindow, txGap);
   }
-  
+
+  /**
+   * Save namespace image. NameNode always does the checkpoint.
+   */
+  public void saveNamespace() throws IOException {
+    saveNamespace(0, 0);
+  }
+
   /**
    * Rolls the edit log on the active NameNode.
    * Requires super-user privileges.
@@ -1226,7 +1239,7 @@ public class DistributedFileSystem extends FileSystem {
   }
 
   /**
-   * Rolling upgrade: start/finalize/query.
+   * Rolling upgrade: prepare/finalize/query.
    */
   public RollingUpgradeInfo rollingUpgrade(RollingUpgradeAction action)
       throws IOException {
@@ -2033,16 +2046,59 @@ public class DistributedFileSystem extends FileSystem {
   }
   
   /* HDFS only */
-  public void createEncryptionZone(Path path, String keyName)
+  public void createEncryptionZone(final Path path, final String keyName)
     throws IOException {
-    dfs.createEncryptionZone(getPathName(path), keyName);
+    Path absF = fixRelativePart(path);
+    new FileSystemLinkResolver<Void>() {
+      @Override
+      public Void doCall(final Path p) throws IOException,
+          UnresolvedLinkException {
+        dfs.createEncryptionZone(getPathName(p), keyName);
+        return null;
+      }
+
+      @Override
+      public Void next(final FileSystem fs, final Path p) throws IOException {
+        if (fs instanceof DistributedFileSystem) {
+          DistributedFileSystem myDfs = (DistributedFileSystem) fs;
+          myDfs.createEncryptionZone(p, keyName);
+          return null;
+        } else {
+          throw new UnsupportedOperationException(
+              "Cannot call createEncryptionZone"
+                  + " on a symlink to a non-DistributedFileSystem: " + path
+                  + " -> " + p);
+        }
+      }
+    }.resolve(this, absF);
   }
 
   /* HDFS only */
-  public EncryptionZone getEZForPath(Path path)
+  public EncryptionZone getEZForPath(final Path path)
           throws IOException {
     Preconditions.checkNotNull(path);
-    return dfs.getEZForPath(getPathName(path));
+    Path absF = fixRelativePart(path);
+    return new FileSystemLinkResolver<EncryptionZone>() {
+      @Override
+      public EncryptionZone doCall(final Path p) throws IOException,
+          UnresolvedLinkException {
+        return dfs.getEZForPath(getPathName(p));
+      }
+
+      @Override
+      public EncryptionZone next(final FileSystem fs, final Path p)
+          throws IOException {
+        if (fs instanceof DistributedFileSystem) {
+          DistributedFileSystem myDfs = (DistributedFileSystem) fs;
+          return myDfs.getEZForPath(p);
+        } else {
+          throw new UnsupportedOperationException(
+              "Cannot call getEZForPath"
+                  + " on a symlink to a non-DistributedFileSystem: " + path
+                  + " -> " + p);
+        }
+      }
+    }.resolve(this, absF);
   }
 
   /* HDFS only */
@@ -2178,7 +2234,7 @@ public class DistributedFileSystem extends FileSystem {
   public Token<?>[] addDelegationTokens(
       final String renewer, Credentials credentials) throws IOException {
     Token<?>[] tokens = super.addDelegationTokens(renewer, credentials);
-    if (dfs.getKeyProvider() != null) {
+    if (dfs.isHDFSEncryptionEnabled()) {
       KeyProviderDelegationTokenExtension keyProviderDelegationTokenExtension =
           KeyProviderDelegationTokenExtension.
               createKeyProviderDelegationTokenExtension(dfs.getKeyProvider());

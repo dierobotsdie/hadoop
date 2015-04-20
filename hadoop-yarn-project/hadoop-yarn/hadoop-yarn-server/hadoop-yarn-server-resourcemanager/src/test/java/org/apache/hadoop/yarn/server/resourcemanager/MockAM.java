@@ -150,8 +150,14 @@ public class MockAM {
   public AllocateResponse allocate(
       String host, int memory, int numContainers,
       List<ContainerId> releases, String labelExpression) throws Exception {
+    return allocate(host, memory, numContainers, 1, releases, labelExpression);
+  }
+  
+  public AllocateResponse allocate(
+      String host, int memory, int numContainers, int priority,
+      List<ContainerId> releases, String labelExpression) throws Exception {
     List<ResourceRequest> reqs =
-        createReq(new String[] { host }, memory, 1, numContainers,
+        createReq(new String[] { host }, memory, priority, numContainers,
             labelExpression);
     return allocate(reqs, releases);
   }
@@ -164,17 +170,19 @@ public class MockAM {
   public List<ResourceRequest> createReq(String[] hosts, int memory, int priority,
       int containers, String labelExpression) throws Exception {
     List<ResourceRequest> reqs = new ArrayList<ResourceRequest>();
-    for (String host : hosts) {
-      // only add host/rack request when asked host isn't ANY
-      if (!host.equals(ResourceRequest.ANY)) {
-        ResourceRequest hostReq =
-            createResourceReq(host, memory, priority, containers,
-                labelExpression);
-        reqs.add(hostReq);
-        ResourceRequest rackReq =
-            createResourceReq("/default-rack", memory, priority, containers,
-                labelExpression);
-        reqs.add(rackReq);
+    if (hosts != null) {
+      for (String host : hosts) {
+        // only add host/rack request when asked host isn't ANY
+        if (!host.equals(ResourceRequest.ANY)) {
+          ResourceRequest hostReq =
+              createResourceReq(host, memory, priority, containers,
+                  labelExpression);
+          reqs.add(hostReq);
+          ResourceRequest rackReq =
+              createResourceReq("/default-rack", memory, priority, containers,
+                  labelExpression);
+          reqs.add(rackReq);
+        }
       }
     }
 

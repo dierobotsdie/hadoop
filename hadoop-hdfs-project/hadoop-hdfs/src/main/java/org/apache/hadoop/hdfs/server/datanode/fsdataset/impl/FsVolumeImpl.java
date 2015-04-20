@@ -50,6 +50,7 @@ import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.protocol.Block;
+import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.server.datanode.DataStorage;
 import org.apache.hadoop.hdfs.server.datanode.DatanodeUtil;
@@ -65,7 +66,6 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hadoop.util.Time;
 import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -289,7 +289,8 @@ public class FsVolumeImpl implements FsVolumeSpi {
     }
   }
 
-  long getDfsUsed() throws IOException {
+  @VisibleForTesting
+  public long getDfsUsed() throws IOException {
     long dfsUsed = 0;
     synchronized(dataset) {
       for(BlockPoolSlice s : bpSlices.values()) {
@@ -304,9 +305,11 @@ public class FsVolumeImpl implements FsVolumeSpi {
   }
   
   /**
-   * Calculate the capacity of the filesystem, after removing any
-   * reserved capacity.
-   * @return the unreserved number of bytes left in this filesystem. May be zero.
+   * Return either the configured capacity of the file system if configured; or
+   * the capacity of the file system excluding space reserved for non-HDFS.
+   * 
+   * @return the unreserved number of bytes left in this filesystem. May be
+   *         zero.
    */
   @VisibleForTesting
   public long getCapacity() {
@@ -328,10 +331,16 @@ public class FsVolumeImpl implements FsVolumeSpi {
     this.configuredCapacity = capacity;
   }
 
+  /*
+   * Calculate the available space of the filesystem, excluding space reserved
+   * for non-HDFS and space reserved for RBW
+   * 
+   * @return the available number of bytes left in this filesystem. May be zero.
+   */
   @Override
   public long getAvailable() throws IOException {
     long remaining = getCapacity() - getDfsUsed() - reservedForRbw.get();
-    long available = usage.getAvailable();
+    long available = usage.getAvailable() - reserved - reservedForRbw.get();
     if (remaining > available) {
       remaining = available;
     }
@@ -430,7 +439,8 @@ public class FsVolumeImpl implements FsVolumeSpi {
 
     @Override
     public boolean accept(File dir, String name) {
-      return !name.endsWith(".meta") && name.startsWith("blk_");
+      return !name.endsWith(".meta") &&
+              name.startsWith(Block.BLOCK_FILE_PREFIX);
     }
   }
 
@@ -803,7 +813,7 @@ public class FsVolumeImpl implements FsVolumeSpi {
     }
     Set<Entry<String, BlockPoolSlice>> set = bpSlices.entrySet();
     for (Entry<String, BlockPoolSlice> entry : set) {
-      entry.getValue().shutdown();
+      entry.getValue().shutdown(null);
     }
   }
 
@@ -813,10 +823,10 @@ public class FsVolumeImpl implements FsVolumeSpi {
     bpSlices.put(bpid, bp);
   }
   
-  void shutdownBlockPool(String bpid) {
+  void shutdownBlockPool(String bpid, BlockListAsLongs blocksListsAsLongs) {
     BlockPoolSlice bp = bpSlices.get(bpid);
     if (bp != null) {
-      bp.shutdown();
+      bp.shutdown(blocksListsAsLongs);
     }
     bpSlices.remove(bpid);
   }

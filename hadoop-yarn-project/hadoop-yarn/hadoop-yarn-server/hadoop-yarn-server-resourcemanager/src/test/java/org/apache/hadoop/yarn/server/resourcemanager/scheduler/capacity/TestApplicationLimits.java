@@ -95,8 +95,8 @@ public class TestApplicationLimits {
         thenReturn(Resources.createResource(10 * 16 * GB, 10 * 32));
     when(csContext.getApplicationComparator()).
         thenReturn(CapacityScheduler.applicationComparator);
-    when(csContext.getQueueComparator()).
-        thenReturn(CapacityScheduler.queueComparator);
+    when(csContext.getNonPartitionedQueueComparator()).
+        thenReturn(CapacityScheduler.nonPartitionedQueueComparator);
     when(csContext.getResourceCalculator()).
         thenReturn(resourceCalculator);
     when(csContext.getRMContext()).thenReturn(rmContext);
@@ -255,8 +255,8 @@ public class TestApplicationLimits {
         thenReturn(Resources.createResource(16*GB, 16));
     when(csContext.getApplicationComparator()).
         thenReturn(CapacityScheduler.applicationComparator);
-    when(csContext.getQueueComparator()).
-        thenReturn(CapacityScheduler.queueComparator);
+    when(csContext.getNonPartitionedQueueComparator()).
+        thenReturn(CapacityScheduler.nonPartitionedQueueComparator);
     when(csContext.getResourceCalculator()).thenReturn(resourceCalculator);
     when(csContext.getRMContext()).thenReturn(rmContext);
     
@@ -554,8 +554,8 @@ public class TestApplicationLimits {
         thenReturn(Resources.createResource(16*GB));
     when(csContext.getApplicationComparator()).
         thenReturn(CapacityScheduler.applicationComparator);
-    when(csContext.getQueueComparator()).
-        thenReturn(CapacityScheduler.queueComparator);
+    when(csContext.getNonPartitionedQueueComparator()).
+        thenReturn(CapacityScheduler.nonPartitionedQueueComparator);
     when(csContext.getResourceCalculator()).thenReturn(resourceCalculator);
     when(csContext.getRMContext()).thenReturn(rmContext);
     
@@ -611,8 +611,8 @@ public class TestApplicationLimits {
     app_0_0.updateResourceRequests(app_0_0_requests);
 
     // Schedule to compute 
-    queue.assignContainers(clusterResource, node_0, false, new ResourceLimits(
-        clusterResource));
+    queue.assignContainers(clusterResource, node_0, new ResourceLimits(
+        clusterResource), SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY);
     Resource expectedHeadroom = Resources.createResource(10*16*GB, 1);
     assertEquals(expectedHeadroom, app_0_0.getHeadroom());
 
@@ -631,8 +631,8 @@ public class TestApplicationLimits {
     app_0_1.updateResourceRequests(app_0_1_requests);
 
     // Schedule to compute 
-    queue.assignContainers(clusterResource, node_0, false, new ResourceLimits(
-        clusterResource)); // Schedule to compute
+    queue.assignContainers(clusterResource, node_0, new ResourceLimits(
+        clusterResource), SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY); // Schedule to compute
     assertEquals(expectedHeadroom, app_0_0.getHeadroom());
     assertEquals(expectedHeadroom, app_0_1.getHeadroom());// no change
     
@@ -651,8 +651,8 @@ public class TestApplicationLimits {
     app_1_0.updateResourceRequests(app_1_0_requests);
     
     // Schedule to compute 
-    queue.assignContainers(clusterResource, node_0, false, new ResourceLimits(
-        clusterResource)); // Schedule to compute
+    queue.assignContainers(clusterResource, node_0, new ResourceLimits(
+        clusterResource), SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY); // Schedule to compute
     expectedHeadroom = Resources.createResource(10*16*GB / 2, 1); // changes
     assertEquals(expectedHeadroom, app_0_0.getHeadroom());
     assertEquals(expectedHeadroom, app_0_1.getHeadroom());
@@ -660,8 +660,8 @@ public class TestApplicationLimits {
 
     // Now reduce cluster size and check for the smaller headroom
     clusterResource = Resources.createResource(90*16*GB);
-    queue.assignContainers(clusterResource, node_0, false, new ResourceLimits(
-        clusterResource)); // Schedule to compute
+    queue.assignContainers(clusterResource, node_0, new ResourceLimits(
+        clusterResource), SchedulingMode.RESPECT_PARTITION_EXCLUSIVITY); // Schedule to compute
     expectedHeadroom = Resources.createResource(9*16*GB / 2, 1); // changes
     assertEquals(expectedHeadroom, app_0_0.getHeadroom());
     assertEquals(expectedHeadroom, app_0_1.getHeadroom());

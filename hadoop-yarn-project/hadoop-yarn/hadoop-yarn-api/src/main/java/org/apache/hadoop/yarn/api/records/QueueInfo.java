@@ -29,19 +29,18 @@ import org.apache.hadoop.yarn.api.ApplicationClientProtocol;
 import org.apache.hadoop.yarn.util.Records;
 
 /**
- * <p>QueueInfo is a report of the runtime information of the queue.</p>
- * 
- * <p>It includes information such as:
- *   <ul>
- *     <li>Queue name.</li>
- *     <li>Capacity of the queue.</li>
- *     <li>Maximum capacity of the queue.</li>
- *     <li>Current capacity of the queue.</li>
- *     <li>Child queues.</li>
- *     <li>Running applications.</li>
- *     <li>{@link QueueState} of the queue.</li>
- *   </ul>
- * </p>
+ * QueueInfo is a report of the runtime information of the queue.
+ * <p>
+ * It includes information such as:
+ * <ul>
+ *   <li>Queue name.</li>
+ *   <li>Capacity of the queue.</li>
+ *   <li>Maximum capacity of the queue.</li>
+ *   <li>Current capacity of the queue.</li>
+ *   <li>Child queues.</li>
+ *   <li>Running applications.</li>
+ *   <li>{@link QueueState} of the queue.</li>
+ * </ul>
  *
  * @see QueueState
  * @see ApplicationClientProtocol#getQueueInfo(org.apache.hadoop.yarn.api.protocolrecords.GetQueueInfoRequest)
@@ -56,7 +55,7 @@ public abstract class QueueInfo {
       float maximumCapacity, float currentCapacity,
       List<QueueInfo> childQueues, List<ApplicationReport> applications,
       QueueState queueState, Set<String> accessibleNodeLabels,
-      String defaultNodeLabelExpression) {
+      String defaultNodeLabelExpression, QueueStatistics queueStatistics) {
     QueueInfo queueInfo = Records.newRecord(QueueInfo.class);
     queueInfo.setQueueName(queueName);
     queueInfo.setCapacity(capacity);
@@ -67,6 +66,7 @@ public abstract class QueueInfo {
     queueInfo.setQueueState(queueState);
     queueInfo.setAccessibleNodeLabels(accessibleNodeLabels);
     queueInfo.setDefaultNodeLabelExpression(defaultNodeLabelExpression);
+    queueInfo.setQueueStatistics(queueStatistics);
     return queueInfo;
   }
 
@@ -185,4 +185,24 @@ public abstract class QueueInfo {
   @Stable
   public abstract void setDefaultNodeLabelExpression(
       String defaultLabelExpression);
+
+  /**
+   * Get the <code>queue stats</code> for the queue
+   *
+   * @return <code>queue stats</code> of the queue
+   */
+  @Public
+  @Unstable
+  public abstract QueueStatistics getQueueStatistics();
+
+  /**
+   * Set the queue statistics for the queue
+   * 
+   * @param queueStatistics
+   *          the queue statistics
+   */
+  @Public
+  @Unstable
+  public abstract void setQueueStatistics(QueueStatistics queueStatistics);
+
 }

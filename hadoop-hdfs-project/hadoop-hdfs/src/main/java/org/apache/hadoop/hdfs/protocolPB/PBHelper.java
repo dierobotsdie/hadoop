@@ -76,6 +76,7 @@ import org.apache.hadoop.hdfs.protocol.FsPermissionExtension;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.RollingUpgradeAction;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.SafeModeAction;
+import org.apache.hadoop.hdfs.protocol.HdfsConstantsClient;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.HdfsLocatedFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
@@ -123,6 +124,7 @@ import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.NNHAStatusHe
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.ReceivedDeletedBlockInfoProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.RegisterCommandProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.VolumeFailureSummaryProto;
+import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockReportContextProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockKeyProto;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos.BlockProto;
@@ -188,12 +190,12 @@ import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.NodeType;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.common.StorageInfo;
 import org.apache.hadoop.hdfs.server.namenode.CheckpointSignature;
-import org.apache.hadoop.hdfs.server.namenode.INodeId;
 import org.apache.hadoop.hdfs.server.protocol.BalancerBandwidthCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockIdCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockRecoveryCommand.RecoveringBlock;
+import org.apache.hadoop.hdfs.server.protocol.BlockReportContext;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.BlocksWithLocations.BlockWithLocations;
 import org.apache.hadoop.hdfs.server.protocol.CheckpointCommand;
@@ -573,7 +575,7 @@ public class PBHelper {
     StorageInfoProto storage = info.getStorageInfo();
     return new NamespaceInfo(storage.getNamespceID(), storage.getClusterID(),
         info.getBlockPoolID(), storage.getCTime(), info.getBuildVersion(),
-        info.getSoftwareVersion());
+        info.getSoftwareVersion(), info.getCapabilities());
   }
 
   public static NamenodeCommand convert(NamenodeCommandProto cmd) {
@@ -642,8 +644,8 @@ public class PBHelper {
         di.hasLocation() ? di.getLocation() : null , 
         di.getCapacity(),  di.getDfsUsed(),  di.getRemaining(),
         di.getBlockPoolUsed(), di.getCacheCapacity(), di.getCacheUsed(),
-        di.getLastUpdate(), di.getXceiverCount(),
-        PBHelper.convert(di.getAdminState())); 
+        di.getLastUpdate(), di.getLastUpdateMonotonic(),
+        di.getXceiverCount(), PBHelper.convert(di.getAdminState()));
   }
   
   static public DatanodeInfoProto convertDatanodeInfo(DatanodeInfo di) {
@@ -704,6 +706,7 @@ public class PBHelper {
         .setCacheCapacity(info.getCacheCapacity())
         .setCacheUsed(info.getCacheUsed())
         .setLastUpdate(info.getLastUpdate())
+        .setLastUpdateMonotonic(info.getLastUpdateMonotonic())
         .setXceiverCount(info.getXceiverCount())
         .setAdminState(PBHelper.convert(info.getAdminState()))
         .build();
@@ -1233,7 +1236,9 @@ public class PBHelper {
         .setBuildVersion(info.getBuildVersion())
         .setUnused(0)
         .setStorageInfo(PBHelper.convert((StorageInfo)info))
-        .setSoftwareVersion(info.getSoftwareVersion()).build();
+        .setSoftwareVersion(info.getSoftwareVersion())
+        .setCapabilities(info.getCapabilities())
+        .build();
   }
   
   // Located Block Arrays and Lists
@@ -1432,7 +1437,7 @@ public class PBHelper {
         fs.getFileType().equals(FileType.IS_SYMLINK) ? 
             fs.getSymlink().toByteArray() : null,
         fs.getPath().toByteArray(),
-        fs.hasFileId()? fs.getFileId(): INodeId.GRANDFATHER_INODE_ID,
+        fs.hasFileId()? fs.getFileId(): HdfsConstantsClient.GRANDFATHER_INODE_ID,
         fs.hasLocations() ? PBHelper.convert(fs.getLocations()) : null,
         fs.hasChildrenNum() ? fs.getChildrenNum() : -1,
         fs.hasFileEncryptionInfo() ? convert(fs.getFileEncryptionInfo()) : null,
@@ -1680,11 +1685,13 @@ public class PBHelper {
       RollingUpgradeStatus status) {
     return RollingUpgradeStatusProto.newBuilder()
         .setBlockPoolId(status.getBlockPoolId())
+        .setFinalized(status.isFinalized())
         .build();
   }
 
   public static RollingUpgradeStatus convert(RollingUpgradeStatusProto proto) {
-    return new RollingUpgradeStatus(proto.getBlockPoolId());
+    return new RollingUpgradeStatus(proto.getBlockPoolId(),
+        proto.getFinalized());
   }
 
   public static RollingUpgradeInfoProto convert(RollingUpgradeInfo info) {
@@ -1722,21 +1729,49 @@ public class PBHelper {
   
   public static ContentSummary convert(ContentSummaryProto cs) {
     if (cs == null) return null;
-    return new ContentSummary(
-      cs.getLength(), cs.getFileCount(), cs.getDirectoryCount(), cs.getQuota(),
-      cs.getSpaceConsumed(), cs.getSpaceQuota());
+    ContentSummary.Builder builder = new ContentSummary.Builder();
+    builder.length(cs.getLength()).
+        fileCount(cs.getFileCount()).
+        directoryCount(cs.getDirectoryCount()).
+        quota(cs.getQuota()).
+        spaceConsumed(cs.getSpaceConsumed()).
+        spaceQuota(cs.getSpaceQuota());
+    if (cs.hasTypeQuotaInfos()) {
+      for (HdfsProtos.StorageTypeQuotaInfoProto info :
+          cs.getTypeQuotaInfos().getTypeQuotaInfoList()) {
+        StorageType type = PBHelper.convertStorageType(info.getType());
+        builder.typeConsumed(type, info.getConsumed());
+        builder.typeQuota(type, info.getQuota());
+      }
+    }
+    return builder.build();
   }
   
   public static ContentSummaryProto convert(ContentSummary cs) {
     if (cs == null) return null;
-    return ContentSummaryProto.newBuilder().
-        setLength(cs.getLength()).
+    ContentSummaryProto.Builder builder = ContentSummaryProto.newBuilder();
+        builder.setLength(cs.getLength()).
         setFileCount(cs.getFileCount()).
         setDirectoryCount(cs.getDirectoryCount()).
         setQuota(cs.getQuota()).
         setSpaceConsumed(cs.getSpaceConsumed()).
-        setSpaceQuota(cs.getSpaceQuota()).
-        build();
+        setSpaceQuota(cs.getSpaceQuota());
+
+    if (cs.isTypeQuotaSet() || cs.isTypeConsumedAvailable()) {
+      HdfsProtos.StorageTypeQuotaInfosProto.Builder isb =
+          HdfsProtos.StorageTypeQuotaInfosProto.newBuilder();
+      for (StorageType t: StorageType.getTypesSupportingQuota()) {
+        HdfsProtos.StorageTypeQuotaInfoProto info =
+            HdfsProtos.StorageTypeQuotaInfoProto.newBuilder().
+                setType(convertStorageType(t)).
+                setConsumed(cs.getTypeConsumed(t)).
+                setQuota(cs.getTypeQuota(t)).
+                build();
+        isb.addTypeQuotaInfo(info);
+      }
+      builder.setTypeQuotaInfos(isb);
+    }
+    return builder.build();
   }
 
   public static NNHAStatusHeartbeat convert(NNHAStatusHeartbeatProto s) {
@@ -3006,4 +3041,16 @@ public class PBHelper {
     return targetPinnings;
   }
 
+  public static BlockReportContext convert(BlockReportContextProto proto) {
+    return new BlockReportContext(proto.getTotalRpcs(),
+        proto.getCurRpc(), proto.getId());
+  }
+
+  public static BlockReportContextProto convert(BlockReportContext context) {
+    return BlockReportContextProto.newBuilder().
+        setTotalRpcs(context.getTotalRpcs()).
+        setCurRpc(context.getCurRpc()).
+        setId(context.getReportId()).
+        build();
+  }
 }

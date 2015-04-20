@@ -30,11 +30,17 @@ import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
+import org.apache.hadoop.hdfs.protocol.BlockLocalPathInfo;
+import org.apache.hadoop.hdfs.protocol.ClientDatanodeProtocol;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
+import org.apache.hadoop.hdfs.protocol.LocatedBlock;
+import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.net.unix.DomainSocket;
 import org.apache.hadoop.net.unix.TemporarySocketDirectory;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.security.token.Token;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.BeforeClass;
@@ -57,15 +63,15 @@ public class TestBlockReaderLocalLegacy {
         new File(socketDir.getDir(), "TestBlockReaderLocalLegacy.%d.sock").
           getAbsolutePath());
     }
-    conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_KEY, true);
+    conf.setBoolean(HdfsClientConfigKeys.Read.ShortCircuit.KEY, true);
     conf.setBoolean(DFSConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL, true);
-    conf.setBoolean(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_SKIP_CHECKSUM_KEY,
+    conf.setBoolean(HdfsClientConfigKeys.Read.ShortCircuit.SKIP_CHECKSUM_KEY,
         false);
     conf.set(DFSConfigKeys.DFS_BLOCK_LOCAL_PATH_ACCESS_USER_KEY,
         UserGroupInformation.getCurrentUser().getShortUserName());
     conf.setBoolean(DFSConfigKeys.DFS_CLIENT_DOMAIN_SOCKET_DATA_TRAFFIC, false);
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 10);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 10);
     return conf;
   }
 
@@ -151,6 +157,64 @@ public class TestBlockReaderLocalLegacy {
     fis.close();
     Assert.assertArrayEquals(orig, buf);
     Arrays.equals(orig, buf);
+    cluster.shutdown();
+  }
+
+  @Test(timeout=20000)
+  public void testBlockReaderLocalLegacyWithAppend() throws Exception {
+    final short REPL_FACTOR = 1;
+    final HdfsConfiguration conf = getConfiguration(null);
+    conf.setBoolean(DFSConfigKeys.DFS_CLIENT_USE_LEGACY_BLOCKREADERLOCAL, true);
+
+    final MiniDFSCluster cluster =
+        new MiniDFSCluster.Builder(conf).numDataNodes(1).build();
+    cluster.waitActive();
+
+    final DistributedFileSystem dfs = cluster.getFileSystem();
+    final Path path = new Path("/testBlockReaderLocalLegacy");
+    DFSTestUtil.createFile(dfs, path, 10, REPL_FACTOR, 0);
+    DFSTestUtil.waitReplication(dfs, path, REPL_FACTOR);
+
+    final ClientDatanodeProtocol proxy;
+    final Token<BlockTokenIdentifier> token;
+    final ExtendedBlock originalBlock;
+    final long originalGS;
+    {
+      final LocatedBlock lb = cluster.getNameNode().getRpcServer()
+          .getBlockLocations(path.toString(), 0, 1).get(0);
+      proxy = DFSUtil.createClientDatanodeProtocolProxy(
+          lb.getLocations()[0], conf, 60000, false);
+      token = lb.getBlockToken();
+
+      // get block and generation stamp
+      final ExtendedBlock blk = new ExtendedBlock(lb.getBlock());
+      originalBlock = new ExtendedBlock(blk);
+      originalGS = originalBlock.getGenerationStamp();
+
+      // test getBlockLocalPathInfo
+      final BlockLocalPathInfo info = proxy.getBlockLocalPathInfo(blk, token);
+      Assert.assertEquals(originalGS, info.getBlock().getGenerationStamp());
+    }
+
+    { // append one byte
+      FSDataOutputStream out = dfs.append(path);
+      out.write(1);
+      out.close();
+    }
+
+    {
+      // get new generation stamp
+      final LocatedBlock lb = cluster.getNameNode().getRpcServer()
+          .getBlockLocations(path.toString(), 0, 1).get(0);
+      final long newGS = lb.getBlock().getGenerationStamp();
+      Assert.assertTrue(newGS > originalGS);
+
+      // getBlockLocalPathInfo using the original block.
+      Assert.assertEquals(originalGS, originalBlock.getGenerationStamp());
+      final BlockLocalPathInfo info = proxy.getBlockLocalPathInfo(
+          originalBlock, token);
+      Assert.assertEquals(newGS, info.getBlock().getGenerationStamp());
+    }
     cluster.shutdown();
   }
 }

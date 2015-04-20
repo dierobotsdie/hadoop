@@ -34,21 +34,23 @@ import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.MiniDFSNNTopology;
 import org.apache.hadoop.hdfs.protocol.BlockListAsLongs;
+import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
+import org.apache.hadoop.hdfs.protocolPB.DatanodeProtocolClientSideTranslatorPB;
 import org.apache.hadoop.hdfs.server.common.Storage;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsDatasetSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeSpi;
+import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsDatasetTestUtil;
+import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsVolumeImpl;
+import org.apache.hadoop.hdfs.server.protocol.BlockReportContext;
+import org.apache.hadoop.hdfs.server.protocol.DatanodeRegistration;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
-import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.hdfs.server.protocol.StorageBlockReport;
 import org.apache.hadoop.test.GenericTestUtils;
 import org.junit.After;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -62,6 +64,9 @@ import java.util.concurrent.TimeoutException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_DATA_DIR_KEY;
 import static org.hamcrest.CoreMatchers.anyOf;
@@ -70,10 +75,13 @@ import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.core.Is.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.timeout;
 
 public class TestDataNodeHotSwapVolumes {
   private static final Log LOG = LogFactory.getLog(
@@ -100,6 +108,8 @@ public class TestDataNodeHotSwapVolumes {
     conf.setInt(DFSConfigKeys.DFS_DF_INTERVAL_KEY, 1000);
     conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY,
         1000);
+    /* Allow 1 volume failure */
+    conf.setInt(DFSConfigKeys.DFS_DATANODE_FAILED_VOLUMES_TOLERATED_KEY, 1);
 
     MiniDFSNNTopology nnTopology =
         MiniDFSNNTopology.simpleFederatedTopology(numNameNodes);
@@ -522,7 +532,7 @@ public class TestDataNodeHotSwapVolumes {
         dn.getConf().get(DFS_DATANODE_DATA_DIR_KEY).split(",");
     assertEquals(4, effectiveVolumes.length);
     for (String ev : effectiveVolumes) {
-      assertThat(new File(ev).getCanonicalPath(),
+      assertThat(StorageLocation.parse(ev).getFile().getCanonicalPath(),
           is(not(anyOf(is(newDirs.get(0)), is(newDirs.get(2))))));
     }
   }
@@ -538,31 +548,10 @@ public class TestDataNodeHotSwapVolumes {
   private static void assertFileLocksReleased(Collection<String> dirs)
       throws IOException {
     for (String dir: dirs) {
-      StorageLocation sl = StorageLocation.parse(dir);
-      File lockFile = new File(sl.getFile(), Storage.STORAGE_FILE_LOCK);
-      RandomAccessFile raf = null;
-      FileChannel channel = null;
-      FileLock lock = null;
       try {
-        raf = new RandomAccessFile(lockFile, "rws");
-        channel = raf.getChannel();
-        lock = channel.tryLock();
-        assertNotNull(String.format(
-          "Lock file at %s appears to be held by a different process.",
-          lockFile.getAbsolutePath()), lock);
-      } catch (OverlappingFileLockException e) {
-        fail(String.format("Must release lock file at %s.",
-          lockFile.getAbsolutePath()));
-      } finally {
-        if (lock != null) {
-          try {
-            lock.release();
-          } catch (IOException e) {
-            LOG.warn(String.format("I/O error releasing file lock %s.",
-              lockFile.getAbsolutePath()), e);
-          }
-        }
-        IOUtils.cleanup(null, channel, raf);
+        FsDatasetTestUtil.assertFileLockReleased(dir);
+      } catch (IOException e) {
+        LOG.warn(e);
       }
     }
   }
@@ -592,6 +581,7 @@ public class TestDataNodeHotSwapVolumes {
     final DataNode dn = cluster.getDataNodes().get(dataNodeIdx);
     final FileSystem fs = cluster.getFileSystem();
     final Path testFile = new Path("/test");
+    final long lastTimeDiskErrorCheck = dn.getLastDiskErrorCheck();
 
     FSDataOutputStream out = fs.create(testFile, REPLICATION);
 
@@ -600,6 +590,23 @@ public class TestDataNodeHotSwapVolumes {
     rb.nextBytes(writeBuf);
     out.write(writeBuf);
     out.hflush();
+
+    // Make FsDatasetSpi#finalizeBlock a time-consuming operation. So if the
+    // BlockReceiver releases volume reference before finalizeBlock(), the blocks
+    // on the volume will be removed, and finalizeBlock() throws IOE.
+    final FsDatasetSpi<? extends FsVolumeSpi> data = dn.data;
+    dn.data = Mockito.spy(data);
+    doAnswer(new Answer<Object>() {
+          public Object answer(InvocationOnMock invocation)
+              throws IOException, InterruptedException {
+            Thread.sleep(1000);
+            // Bypass the argument to FsDatasetImpl#finalizeBlock to verify that
+            // the block is not removed, since the volume reference should not
+            // be released at this point.
+            data.finalizeBlock((ExtendedBlock) invocation.getArguments()[0]);
+            return null;
+          }
+        }).when(dn.data).finalizeBlock(any(ExtendedBlock.class));
 
     final CyclicBarrier barrier = new CyclicBarrier(2);
 
@@ -627,13 +634,19 @@ public class TestDataNodeHotSwapVolumes {
     out.hflush();
     out.close();
 
+    reconfigThread.join();
+
     // Verify the file has sufficient replications.
     DFSTestUtil.waitReplication(fs, testFile, REPLICATION);
     // Read the content back
     byte[] content = DFSTestUtil.readFileBuffer(fs, testFile);
     assertEquals(BLOCK_SIZE, content.length);
 
-    reconfigThread.join();
+    // If an IOException thrown from BlockReceiver#run, it triggers
+    // DataNode#checkDiskError(). So we can test whether checkDiskError() is called,
+    // to see whether there is IOException in BlockReceiver#run().
+    assertEquals(lastTimeDiskErrorCheck, dn.getLastDiskErrorCheck());
+
     if (!exceptions.isEmpty()) {
       throw new IOException(exceptions.get(0).getCause());
     }
@@ -671,5 +684,92 @@ public class TestDataNodeHotSwapVolumes {
     // Bring the removed directory back. It only successes if all metadata about
     // this directory were removed from the previous step.
     dn.reconfigurePropertyImpl(DFS_DATANODE_DATA_DIR_KEY, oldDataDir);
+  }
+
+  /** Get the FsVolume on the given basePath */
+  private FsVolumeImpl getVolume(DataNode dn, File basePath) {
+    for (FsVolumeSpi vol : dn.getFSDataset().getVolumes()) {
+      if (vol.getBasePath().equals(basePath.getPath())) {
+        return (FsVolumeImpl)vol;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Verify that {@link DataNode#checkDiskErrors()} removes all metadata in
+   * DataNode upon a volume failure. Thus we can run reconfig on the same
+   * configuration to reload the new volume on the same directory as the failed one.
+   */
+  @Test(timeout=60000)
+  public void testDirectlyReloadAfterCheckDiskError()
+      throws IOException, TimeoutException, InterruptedException,
+      ReconfigurationException {
+    startDFSCluster(1, 2);
+    createFile(new Path("/test"), 32, (short)2);
+
+    DataNode dn = cluster.getDataNodes().get(0);
+    final String oldDataDir = dn.getConf().get(DFS_DATANODE_DATA_DIR_KEY);
+    File dirToFail = new File(cluster.getDataDirectory(), "data1");
+
+    FsVolumeImpl failedVolume = getVolume(dn, dirToFail);
+    assertTrue("No FsVolume was found for " + dirToFail,
+        failedVolume != null);
+    long used = failedVolume.getDfsUsed();
+
+    DataNodeTestUtils.injectDataDirFailure(dirToFail);
+    // Call and wait DataNode to detect disk failure.
+    long lastDiskErrorCheck = dn.getLastDiskErrorCheck();
+    dn.checkDiskErrorAsync();
+    while (dn.getLastDiskErrorCheck() == lastDiskErrorCheck) {
+      Thread.sleep(100);
+    }
+
+    createFile(new Path("/test1"), 32, (short)2);
+    assertEquals(used, failedVolume.getDfsUsed());
+
+    DataNodeTestUtils.restoreDataDirFromFailure(dirToFail);
+    dn.reconfigurePropertyImpl(DFS_DATANODE_DATA_DIR_KEY, oldDataDir);
+
+    createFile(new Path("/test2"), 32, (short)2);
+    FsVolumeImpl restoredVolume = getVolume(dn, dirToFail);
+    assertTrue(restoredVolume != null);
+    assertTrue(restoredVolume != failedVolume);
+    // More data has been written to this volume.
+    assertTrue(restoredVolume.getDfsUsed() > used);
+  }
+
+  /** Test that a full block report is sent after hot swapping volumes */
+  @Test(timeout=100000)
+  public void testFullBlockReportAfterRemovingVolumes()
+      throws IOException, ReconfigurationException {
+
+    Configuration conf = new Configuration();
+    conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, BLOCK_SIZE);
+
+    // Similar to TestTriggerBlockReport, set a really long value for
+    // dfs.heartbeat.interval, so that incremental block reports and heartbeats
+    // won't be sent during this test unless they're triggered
+    // manually.
+    conf.setLong(DFSConfigKeys.DFS_BLOCKREPORT_INTERVAL_MSEC_KEY, 10800000L);
+    conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY, 1080L);
+
+    cluster = new MiniDFSCluster.Builder(conf).numDataNodes(2).build();
+    cluster.waitActive();
+
+    final DataNode dn = cluster.getDataNodes().get(0);
+    DatanodeProtocolClientSideTranslatorPB spy =
+        DataNodeTestUtils.spyOnBposToNN(dn, cluster.getNameNode());
+
+    // Remove a data dir from datanode
+    File dataDirToKeep = new File(cluster.getDataDirectory(), "data1");
+    dn.reconfigurePropertyImpl(DFS_DATANODE_DATA_DIR_KEY, dataDirToKeep.toString());
+
+    // We should get 1 full report
+    Mockito.verify(spy, timeout(60000).times(1)).blockReport(
+        any(DatanodeRegistration.class),
+        anyString(),
+        any(StorageBlockReport[].class),
+        any(BlockReportContext.class));
   }
 }

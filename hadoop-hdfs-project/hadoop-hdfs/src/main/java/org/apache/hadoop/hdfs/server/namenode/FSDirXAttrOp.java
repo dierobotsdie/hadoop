@@ -108,7 +108,8 @@ class FSDirXAttrOp {
       return filteredAll;
     }
     if (filteredAll == null || filteredAll.isEmpty()) {
-      return null;
+      throw new IOException(
+          "At least one of the attributes provided was not found.");
     }
     List<XAttr> toGet = Lists.newArrayListWithCapacity(xAttrs.size());
     for (XAttr xAttr : xAttrs) {
@@ -450,7 +451,8 @@ class FSDirXAttrOp {
       INodesInPath iip = fsd.getINodesInPath(srcs, true);
       INode inode = FSDirectory.resolveLastINode(iip);
       int snapshotId = iip.getPathSnapshotId();
-      return XAttrStorage.readINodeXAttrs(inode, snapshotId);
+      return XAttrStorage.readINodeXAttrs(fsd.getAttributes(src,
+              inode.getLocalNameBytes(), inode, snapshotId));
     } finally {
       fsd.readUnlock();
     }

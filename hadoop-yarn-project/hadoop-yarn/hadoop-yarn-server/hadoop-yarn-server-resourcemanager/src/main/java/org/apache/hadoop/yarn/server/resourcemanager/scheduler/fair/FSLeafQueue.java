@@ -124,8 +124,9 @@ public class FSLeafQueue extends FSQueue {
       writeLock.unlock();
     }
 
-    // Update AM resource usage if needed
-    if (runnable && app.isAmRunning() && app.getAMResource() != null) {
+    // Update AM resource usage if needed. If isAMRunning is true, we're not
+    // running an unmanaged AM.
+    if (runnable && app.isAmRunning()) {
       Resources.subtractFrom(amResourceUsage, app.getAMResource());
     }
 
@@ -284,6 +285,8 @@ public class FSLeafQueue extends FSQueue {
     if (LOG.isDebugEnabled()) {
       LOG.debug("The updated demand for " + getName() + " is " + demand
           + "; the max is " + maxRes);
+      LOG.debug("The updated fairshare for " + getName() + " is "
+          + getFairShare());
     }
   }
   
@@ -304,7 +307,7 @@ public class FSLeafQueue extends FSQueue {
     Resource assigned = Resources.none();
     if (LOG.isDebugEnabled()) {
       LOG.debug("Node " + node.getNodeName() + " offered to queue: " +
-          getName());
+          getName() + " fairShare: " + getFairShare());
     }
 
     if (!assignContainerPreCheck(node)) {
@@ -330,6 +333,10 @@ public class FSLeafQueue extends FSQueue {
 
         assigned = sched.assignContainer(node);
         if (!assigned.equals(Resources.none())) {
+          if (LOG.isDebugEnabled()) {
+            LOG.debug("Assigned container in queue:" + getName() + " " +
+                "container:" + assigned);
+          }
           break;
         }
       }

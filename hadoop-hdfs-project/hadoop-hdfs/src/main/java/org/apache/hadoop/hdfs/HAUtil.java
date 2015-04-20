@@ -17,7 +17,6 @@
  */
 package org.apache.hadoop.hdfs;
 
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_HA_NAMENODE_ID_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_RPC_ADDRESS_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_SHARED_EDITS_DIR_KEY;
@@ -34,10 +33,12 @@ import java.util.Map;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.HadoopIllegalArgumentException;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.NameNodeProxies.ProxyAndInfo;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifier;
@@ -56,6 +57,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 
+@InterfaceAudience.Private
 public class HAUtil {
   
   private static final Log LOG = 
@@ -225,8 +227,8 @@ public class HAUtil {
   public static boolean isClientFailoverConfigured(
       Configuration conf, URI nameNodeUri) {
     String host = nameNodeUri.getHost();
-    String configKey = DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX + "."
-        + host;
+    String configKey = HdfsClientConfigKeys.Failover.PROXY_PROVIDER_KEY_PREFIX
+        + "." + host;
     return conf.get(configKey) != null;
   }
 
@@ -319,12 +321,16 @@ public class HAUtil {
             buildTokenServicePrefixForLogicalUri(HdfsConstants.HDFS_URI_SCHEME)
                 + "//" + specificToken.getService());
         ugi.addToken(alias, specificToken);
-        LOG.debug("Mapped HA service delegation token for logical URI " +
-            haUri + " to namenode " + singleNNAddr);
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("Mapped HA service delegation token for logical URI " +
+              haUri + " to namenode " + singleNNAddr);
+        }
       }
     } else {
-      LOG.debug("No HA service delegation token found for logical URI " +
-          haUri);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("No HA service delegation token found for logical URI " +
+            haUri);
+      }
     }
   }
 

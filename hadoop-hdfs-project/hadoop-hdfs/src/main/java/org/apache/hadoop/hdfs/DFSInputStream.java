@@ -52,14 +52,15 @@ import org.apache.hadoop.fs.CanSetReadahead;
 import org.apache.hadoop.fs.CanUnbuffer;
 import org.apache.hadoop.fs.ChecksumException;
 import org.apache.hadoop.fs.FSInputStream;
+import org.apache.hadoop.fs.FileEncryptionInfo;
 import org.apache.hadoop.fs.HasEnhancedByteBufferAccess;
 import org.apache.hadoop.fs.ReadOption;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.fs.UnresolvedLinkException;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf;
 import org.apache.hadoop.hdfs.protocol.ClientDatanodeProtocol;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
-import org.apache.hadoop.fs.FileEncryptionInfo;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlocks;
 import org.apache.hadoop.hdfs.protocol.datatransfer.InvalidEncryptionKeyException;
@@ -265,9 +266,10 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
    * Grab the open-file info from namenode
    */
   void openInfo() throws IOException, UnresolvedLinkException {
+    final DfsClientConf conf = dfsClient.getConf();
     synchronized(infoLock) {
       lastBlockBeingWrittenLength = fetchLocatedBlocksAndGetLastBlockLength();
-      int retriesForLastBlockLength = dfsClient.getConf().retryTimesForGetLastBlockLength;
+      int retriesForLastBlockLength = conf.getRetryTimesForGetLastBlockLength();
       while (retriesForLastBlockLength > 0) {
         // Getting last block length as -1 is a special case. When cluster
         // restarts, DNs may not report immediately. At this time partial block
@@ -277,7 +279,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
           DFSClient.LOG.warn("Last block locations not available. "
               + "Datanodes might not have reported blocks completely."
               + " Will retry for " + retriesForLastBlockLength + " times");
-          waitFor(dfsClient.getConf().retryIntervalForGetLastBlockLength);
+          waitFor(conf.getRetryIntervalForGetLastBlockLength());
           lastBlockBeingWrittenLength = fetchLocatedBlocksAndGetLastBlockLength();
         } else {
           break;
@@ -346,13 +348,14 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
     assert locatedblock != null : "LocatedBlock cannot be null";
     int replicaNotFoundCount = locatedblock.getLocations().length;
     
+    final DfsClientConf conf = dfsClient.getConf();
     for(DatanodeInfo datanode : locatedblock.getLocations()) {
       ClientDatanodeProtocol cdp = null;
       
       try {
         cdp = DFSUtil.createClientDatanodeProtocolProxy(datanode,
-            dfsClient.getConfiguration(), dfsClient.getConf().socketTimeout,
-            dfsClient.getConf().connectToDnViaHostname, locatedblock);
+            dfsClient.getConfiguration(), conf.getSocketTimeout(),
+            conf.isConnectToDnViaHostname(), locatedblock);
         
         final long n = cdp.getReplicaVisibleLength(locatedblock.getBlock());
         
@@ -666,7 +669,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
   @Override
   public synchronized void close() throws IOException {
     if (!closed.compareAndSet(false, true)) {
-      DFSClient.LOG.warn("DFSInputStream has been closed already");
+      DFSClient.LOG.debug("DFSInputStream has been closed already");
       return;
     }
     dfsClient.checkOpen();
@@ -938,7 +941,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
         String errMsg = getBestNodeDNAddrPairErrorString(block.getLocations(),
           deadNodes, ignoredNodes);
         String blockInfo = block.getBlock() + " file=" + src;
-        if (failures >= dfsClient.getMaxBlockAcquireFailures()) {
+        if (failures >= dfsClient.getConf().getMaxBlockAcquireFailures()) {
           String description = "Could not obtain block: " + blockInfo;
           DFSClient.LOG.warn(description + errMsg
               + ". Throwing a BlockMissingException");
@@ -963,7 +966,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
           // alleviating the request rate from the server. Similarly the 3rd retry
           // will wait 6000ms grace period before retry and the waiting window is
           // expanded to 9000ms. 
-          final int timeWindow = dfsClient.getConf().timeWindow;
+          final int timeWindow = dfsClient.getConf().getTimeWindow();
           double waitTime = timeWindow * failures +       // grace period for the last round of attempt
             timeWindow * (failures + 1) * DFSUtil.getRandom().nextDouble(); // expanding time window for each failure
           DFSClient.LOG.warn("DFS chooseDataNode: got # " + (failures + 1) + " IOException, will wait for " + waitTime + " msec.");
@@ -1012,7 +1015,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
           ", ignoredNodes = " + ignoredNodes);
     }
     final String dnAddr =
-        chosenNode.getXferAddr(dfsClient.getConf().connectToDnViaHostname);
+        chosenNode.getXferAddr(dfsClient.getConf().isConnectToDnViaHostname());
     if (DFSClient.LOG.isDebugEnabled()) {
       DFSClient.LOG.debug("Connecting to datanode " + dnAddr);
     }
@@ -1045,16 +1048,16 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
     return errMsgr.toString();
   }
 
-  private void fetchBlockByteRange(LocatedBlock block, long start, long end,
+  private void fetchBlockByteRange(long blockStartOffset, long start, long end,
       byte[] buf, int offset,
       Map<ExtendedBlock, Set<DatanodeInfo>> corruptedBlockMap)
       throws IOException {
-    block = getBlockAt(block.getStartOffset());
+    LocatedBlock block = getBlockAt(blockStartOffset);
     while (true) {
       DNAddrPair addressPair = chooseDataNode(block, null);
       try {
-        actualGetFromOneDataNode(addressPair, block, start, end, buf, offset,
-            corruptedBlockMap);
+        actualGetFromOneDataNode(addressPair, blockStartOffset, start, end,
+            buf, offset, corruptedBlockMap);
         return;
       } catch (IOException e) {
         // Ignore. Already processed inside the function.
@@ -1064,7 +1067,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
   }
 
   private Callable<ByteBuffer> getFromOneDataNode(final DNAddrPair datanode,
-      final LocatedBlock block, final long start, final long end,
+      final long blockStartOffset, final long start, final long end,
       final ByteBuffer bb,
       final Map<ExtendedBlock, Set<DatanodeInfo>> corruptedBlockMap,
       final int hedgedReadId) {
@@ -1077,8 +1080,8 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
         TraceScope scope =
             Trace.startSpan("hedgedRead" + hedgedReadId, parentSpan);
         try {
-          actualGetFromOneDataNode(datanode, block, start, end, buf, offset,
-              corruptedBlockMap);
+          actualGetFromOneDataNode(datanode, blockStartOffset, start, end, buf,
+              offset, corruptedBlockMap);
           return bb;
         } finally {
           scope.close();
@@ -1088,7 +1091,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
   }
 
   private void actualGetFromOneDataNode(final DNAddrPair datanode,
-      LocatedBlock block, final long start, final long end, byte[] buf,
+      long blockStartOffset, final long start, final long end, byte[] buf,
       int offset, Map<ExtendedBlock, Set<DatanodeInfo>> corruptedBlockMap)
       throws IOException {
     DFSClientFaultInjector.get().startFetchFromDatanode();
@@ -1101,7 +1104,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
       // start of the loop.
       CachingStrategy curCachingStrategy;
       boolean allowShortCircuitLocalReads;
-      block = getBlockAt(block.getStartOffset());
+      LocatedBlock block = getBlockAt(blockStartOffset);
       synchronized(infoLock) {
         curCachingStrategy = cachingStrategy;
         allowShortCircuitLocalReads = !shortCircuitForbidden();
@@ -1189,10 +1192,11 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
    * if the first read is taking longer than configured amount of
    * time.  We then wait on which ever read returns first.
    */
-  private void hedgedFetchBlockByteRange(LocatedBlock block, long start,
+  private void hedgedFetchBlockByteRange(long blockStartOffset, long start,
       long end, byte[] buf, int offset,
       Map<ExtendedBlock, Set<DatanodeInfo>> corruptedBlockMap)
       throws IOException {
+    final DfsClientConf conf = dfsClient.getConf();
     ArrayList<Future<ByteBuffer>> futures = new ArrayList<Future<ByteBuffer>>();
     CompletionService<ByteBuffer> hedgedService =
         new ExecutorCompletionService<ByteBuffer>(
@@ -1201,7 +1205,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
     ByteBuffer bb = null;
     int len = (int) (end - start + 1);
     int hedgedReadId = 0;
-    block = getBlockAt(block.getStartOffset());
+    LocatedBlock block = getBlockAt(blockStartOffset);
     while (true) {
       // see HDFS-6591, this metric is used to verify/catch unnecessary loops
       hedgedReadOpsLoopNumForTesting++;
@@ -1213,20 +1217,20 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
         chosenNode = chooseDataNode(block, ignored);
         bb = ByteBuffer.wrap(buf, offset, len);
         Callable<ByteBuffer> getFromDataNodeCallable = getFromOneDataNode(
-            chosenNode, block, start, end, bb, corruptedBlockMap,
-            hedgedReadId++);
+            chosenNode, block.getStartOffset(), start, end, bb,
+            corruptedBlockMap, hedgedReadId++);
         Future<ByteBuffer> firstRequest = hedgedService
             .submit(getFromDataNodeCallable);
         futures.add(firstRequest);
         try {
           Future<ByteBuffer> future = hedgedService.poll(
-              dfsClient.getHedgedReadTimeout(), TimeUnit.MILLISECONDS);
+              conf.getHedgedReadThresholdMillis(), TimeUnit.MILLISECONDS);
           if (future != null) {
             future.get();
             return;
           }
           if (DFSClient.LOG.isDebugEnabled()) {
-            DFSClient.LOG.debug("Waited " + dfsClient.getHedgedReadTimeout()
+            DFSClient.LOG.debug("Waited " + conf.getHedgedReadThresholdMillis()
                 + "ms to read from " + chosenNode.info
                 + "; spawning hedged read");
           }
@@ -1251,8 +1255,8 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
           }
           bb = ByteBuffer.allocate(len);
           Callable<ByteBuffer> getFromDataNodeCallable = getFromOneDataNode(
-              chosenNode, block, start, end, bb, corruptedBlockMap,
-              hedgedReadId++);
+              chosenNode, block.getStartOffset(), start, end, bb,
+              corruptedBlockMap, hedgedReadId++);
           Future<ByteBuffer> oneMoreRequest = hedgedService
               .submit(getFromDataNodeCallable);
           futures.add(oneMoreRequest);
@@ -1405,11 +1409,13 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
       long bytesToRead = Math.min(remaining, blk.getBlockSize() - targetStart);
       try {
         if (dfsClient.isHedgedReadsEnabled()) {
-          hedgedFetchBlockByteRange(blk, targetStart, targetStart + bytesToRead
-              - 1, buffer, offset, corruptedBlockMap);
+          hedgedFetchBlockByteRange(blk.getStartOffset(), targetStart,
+              targetStart + bytesToRead - 1, buffer, offset,
+              corruptedBlockMap);
         } else {
-          fetchBlockByteRange(blk, targetStart, targetStart + bytesToRead - 1,
-              buffer, offset, corruptedBlockMap);
+          fetchBlockByteRange(blk.getStartOffset(), targetStart,
+              targetStart + bytesToRead - 1, buffer, offset,
+              corruptedBlockMap);
         }
       } finally {
         // Check and report if any block replicas are corrupted.
@@ -1704,7 +1710,7 @@ implements ByteBufferReadable, CanSetDropBehind, CanSetReadahead,
       }
     }
     ByteBuffer buffer = null;
-    if (dfsClient.getConf().shortCircuitMmapEnabled) {
+    if (dfsClient.getConf().getShortCircuitConf().isShortCircuitMmapEnabled()) {
       buffer = tryReadZeroCopy(maxLength, opts);
     }
     if (buffer != null) {

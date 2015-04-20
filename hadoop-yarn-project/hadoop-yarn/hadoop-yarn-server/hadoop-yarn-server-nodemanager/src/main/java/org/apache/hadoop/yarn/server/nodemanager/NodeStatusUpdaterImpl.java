@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Random;
 import java.util.Set;
 
@@ -42,6 +43,7 @@ import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.service.AbstractService;
+import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.VersionUtil;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ContainerId;
@@ -53,9 +55,11 @@ import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
+import org.apache.hadoop.yarn.nodelabels.CommonNodeLabelsManager;
 import org.apache.hadoop.yarn.server.api.ResourceManagerConstants;
 import org.apache.hadoop.yarn.server.api.ResourceTracker;
 import org.apache.hadoop.yarn.server.api.ServerRMProxy;
+import org.apache.hadoop.yarn.server.api.protocolrecords.LogAggregationReport;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NMContainerStatus;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatRequest;
 import org.apache.hadoop.yarn.server.api.protocolrecords.NodeHeartbeatResponse;
@@ -70,6 +74,8 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.ContainerManag
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.application.ApplicationState;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Container;
 import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
+import org.apache.hadoop.yarn.server.nodemanager.nodelabels.NodeLabelsProvider;
+import org.apache.hadoop.yarn.util.Records;
 import org.apache.hadoop.yarn.util.YarnVersionInfo;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -112,6 +118,10 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   // Duration for which to track recently stopped container.
   private long durationToTrackStoppedContainers;
 
+  private boolean logAggregationEnabled;
+
+  private final List<LogAggregationReport> logAggregationReportForAppsTempList;
+
   private final NodeHealthCheckerService healthChecker;
   private final NodeManagerMetrics metrics;
 
@@ -120,17 +130,29 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   private long rmIdentifier = ResourceManagerConstants.RM_INVALID_IDENTIFIER;
   Set<ContainerId> pendingContainersToRemove = new HashSet<ContainerId>();
 
+  private final NodeLabelsProvider nodeLabelsProvider;
+  private final boolean hasNodeLabelsProvider;
+
   public NodeStatusUpdaterImpl(Context context, Dispatcher dispatcher,
       NodeHealthCheckerService healthChecker, NodeManagerMetrics metrics) {
+    this(context, dispatcher, healthChecker, metrics, null);
+  }
+
+  public NodeStatusUpdaterImpl(Context context, Dispatcher dispatcher,
+      NodeHealthCheckerService healthChecker, NodeManagerMetrics metrics,
+      NodeLabelsProvider nodeLabelsProvider) {
     super(NodeStatusUpdaterImpl.class.getName());
     this.healthChecker = healthChecker;
+    this.nodeLabelsProvider = nodeLabelsProvider;
+    this.hasNodeLabelsProvider = (nodeLabelsProvider != null);
     this.context = context;
     this.dispatcher = dispatcher;
     this.metrics = metrics;
-    this.recentlyStoppedContainers =
-        new LinkedHashMap<ContainerId, Long>();
+    this.recentlyStoppedContainers = new LinkedHashMap<ContainerId, Long>();
     this.pendingCompletedContainers =
         new HashMap<ContainerId, ContainerStatus>();
+    this.logAggregationReportForAppsTempList =
+        new ArrayList<LogAggregationReport>();
   }
 
   @Override
@@ -180,6 +202,10 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
     LOG.info("Initialized nodemanager for " + nodeId + ":" +
         " physical-memory=" + memoryMb + " virtual-memory=" + virtualMemoryMb +
         " virtual-cores=" + virtualCores);
+
+    this.logAggregationEnabled =
+        conf.getBoolean(YarnConfiguration.LOG_AGGREGATION_ENABLED,
+          YarnConfiguration.DEFAULT_LOG_AGGREGATION_ENABLED);
   }
 
   @Override
@@ -253,22 +279,30 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
   protected void registerWithRM()
       throws YarnException, IOException {
     List<NMContainerStatus> containerReports = getNMContainerStatuses();
+    Set<String> nodeLabels = null;
+    if (hasNodeLabelsProvider) {
+      nodeLabels = nodeLabelsProvider.getNodeLabels();
+      nodeLabels =
+          (null == nodeLabels) ? CommonNodeLabelsManager.EMPTY_STRING_SET
+              : nodeLabels;
+    }
     RegisterNodeManagerRequest request =
         RegisterNodeManagerRequest.newInstance(nodeId, httpPort, totalResource,
-          nodeManagerVersionId, containerReports, getRunningApplications());
+            nodeManagerVersionId, containerReports, getRunningApplications(),
+            nodeLabels);
     if (containerReports != null) {
       LOG.info("Registering with RM using containers :" + containerReports);
     }
     RegisterNodeManagerResponse regNMResponse =
         resourceTracker.registerNodeManager(request);
     this.rmIdentifier = regNMResponse.getRMIdentifier();
-    // if the Resourcemanager instructs NM to shutdown.
+    // if the Resource Manager instructs NM to shutdown.
     if (NodeAction.SHUTDOWN.equals(regNMResponse.getNodeAction())) {
       String message =
           "Message from ResourceManager: "
               + regNMResponse.getDiagnosticsMessage();
       throw new YarnRuntimeException(
-        "Recieved SHUTDOWN signal from Resourcemanager ,Registration of NodeManager failed, "
+        "Recieved SHUTDOWN signal from Resourcemanager, Registration of NodeManager failed, "
             + message);
     }
 
@@ -306,8 +340,21 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       this.context.getNMTokenSecretManager().setMasterKey(masterKey);
     }
 
-    LOG.info("Registered with ResourceManager as " + this.nodeId
-        + " with total resource of " + this.totalResource);
+    StringBuilder successfullRegistrationMsg = new StringBuilder();
+    successfullRegistrationMsg.append("Registered with ResourceManager as ")
+        .append(this.nodeId).append(" with total resource of ")
+        .append(this.totalResource);
+
+    if (regNMResponse.getAreNodeLabelsAcceptedByRM()) {
+      successfullRegistrationMsg
+          .append(" and with following Node label(s) : {")
+          .append(StringUtils.join(",", nodeLabels)).append("}");
+    } else if (hasNodeLabelsProvider) {
+      //case where provider is set but RM did not accept the Node Labels
+      LOG.error(regNMResponse.getDiagnosticsMessage());
+    }
+
+    LOG.info(successfullRegistrationMsg);
     LOG.info("Notifying ContainerManager to unblock new container-requests");
     ((ContainerManagerImpl) this.context.getContainerManager())
       .setBlockNewContainerRequests(false);
@@ -580,19 +627,53 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
       @Override
       @SuppressWarnings("unchecked")
       public void run() {
-        int lastHeartBeatID = 0;
+        int lastHeartbeatID = 0;
+        Set<String> lastUpdatedNodeLabelsToRM = null;
+        if (hasNodeLabelsProvider) {
+          lastUpdatedNodeLabelsToRM = nodeLabelsProvider.getNodeLabels();
+          lastUpdatedNodeLabelsToRM =
+              (null == lastUpdatedNodeLabelsToRM) ? CommonNodeLabelsManager.EMPTY_STRING_SET
+                  : lastUpdatedNodeLabelsToRM;
+        }
         while (!isStopped) {
           // Send heartbeat
           try {
             NodeHeartbeatResponse response = null;
-            NodeStatus nodeStatus = getNodeStatus(lastHeartBeatID);
-            
+            Set<String> nodeLabelsForHeartbeat = null;
+            NodeStatus nodeStatus = getNodeStatus(lastHeartbeatID);
+
+            if (hasNodeLabelsProvider) {
+              nodeLabelsForHeartbeat = nodeLabelsProvider.getNodeLabels();
+              //if the provider returns null then consider empty labels are set
+              nodeLabelsForHeartbeat =
+                  (nodeLabelsForHeartbeat == null) ? CommonNodeLabelsManager.EMPTY_STRING_SET
+                      : nodeLabelsForHeartbeat;
+              if (!areNodeLabelsUpdated(nodeLabelsForHeartbeat,
+                  lastUpdatedNodeLabelsToRM)) {
+                //if nodelabels have not changed then no need to send
+                nodeLabelsForHeartbeat = null;
+              }
+            }
+
             NodeHeartbeatRequest request =
                 NodeHeartbeatRequest.newInstance(nodeStatus,
-                  NodeStatusUpdaterImpl.this.context
-                    .getContainerTokenSecretManager().getCurrentKey(),
-                  NodeStatusUpdaterImpl.this.context.getNMTokenSecretManager()
-                    .getCurrentKey());
+                    NodeStatusUpdaterImpl.this.context
+                        .getContainerTokenSecretManager().getCurrentKey(),
+                    NodeStatusUpdaterImpl.this.context
+                        .getNMTokenSecretManager().getCurrentKey(),
+                    nodeLabelsForHeartbeat);
+
+            if (logAggregationEnabled) {
+              // pull log aggregation status for application running in this NM
+              Map<ApplicationId, LogAggregationReport> logAggregationReports =
+                  getLogAggregationReportsForApps(context
+                    .getLogAggregationStatusForApps());
+              if (logAggregationReports != null
+                  && !logAggregationReports.isEmpty()) {
+                request.setLogAggregationReportsForApps(logAggregationReports);
+              }
+            }
+
             response = resourceTracker.nodeHeartbeat(request);
             //get next heartbeat interval from response
             nextHeartBeatInterval = response.getNextHeartBeatInterval();
@@ -623,6 +704,17 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
               break;
             }
 
+            if (response.getAreNodeLabelsAcceptedByRM()) {
+              lastUpdatedNodeLabelsToRM = nodeLabelsForHeartbeat;
+              LOG.info("Node Labels {"
+                  + StringUtils.join(",", nodeLabelsForHeartbeat)
+                  + "} were Accepted by RM ");
+            } else if (nodeLabelsForHeartbeat != null) {
+              // case where NodeLabelsProvider is set and updated labels were
+              // sent to RM and RM rejected the labels
+              LOG.error(response.getDiagnosticsMessage());
+            }
+
             // Explicitly put this method after checking the resync response. We
             // don't want to remove the completed containers before resync
             // because these completed containers will be reported back to RM
@@ -631,7 +723,8 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
             removeOrTrackCompletedContainersFromContext(response
                   .getContainersToBeRemovedFromNM());
 
-            lastHeartBeatID = response.getResponseId();
+            logAggregationReportForAppsTempList.clear();
+            lastHeartbeatID = response.getResponseId();
             List<ContainerId> containersToCleanup = response
                 .getContainersToCleanup();
             if (!containersToCleanup.isEmpty()) {
@@ -680,6 +773,23 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
         }
       }
 
+      /**
+       * Caller should take care of sending non null nodelabels for both
+       * arguments
+       * 
+       * @param nodeLabelsNew
+       * @param nodeLabelsOld
+       * @return if the New node labels are diff from the older one.
+       */
+      private boolean areNodeLabelsUpdated(Set<String> nodeLabelsNew,
+          Set<String> nodeLabelsOld) {
+        if (nodeLabelsNew.size() != nodeLabelsOld.size()
+            || !nodeLabelsOld.containsAll(nodeLabelsNew)) {
+          return true;
+        }
+        return false;
+      }
+
       private void updateMasterKeys(NodeHeartbeatResponse response) {
         // See if the master-key has rolled over
         MasterKey updatedMasterKey = response.getContainerTokenMasterKey();
@@ -698,6 +808,48 @@ public class NodeStatusUpdaterImpl extends AbstractService implements
         new Thread(statusUpdaterRunnable, "Node Status Updater");
     statusUpdater.start();
   }
-  
-  
+
+  private Map<ApplicationId, LogAggregationReport>
+      getLogAggregationReportsForApps(
+          ConcurrentLinkedQueue<LogAggregationReport> lastestLogAggregationStatus) {
+    Map<ApplicationId, LogAggregationReport> latestLogAggregationReports =
+        new HashMap<ApplicationId, LogAggregationReport>();
+    LogAggregationReport status;
+    while ((status = lastestLogAggregationStatus.poll()) != null) {
+      this.logAggregationReportForAppsTempList.add(status);
+    }
+    for (LogAggregationReport logAggregationReport
+        : this.logAggregationReportForAppsTempList) {
+      LogAggregationReport report = null;
+      if (latestLogAggregationReports.containsKey(logAggregationReport
+        .getApplicationId())) {
+        report =
+            latestLogAggregationReports.get(logAggregationReport
+              .getApplicationId());
+        report.setLogAggregationStatus(logAggregationReport
+          .getLogAggregationStatus());
+        String message = report.getDiagnosticMessage();
+        if (logAggregationReport.getDiagnosticMessage() != null
+            && !logAggregationReport.getDiagnosticMessage().isEmpty()) {
+          if (message != null) {
+            message += logAggregationReport.getDiagnosticMessage();
+          } else {
+            message = logAggregationReport.getDiagnosticMessage();
+          }
+          report.setDiagnosticMessage(message);
+        }
+      } else {
+        report = Records.newRecord(LogAggregationReport.class);
+        report.setApplicationId(logAggregationReport.getApplicationId());
+        report.setNodeId(this.nodeId);
+        report.setLogAggregationStatus(logAggregationReport
+          .getLogAggregationStatus());
+        report
+          .setDiagnosticMessage(logAggregationReport.getDiagnosticMessage());
+      }
+      latestLogAggregationReports.put(logAggregationReport.getApplicationId(),
+        report);
+    }
+    return latestLogAggregationReports;
+  }
 }

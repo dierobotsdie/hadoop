@@ -37,9 +37,8 @@ import org.apache.commons.lang.mutable.MutableBoolean;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf.ShortCircuitConf;
 import org.apache.hadoop.hdfs.net.DomainPeer;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.datatransfer.Sender;
@@ -338,25 +337,15 @@ public class ShortCircuitCache implements Closeable {
    */
   private final DfsClientShmManager shmManager;
 
-  /**
-   * Create a {@link ShortCircuitCache} object from a {@link Configuration}
-   */
-  public static ShortCircuitCache fromConf(Configuration conf) {
+  public static ShortCircuitCache fromConf(ShortCircuitConf conf) {
     return new ShortCircuitCache(
-        conf.getInt(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_STREAMS_CACHE_SIZE_KEY,
-            DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_STREAMS_CACHE_SIZE_DEFAULT),
-        conf.getLong(DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_STREAMS_CACHE_EXPIRY_MS_KEY,
-            DFSConfigKeys.DFS_CLIENT_READ_SHORTCIRCUIT_STREAMS_CACHE_EXPIRY_MS_DEFAULT),
-        conf.getInt(DFSConfigKeys.DFS_CLIENT_MMAP_CACHE_SIZE,
-            DFSConfigKeys.DFS_CLIENT_MMAP_CACHE_SIZE_DEFAULT),
-        conf.getLong(DFSConfigKeys.DFS_CLIENT_MMAP_CACHE_TIMEOUT_MS,
-            DFSConfigKeys.DFS_CLIENT_MMAP_CACHE_TIMEOUT_MS_DEFAULT),
-        conf.getLong(DFSConfigKeys.DFS_CLIENT_MMAP_RETRY_TIMEOUT_MS,
-            DFSConfigKeys.DFS_CLIENT_MMAP_RETRY_TIMEOUT_MS_DEFAULT),
-        conf.getLong(DFSConfigKeys.DFS_CLIENT_SHORT_CIRCUIT_REPLICA_STALE_THRESHOLD_MS,
-            DFSConfigKeys.DFS_CLIENT_SHORT_CIRCUIT_REPLICA_STALE_THRESHOLD_MS_DEFAULT),
-        conf.getInt(DFSConfigKeys.DFS_SHORT_CIRCUIT_SHARED_MEMORY_WATCHER_INTERRUPT_CHECK_MS,
-            DFSConfigKeys.DFS_SHORT_CIRCUIT_SHARED_MEMORY_WATCHER_INTERRUPT_CHECK_MS_DEFAULT));
+        conf.getShortCircuitStreamsCacheSize(),
+        conf.getShortCircuitStreamsCacheExpiryMs(),
+        conf.getShortCircuitMmapCacheSize(),
+        conf.getShortCircuitMmapCacheExpiryMs(),
+        conf.getShortCircuitMmapCacheRetryTimeout(),
+        conf.getShortCircuitCacheStaleThresholdMs(),
+        conf.getShortCircuitSharedMemoryWatcherInterruptCheckMs());
   }
 
   public ShortCircuitCache(int maxTotalSize, long maxNonMmappedEvictableLifespanMs,
@@ -446,7 +435,9 @@ public class ShortCircuitCache implements Closeable {
           purgeReason = "purging replica because it is stale.";
         }
         if (purgeReason != null) {
-          LOG.debug(this + ": " + purgeReason);
+          if (LOG.isDebugEnabled()) {
+            LOG.debug(this + ": " + purgeReason);
+          }
           purge(replica);
         }
       }
@@ -913,6 +904,34 @@ public class ShortCircuitCache implements Closeable {
       }
     } finally {
       lock.unlock();
+    }
+
+    releaserExecutor.shutdown();
+    cleanerExecutor.shutdown();
+    // wait for existing tasks to terminate
+    try {
+      if (!releaserExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+        LOG.error("Forcing SlotReleaserThreadPool to shutdown!");
+        releaserExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      releaserExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+      LOG.error("Interrupted while waiting for SlotReleaserThreadPool "
+          + "to terminate", e);
+    }
+
+    // wait for existing tasks to terminate
+    try {
+      if (!cleanerExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+        LOG.error("Forcing CleanerThreadPool to shutdown!");
+        cleanerExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      cleanerExecutor.shutdownNow();
+      Thread.currentThread().interrupt();
+      LOG.error("Interrupted while waiting for CleanerThreadPool "
+          + "to terminate", e);
     }
     IOUtils.cleanup(LOG, shmManager);
   }

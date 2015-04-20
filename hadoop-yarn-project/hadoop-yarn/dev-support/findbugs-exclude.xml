@@ -63,9 +63,12 @@
     <Bug pattern="BC_UNCONFIRMED_CAST" />
   </Match>
   <Match>
-    <Class name="~org\.apache\.hadoop\.yarn\.server\.resourcemanager\.rmapp\.attempt\.RMAppAttemptMetrics" />
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptMetrics" />
     <Method name="getLocalityStatistics" />
     <Bug pattern="EI_EXPOSE_REP" />
+  </Match>
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptMetrics" />
     <Method name="incNumAllocatedContainers"/>
     <Bug pattern="VO_VOLATILE_INCREMENT" />
   </Match>
@@ -138,6 +141,14 @@
     <Class name="org.apache.hadoop.yarn.server.resourcemanager.resource.Priority$Comparator" />
     <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE" />
   </Match>
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.policy.FifoComparator" />
+    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE" />
+  </Match>
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.PartitionedQueueComparator" />
+    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE" />
+  </Match>
   <!-- Ignore some irrelevant class name warning -->
   <Match>
     <Class name="org.apache.hadoop.yarn.api.records.SerializedException" />
@@ -149,11 +160,21 @@
     <Class name="org.apache.hadoop.yarn.server.nodemanager.containermanager.logaggregation.LogAggregationService" />
     <Bug pattern="IS2_INCONSISTENT_SYNC" />
   </Match>
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.AllocationFileLoaderService" />
+    <Field name="allocFile" />
+    <Bug pattern="IS2_INCONSISTENT_SYNC" />
+  </Match>
   <!-- Inconsistent sync warning - minimumAllocation is only initialized once and never changed -->
   <Match>
     <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.AbstractYarnScheduler" />
     <Field name="minimumAllocation" />
     <Bug pattern="IS2_INCONSISTENT_SYNC" />
+  </Match>
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FSSchedulerNode" />
+    <Method name="reserveResource" />
+    <Bug pattern="BC_UNCONFIRMED_CAST" /> 
   </Match>
   <!-- Inconsistent sync warning - reinitialize read from other queue does not need sync-->
   <Match>
@@ -210,6 +231,18 @@
   <Match>
     <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler" />
     <Field name="scheduleAsynchronously" />
+    <Bug pattern="IS2_INCONSISTENT_SYNC" />
+  </Match>
+  <!-- Inconsistent sync warning - updateInterval is only initialized once and never changed -->
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler" />
+    <Field name="updateInterval" />
+    <Bug pattern="IS2_INCONSISTENT_SYNC" />
+  </Match>
+  <!-- Inconsistent sync warning - callDurationMetrics is only initialized once and never changed -->
+  <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler" />
+    <Field name="fsOpDurations" />
     <Bug pattern="IS2_INCONSISTENT_SYNC" />
   </Match>
 
@@ -412,6 +445,11 @@
     <Bug pattern="IS2_INCONSISTENT_SYNC" />
   </Match>
   <Match>
+    <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler" />
+    <Field name="allocConf" />
+    <Bug pattern="IS2_INCONSISTENT_SYNC" />
+  </Match>
+  <Match>
     <Class name="org.apache.hadoop.yarn.server.resourcemanager.scheduler.SchedulerNode" />
     <Field name="numContainers" />
     <Bug pattern="VO_VOLATILE_INCREMENT" />
@@ -431,5 +469,14 @@
     <Method name="recoverContainersOnNode" />
     <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE" />
   </Match>
-
+  
+  <!-- Following fields are used in ErrorsAndWarningsBlock, which is not a part of analysis of findbugs -->
+  <Match>
+    <Class name="org.apache.hadoop.yarn.util.Log4jWarningErrorMetricsAppender$Element" />
+    <Or>
+      <Field name="count" />
+      <Field name="timestampSeconds" />
+    </Or>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD" />
+  </Match>
 </FindBugsFilter>

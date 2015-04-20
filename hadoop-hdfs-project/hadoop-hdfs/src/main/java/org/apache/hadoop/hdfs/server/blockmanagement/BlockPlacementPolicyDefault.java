@@ -17,7 +17,7 @@
  */
 package org.apache.hadoop.hdfs.server.blockmanagement;
 
-import static org.apache.hadoop.util.Time.now;
+import static org.apache.hadoop.util.Time.monotonicNow;
 
 import java.util.*;
 
@@ -237,7 +237,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
    *         is independent of the number of chosen nodes, as it is calculated
    *         using the target number of replicas.
    */
-  private int[] getMaxNodesPerRack(int numOfChosen, int numOfReplicas) {
+  protected int[] getMaxNodesPerRack(int numOfChosen, int numOfReplicas) {
     int clusterSize = clusterMap.getNumOfLeaves();
     int totalNumOfReplicas = numOfChosen + numOfReplicas;
     if (totalNumOfReplicas > clusterSize) {
@@ -333,41 +333,8 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
             + " unavailableStorages=" + unavailableStorages
             + ", storagePolicy=" + storagePolicy);
       }
-
-      if (numOfResults == 0) {
-        writer = chooseLocalStorage(writer, excludedNodes, blocksize,
-            maxNodesPerRack, results, avoidStaleNodes, storageTypes, true)
-                .getDatanodeDescriptor();
-        if (--numOfReplicas == 0) {
-          return writer;
-        }
-      }
-      final DatanodeDescriptor dn0 = results.get(0).getDatanodeDescriptor();
-      if (numOfResults <= 1) {
-        chooseRemoteRack(1, dn0, excludedNodes, blocksize, maxNodesPerRack,
-            results, avoidStaleNodes, storageTypes);
-        if (--numOfReplicas == 0) {
-          return writer;
-        }
-      }
-      if (numOfResults <= 2) {
-        final DatanodeDescriptor dn1 = results.get(1).getDatanodeDescriptor();
-        if (clusterMap.isOnSameRack(dn0, dn1)) {
-          chooseRemoteRack(1, dn0, excludedNodes, blocksize, maxNodesPerRack,
-              results, avoidStaleNodes, storageTypes);
-        } else if (newBlock){
-          chooseLocalRack(dn1, excludedNodes, blocksize, maxNodesPerRack,
-              results, avoidStaleNodes, storageTypes);
-        } else {
-          chooseLocalRack(writer, excludedNodes, blocksize, maxNodesPerRack,
-              results, avoidStaleNodes, storageTypes);
-        }
-        if (--numOfReplicas == 0) {
-          return writer;
-        }
-      }
-      chooseRandom(numOfReplicas, NodeBase.ROOT, excludedNodes, blocksize,
-          maxNodesPerRack, results, avoidStaleNodes, storageTypes);
+      writer = chooseTargetInOrder(numOfReplicas, writer, excludedNodes, blocksize,
+          maxNodesPerRack, results, avoidStaleNodes, newBlock, storageTypes);
     } catch (NotEnoughReplicasException e) {
       final String message = "Failed to place enough replicas, still in need of "
           + (totalReplicasExpected - results.size()) + " to reach "
@@ -422,7 +389,55 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
     }
     return writer;
   }
-    
+
+  protected Node chooseTargetInOrder(int numOfReplicas, 
+                                 Node writer,
+                                 final Set<Node> excludedNodes,
+                                 final long blocksize,
+                                 final int maxNodesPerRack,
+                                 final List<DatanodeStorageInfo> results,
+                                 final boolean avoidStaleNodes,
+                                 final boolean newBlock,
+                                 EnumMap<StorageType, Integer> storageTypes)
+                                 throws NotEnoughReplicasException {
+    final int numOfResults = results.size();
+    if (numOfResults == 0) {
+      writer = chooseLocalStorage(writer, excludedNodes, blocksize,
+          maxNodesPerRack, results, avoidStaleNodes, storageTypes, true)
+          .getDatanodeDescriptor();
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    final DatanodeDescriptor dn0 = results.get(0).getDatanodeDescriptor();
+    if (numOfResults <= 1) {
+      chooseRemoteRack(1, dn0, excludedNodes, blocksize, maxNodesPerRack,
+          results, avoidStaleNodes, storageTypes);
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    if (numOfResults <= 2) {
+      final DatanodeDescriptor dn1 = results.get(1).getDatanodeDescriptor();
+      if (clusterMap.isOnSameRack(dn0, dn1)) {
+        chooseRemoteRack(1, dn0, excludedNodes, blocksize, maxNodesPerRack,
+            results, avoidStaleNodes, storageTypes);
+      } else if (newBlock){
+        chooseLocalRack(dn1, excludedNodes, blocksize, maxNodesPerRack,
+            results, avoidStaleNodes, storageTypes);
+      } else {
+        chooseLocalRack(writer, excludedNodes, blocksize, maxNodesPerRack,
+            results, avoidStaleNodes, storageTypes);
+      }
+      if (--numOfReplicas == 0) {
+        return writer;
+      }
+    }
+    chooseRandom(numOfReplicas, NodeBase.ROOT, excludedNodes, blocksize,
+        maxNodesPerRack, results, avoidStaleNodes, storageTypes);
+    return writer;
+  }
+  
   /**
    * Choose <i>localMachine</i> as the target.
    * if <i>localMachine</i> is not available, 
@@ -884,7 +899,7 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
       Collection<DatanodeStorageInfo> second,
       final List<StorageType> excessTypes) {
     long oldestHeartbeat =
-      now() - heartbeatInterval * tolerateHeartbeatMultiplier;
+      monotonicNow() - heartbeatInterval * tolerateHeartbeatMultiplier;
     DatanodeStorageInfo oldestHeartbeatStorage = null;
     long minSpace = Long.MAX_VALUE;
     DatanodeStorageInfo minSpaceStorage = null;
@@ -898,8 +913,8 @@ public class BlockPlacementPolicyDefault extends BlockPlacementPolicy {
 
       final DatanodeDescriptor node = storage.getDatanodeDescriptor();
       long free = node.getRemaining();
-      long lastHeartbeat = node.getLastUpdate();
-      if(lastHeartbeat < oldestHeartbeat) {
+      long lastHeartbeat = node.getLastUpdateMonotonic();
+      if (lastHeartbeat < oldestHeartbeat) {
         oldestHeartbeat = lastHeartbeat;
         oldestHeartbeatStorage = storage;
       }
