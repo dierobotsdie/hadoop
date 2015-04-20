@@ -54,7 +54,7 @@ else
   logicals=${logicals//,/ }
   for id in ${logicals}
   do
-      rmhost=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -confKey yarn.resourcemanager.hostname.${id} 2>&-)
+      rmhost=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -confKey "yarn.resourcemanager.hostname.${id}" 2>&-)
       RMHOSTS="${RMHOSTS} ${rmhost}"
   done
   echo "Starting resourcemanagers on [${RMHOSTS}]"
