@@ -72,7 +72,7 @@ function shellcheck_preapply
 
   echo "Running shellcheck against all identifiable shell scripts"
   pushd "${BASEDIR}" >/dev/null
-  for i in $(shellcheck_private_findbash | sort); do
+  for i in $(shellcheck_private_findbash | sort -u); do
     if [[ -f ${i} ]]; then
       ${SHELLCHECK} -f gcc "${i}" >> "${PATCH_DIR}/${PATCH_BRANCH}shellcheck-result.txt"
     fi
