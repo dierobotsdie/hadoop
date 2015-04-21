@@ -1394,7 +1394,7 @@ function check_site
     add_jira_footer site "@@BASE@@/patchSiteWarnings.txt"
     return 1
   fi
-  add_jira_table +1 site "There were no new javadoc warning messages."
+  add_jira_table +1 site "Site still builds."
   return 0
 }
 
