@@ -66,6 +66,7 @@ function shellcheck_preapply
 
   if [[ ! -x "${SHELLCHECK}" ]]; then
     hadoop_error "shellcheck is not available."
+    return 0
   fi
 
   start_clock
@@ -99,6 +100,7 @@ function shellcheck_postapply
 
   if [[ ! -x "${SHELLCHECK}" ]]; then
     hadoop_error "shellcheck is not available."
+    add_jira_table 0 shellcheck "Shellcheck was not available."
   fi
 
   start_clock
@@ -126,7 +128,8 @@ function shellcheck_postapply
   # shellcheck disable=SC2016
   diffPostpatch=$(wc -l "${PATCH_DIR}/diffpatchshellcheck.txt" | ${AWK} '{print $1}')
 
-  if [[ ${diffPostpatch} -gt 0 ]] ; then
+  if [[ ${diffPostpatch} -gt 0
+    && ${numPostpatch} -gt ${numPrepatch} ]] ; then
     add_jira_table -1 shellcheck "The applied patch generated "\
       "${diffPostpatch} new shellcheck (v${SHELLCHECK_VERSION}) issues (total was ${numPrepatch}, now ${numPostpatch})."
     add_jira_footer shellcheck "@@BASE@@/diffpatchshellcheck.txt"

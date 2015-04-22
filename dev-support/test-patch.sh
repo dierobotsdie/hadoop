@@ -1262,7 +1262,7 @@ function check_reexec
 
     echo "(!) A patch to test-patch or smart-apply-patch has been detected. " > "${commentfile}"
     echo "Re-executing against the patched versions to perform further tests. " >> "${commentfile}"
-    echo "The console is at ${BUILD_URL}/console in case of problems." >> "${commentfile}"
+    echo "The console is at ${BUILD_URL}console in case of problems." >> "${commentfile}"
 
     write_to_jira "${commentfile}"
     rm "${commentfile}"
@@ -2040,7 +2040,7 @@ function output_to_jira
 
   big_console_header "Adding comment to JIRA"
 
-  add_jira_footer "Console output" "${BUILD_URL}/console"
+  add_jira_footer "Console output" "${BUILD_URL}console"
 
   if [[ ${result} == 0 ]]; then
     add_jira_header "(/) *{color:green}+1 overall{color}*"
