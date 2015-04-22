@@ -18,7 +18,7 @@ add_plugin shellcheck
 
 SHELLCHECK_TIMER=0
 
-SHELLCHECK=${SHELLCHECK:-$(which shellcheck)}
+SHELLCHECK=${SHELLCHECK:-$(which shellcheck 2>/dev/null)}
 
 SHELLCHECK_SPECIFICFILES=""
 
@@ -64,7 +64,7 @@ function shellcheck_preapply
 
   big_console_header "shellcheck plugin: prepatch"
 
-  if [[ -z "${SHELLCHECK}" ]]; then
+  if [[ ! -x "${SHELLCHECK}" ]]; then
     hadoop_error "shellcheck is not available."
   fi
 
@@ -97,7 +97,7 @@ function shellcheck_postapply
 
   big_console_header "shellcheck plugin: postpatch"
 
-  if [[ -z "${SHELLCHECK}" ]]; then
+  if [[ ! -x "${SHELLCHECK}" ]]; then
     hadoop_error "shellcheck is not available."
   fi
 

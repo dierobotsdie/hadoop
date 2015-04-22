@@ -389,6 +389,69 @@ function find_java_home
   return 0
 }
 
+## @description Write the contents of a file to jenkins
+## @params filename
+## @stability stable
+## @audience public
+## @returns ${JIRACLI} exit code
+function write_to_jira
+{
+  local -r commentfile=${1}
+  shift
+
+  local retval
+
+  if [[ ${OFFLINE} == false
+     && ${JENKINS} == true ]]; then
+    export USER=hudson
+    # shellcheck disable=SC2086
+    ${JIRACLI} --comment "$(cat ${commentfile})" \
+               -s https://issues.apache.org/jira \
+               -a addcomment -u hadoopqa \
+               -p "${JIRA_PASSWD}" \
+               --issue "${ISSUE}"
+    retval=$?
+    ${JIRACLI} -s https://issues.apache.org/jira \
+               -a logout -u hadoopqa \
+               -p "${JIRA_PASSWD}"
+  fi
+  return ${retval}
+}
+
+## @description Verify that the patch directory is still in working order
+## @description since bad actors on some systems wipe it out. If not,
+## @description recreate it and then exit
+## @audience    private
+## @stability   evolving
+## @replaceable yes
+## @returns     may exit on failure
+function verify_patchdir_still_exists
+{
+  local -r commentfile=/tmp/testpatch.$$.${RANDOM}
+  local extra=""
+
+  if [[ ! -d ${PATCH_DIR} ]]; then
+      rm "${commentfile}" 2>/dev/null
+
+      echo "(!) The patch artifact directory on has been removed! " > "${commentfile}"
+      echo "This is a fatal error for test-patch.sh.  Aborting. " >> "${commentfile}"
+      echo
+      cat ${commentfile}
+      echo
+      if [[ ${JENKINS} == true ]]; then
+        if [[ -n ${NODE_NAME} ]]; then
+          extra=" (node ${NODE_NAME})"
+        fi
+        echo "Jenkins${extra} information at ${BUILD_URL} may provide some hints. " >> "${commentfile}"
+
+        write_to_jira ${commentfile}
+      fi
+
+      rm "${commentfile}"
+      cleanup_and_exit ${RESULT}
+    fi
+}
+
 ## @description  Print the command to be executing to the screen. Then
 ## @description  run the command, sending stdout and stderr to the given filename
 ## @description  This will also ensure that any directories in ${BASEDIR} have
@@ -404,6 +467,9 @@ function echo_and_redirect
 {
   logfile=$1
   shift
+
+  verify_patchdir_still_exists
+
   find "${BASEDIR}" -type d -exec chmod +x {} \;
   echo "${*} > ${logfile} 2>&1"
   "${@}" > "${logfile}" 2>&1
@@ -1198,20 +1264,8 @@ function check_reexec
     echo "Re-executing against the patched versions to perform further tests. " >> "${commentfile}"
     echo "The console is at ${BUILD_URL}/console in case of problems." >> "${commentfile}"
 
-    if [[ ${OFFLINE} == false ]]; then
-      export USER=hudson
-      # shellcheck disable=SC2086
-      ${JIRACLI} --comment "$(cat ${commentfile})" \
-                 -s https://issues.apache.org/jira \
-                 -a addcomment -u hadoopqa \
-                 -p "${JIRA_PASSWD}" \
-                 --issue "${ISSUE}"
-      ${JIRACLI} -s https://issues.apache.org/jira \
-                 -a logout -u hadoopqa \
-                 -p "${JIRA_PASSWD}"
-
-      rm "${commentfile}"
-    fi
+    write_to_jira "${commentfile}"
+    rm "${commentfile}"
   fi
 
   cd "${CWD}"
@@ -1227,8 +1281,6 @@ function check_reexec
       "${USER_PARAMS[@]}"
 }
 
-
-
 ## @description  Check the current directory for @author tags
 ## @audience     private
 ## @stability    evolving
@@ -1242,6 +1294,11 @@ function check_author
   big_console_header "Checking there are no @author tags in the patch."
 
   start_clock
+
+  if [[ ${CHANGED_FILES} =~ dev-support/test-patch ]]; then
+    add_jira_table 0 @author "Skipping @author checks as test-patch has been patched."
+    return 0
+  fi
 
   authorTags=$("${GREP}" -c -i '@author' "${PATCH_DIR}/patch")
   echo "There appear to be ${authorTags} @author tags in the patch."
@@ -1433,7 +1490,7 @@ function check_javac
 
   start_clock
 
-  echo_and_redirect "${PATCH_DIR}/patchJavacWarnings.txt" "${MVN}" clean test -DskipTests -D${PROJECT_NAME}PatchProcess "${NATIVE_PROFILE}" -Ptest-patch
+  echo_and_redirect "${PATCH_DIR}/patchJavacWarnings.txt" "${MVN}" clean test -DskipTests -D${PROJECT_NAME}PatchProcess ${NATIVE_PROFILE} -Ptest-patch
   if [[ $? != 0 ]] ; then
     add_jira_table -1 javac "The patch appears to cause the build to fail."
     return 2
@@ -1761,7 +1818,7 @@ function check_unittests
     ordered_modules="${ordered_modules} ${hdfs_modules}"
     if [[ ${building_common} -eq 0 ]]; then
       echo "  Building hadoop-common with -Pnative in order to provide libhadoop.so to the hadoop-hdfs unit tests."
-      echo_and_redirect "${PATCH_DIR}/testrun_native.txt" "${MVN}" compile "${NATIVE_PROFILE}" "-D${PROJECT_NAME}PatchProcess"
+      echo_and_redirect "${PATCH_DIR}/testrun_native.txt" "${MVN}" compile ${NATIVE_PROFILE} "-D${PROJECT_NAME}PatchProcess"
       if [[ $? != 0 ]]; then
         add_jira_table -1 "native" "Failed to build the native portion " \
           "of hadoop-common prior to running the unit tests in ${ordered_modules}"
@@ -1781,7 +1838,7 @@ function check_unittests
 
     test_logfile=${PATCH_DIR}/testrun_${module_suffix}.txt
     echo "  Running tests in ${module_suffix}"
-    echo_and_redirect "${test_logfile}" "${MVN}" clean install -fae "${NATIVE_PROFILE}" "${REQUIRE_TEST_LIB_HADOOP}" -D${PROJECT_NAME}PatchProcess
+    echo_and_redirect "${test_logfile}" "${MVN}" clean install -fae ${NATIVE_PROFILE} ${REQUIRE_TEST_LIB_HADOOP} -D${PROJECT_NAME}PatchProcess
     test_build_result=$?
 
     add_jira_footer "${module_suffix} test log" "@@BASE@@/testrun_${module_suffix}.txt"
@@ -2035,18 +2092,7 @@ function output_to_jira
 
   printf "\n\nThis message was automatically generated.\n\n" >> "${commentfile}"
 
-  if [[ ${OFFLINE} == false ]]; then
-    export USER=hudson
-    # shellcheck disable=SC2086
-    ${JIRACLI} --comment "$(cat "${commentfile}")" \
-               -s https://issues.apache.org/jira \
-               -a addcomment -u hadoopqa \
-               -p "${JIRA_PASSWD}" \
-               --issue "${ISSUE}"
-    ${JIRACLI} -s https://issues.apache.org/jira \
-               -a logout -u hadoopqa \
-               -p "${JIRA_PASSWD}"
-  fi
+  write_to_jira "${commentfile}"
 }
 
 ## @description  Clean the filesystem as appropriate and then exit
@@ -2061,7 +2107,9 @@ function cleanup_and_exit
   if [[ ${JENKINS} == "true" ]] ; then
     if [[ -e "${PATCH_DIR}" ]] ; then
       hadoop_debug "mv ${PATCH_DIR} ${BASEDIR} "
-      mv "${PATCH_DIR}" "${BASEDIR}"
+      if [[ -d "${PATCH_DIR}" ]]; then
+        mv "${PATCH_DIR}" "${BASEDIR}"
+      fi
     fi
   fi
   big_console_header "Finished build."
@@ -2081,6 +2129,8 @@ function postcheckout
 
   for routine in find_java_home verify_patch_file
   do
+    verify_patchdir_still_exists
+
     hadoop_debug "Running ${routine}"
     ${routine}
 
@@ -2093,6 +2143,8 @@ function postcheckout
   done
 
   for plugin in ${PLUGINS}; do
+    verify_patchdir_still_exists
+
     if declare -f ${plugin}_postcheckout >/dev/null 2>&1; then
 
       hadoop_debug "Running ${plugin}_postcheckout"
@@ -2122,6 +2174,7 @@ function preapply
   for routine in precheck_without_patch check_author \
                  check_modified_unittests
   do
+    verify_patchdir_still_exists
 
     hadoop_debug "Running ${routine}"
     ${routine}
@@ -2130,6 +2183,8 @@ function preapply
   done
 
   for plugin in ${PLUGINS}; do
+    verify_patchdir_still_exists
+
     if declare -f ${plugin}_preapply >/dev/null 2>&1; then
 
       hadoop_debug "Running ${plugin}_preapply"
@@ -2163,7 +2218,7 @@ function postapply
 
   for routine in check_javadoc check_apachelicense check_site
   do
-
+    verify_patchdir_still_exists
     hadoop_debug "Running ${routine}"
     $routine
 
@@ -2172,8 +2227,8 @@ function postapply
   done
 
   for plugin in ${PLUGINS}; do
+    verify_patchdir_still_exists
     if declare -f ${plugin}_postapply >/dev/null 2>&1; then
-
       hadoop_debug "Running ${plugin}_postapply"
       #shellcheck disable=SC2086
       ${plugin}_postapply
@@ -2193,12 +2248,14 @@ function postinstall
 
   for routine in check_mvn_eclipse check_findbugs
   do
+    verify_patchdir_still_exists
     hadoop_debug "Running ${routine}"
     ${routine}
     (( RESULT = RESULT + $? ))
   done
 
   for plugin in ${PLUGINS}; do
+    verify_patchdir_still_exists
     if declare -f ${plugin}_postinstall >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_postinstall"
       #shellcheck disable=SC2086
@@ -2220,12 +2277,14 @@ function runtests
   ### Run tests for Jenkins or if explictly asked for by a developer
   if [[ ${JENKINS} == "true" || ${RUN_TESTS} == "true" ]] ; then
 
+    verify_patchdir_still_exists
     check_unittests
 
     (( RESULT = RESULT + $? ))
   fi
 
   for plugin in ${PLUGINS}; do
+    verify_patchdir_still_exists
     if declare -f ${plugin}_tests >/dev/null 2>&1; then
       hadoop_debug "Running ${plugin}_tests"
       #shellcheck disable=SC2086
