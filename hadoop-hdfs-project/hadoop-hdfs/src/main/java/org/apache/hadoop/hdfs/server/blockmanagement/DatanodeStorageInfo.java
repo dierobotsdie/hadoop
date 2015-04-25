@@ -25,6 +25,9 @@ import com.google.common.annotations.VisibleForTesting;
 
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
+import org.apache.hadoop.hdfs.protocol.DatanodeInfoWithStorage;
+import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
+import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage.State;
 import org.apache.hadoop.hdfs.server.protocol.StorageReport;
@@ -152,7 +155,7 @@ public class DatanodeStorageInfo {
     this.blockReportCount = blockReportCount;
   }
 
-  boolean areBlockContentsStale() {
+  public boolean areBlockContentsStale() {
     return blockContentsStale;
   }
 
@@ -202,11 +205,11 @@ public class DatanodeStorageInfo {
     return getState() == State.FAILED && numBlocks != 0;
   }
 
-  String getStorageID() {
+  public String getStorageID() {
     return storageID;
   }
 
-  StorageType getStorageType() {
+  public StorageType getStorageType() {
     return storageType;
   }
 

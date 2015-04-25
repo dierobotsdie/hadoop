@@ -15,16 +15,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.hadoop.hdfs.web;
 
-import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
+package org.apache.hadoop.tools.util;
 
-class WebHdfsConstants {
-  enum PathType {
-    FILE, DIRECTORY, SYMLINK;
+/**
+ *  WorkRequest<T> is a simple container for items of class T and its
+ *  corresponding retry counter that indicates how many times this item
+ *  was previously attempted to be processed.
+ */
+public class WorkRequest<T> {
+  private int retry;
+  private T item;
 
-    static PathType valueOf(HdfsFileStatus status) {
-      return status.isDir()? DIRECTORY: status.isSymlink()? SYMLINK: FILE;
-    }
+  public WorkRequest(T item) {
+    this(item, 0);
+  }
+
+  /**
+   *  @param  item   Object representing WorkRequest input data.
+   *  @param  retry  Number of previous attempts to process this work request.
+   */
+  public WorkRequest(T item, int retry) {
+    this.item = item;
+    this.retry = retry;
+  }
+
+  public T getItem() {
+    return item;
+  }
+
+  /**
+   *  @return  Number of previous attempts to process this work request.
+   */
+  public int getRetry() {
+    return retry;
   }
 }

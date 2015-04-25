@@ -651,10 +651,12 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
    */
   public FsServerDefaults getServerDefaults() throws IOException {
     long now = Time.monotonicNow();
-    if (now - serverDefaultsLastUpdate > SERVER_DEFAULTS_VALIDITY_PERIOD) {
+    if ((serverDefaults == null) ||
+        (now - serverDefaultsLastUpdate > SERVER_DEFAULTS_VALIDITY_PERIOD)) {
       serverDefaults = namenode.getServerDefaults();
       serverDefaultsLastUpdate = now;
     }
+    assert serverDefaults != null;
     return serverDefaults;
   }
   
@@ -804,10 +806,10 @@ public class DFSClient implements java.io.Closeable, RemotePeerFactory,
     private static ClientProtocol getNNProxy(
         Token<DelegationTokenIdentifier> token, Configuration conf)
         throws IOException {
-      URI uri = HAUtil.getServiceUriFromToken(HdfsConstants.HDFS_URI_SCHEME,
-              token);
-      if (HAUtil.isTokenForLogicalUri(token) &&
-          !HAUtil.isLogicalUri(conf, uri)) {
+      URI uri = HAUtilClient.getServiceUriFromToken(
+          HdfsConstants.HDFS_URI_SCHEME, token);
+      if (HAUtilClient.isTokenForLogicalUri(token) &&
+          !HAUtilClient.isLogicalUri(conf, uri)) {
         // If the token is for a logical nameservice, but the configuration
         // we have disagrees about that, we can't actually renew it.
         // This can be the case in MR, for example, if the RM doesn't

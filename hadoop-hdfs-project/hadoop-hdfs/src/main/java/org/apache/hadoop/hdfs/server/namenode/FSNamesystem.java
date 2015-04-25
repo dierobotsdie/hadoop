@@ -3287,7 +3287,7 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
 
   LocatedBlock makeLocatedBlock(Block blk, DatanodeStorageInfo[] locs,
                                         long offset) throws IOException {
-    LocatedBlock lBlk = new LocatedBlock(
+    LocatedBlock lBlk = BlockManager.newLocatedBlock(
         getExtendedBlock(blk), locs, offset, false);
     getBlockManager().setBlockToken(
         lBlk, BlockTokenIdentifier.AccessMode.WRITE);
@@ -3351,7 +3351,8 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
     final DatanodeStorageInfo[] targets = blockManager.chooseTarget4AdditionalDatanode(
         src, numAdditionalNodes, clientnode, chosen, 
         excludes, preferredblocksize, storagePolicyID);
-    final LocatedBlock lb = new LocatedBlock(blk, targets, -1, false);
+    final LocatedBlock lb = BlockManager.newLocatedBlock(
+        blk, targets, -1, false);
     blockManager.setBlockToken(lb, BlockTokenIdentifier.AccessMode.COPY);
     return lb;
   }
@@ -4259,13 +4260,12 @@ public class FSNamesystem implements Namesystem, FSNamesystemMBean,
       // this method to add a CloseOp to the edit log for an already deleted
       // file (See HDFS-6825).
       //
-      BlockCollection blockCollection = storedBlock.getBlockCollection();
-      if (blockCollection == null) {
+      if (storedBlock.isDeleted()) {
         throw new IOException("The blockCollection of " + storedBlock
             + " is null, likely because the file owning this block was"
             + " deleted and the block removal is delayed");
       }
-      INodeFile iFile = ((INode)blockCollection).asFile();
+      INodeFile iFile = ((INode)storedBlock.getBlockCollection()).asFile();
       if (isFileDeleted(iFile)) {
         throw new FileNotFoundException("File not found: "
             + iFile.getFullPathName() + ", likely due to delayed block"

@@ -123,7 +123,7 @@ public class BlockManager {
   private final AtomicLong excessBlocksCount = new AtomicLong(0L);
   private final AtomicLong postponedMisreplicatedBlocksCount = new AtomicLong(0L);
   private final long startupDelayBlockDeletionInMs;
-  
+
   /** Used by metrics */
   public long getPendingReplicationBlocksCount() {
     return pendingReplicationBlocksCount;
@@ -836,7 +836,7 @@ public class BlockManager {
           (BlockInfoContiguousUnderConstruction) blk;
       final DatanodeStorageInfo[] storages = uc.getExpectedStorageLocations();
       final ExtendedBlock eb = new ExtendedBlock(namesystem.getBlockPoolId(), blk);
-      return new LocatedBlock(eb, storages, pos, false);
+      return newLocatedBlock(eb, storages, pos, false);
     }
 
     // get block locations
@@ -868,7 +868,7 @@ public class BlockManager {
       " numCorrupt: " + numCorruptNodes +
       " numCorruptRepls: " + numCorruptReplicas;
     final ExtendedBlock eb = new ExtendedBlock(namesystem.getBlockPoolId(), blk);
-    return new LocatedBlock(eb, machines, pos, isCorrupt);
+    return newLocatedBlock(eb, machines, pos, isCorrupt);
   }
 
   /** Create a LocatedBlocks. */
@@ -1165,13 +1165,14 @@ public class BlockManager {
       DatanodeStorageInfo storageInfo,
       DatanodeDescriptor node) throws IOException {
 
-    BlockCollection bc = b.corrupted.getBlockCollection();
-    if (bc == null) {
+    if (b.corrupted.isDeleted()) {
       blockLog.info("BLOCK markBlockAsCorrupt: {} cannot be marked as" +
           " corrupt as it does not belong to any file", b);
       addToInvalidates(b.corrupted, node);
       return;
     } 
+    short expectedReplicas =
+        b.corrupted.getBlockCollection().getBlockReplication();
 
     // Add replica to the data-node if it is not already there
     if (storageInfo != null) {
@@ -1183,13 +1184,13 @@ public class BlockManager {
         b.reasonCode);
 
     NumberReplicas numberOfReplicas = countNodes(b.stored);
-    boolean hasEnoughLiveReplicas = numberOfReplicas.liveReplicas() >= bc
-        .getBlockReplication();
+    boolean hasEnoughLiveReplicas = numberOfReplicas.liveReplicas() >=
+        expectedReplicas;
     boolean minReplicationSatisfied =
         numberOfReplicas.liveReplicas() >= minReplication;
     boolean hasMoreCorruptReplicas = minReplicationSatisfied &&
         (numberOfReplicas.liveReplicas() + numberOfReplicas.corruptReplicas()) >
-        bc.getBlockReplication();
+        expectedReplicas;
     boolean corruptedDuringWrite = minReplicationSatisfied &&
         (b.stored.getGenerationStamp() > b.corrupted.getGenerationStamp());
     // case 1: have enough number of live replicas
@@ -2509,7 +2510,7 @@ public class BlockManager {
     } else {
       storedBlock = block;
     }
-    if (storedBlock == null || storedBlock.getBlockCollection() == null) {
+    if (storedBlock == null || storedBlock.isDeleted()) {
       // If this block does not belong to anyfile, then we are done.
       blockLog.info("BLOCK* addStoredBlock: {} on {} size {} but it does not" +
           " belong to any file", block, node, block.getNumBytes());
@@ -2794,8 +2795,7 @@ public class BlockManager {
    * what happened with it.
    */
   private MisReplicationResult processMisReplicatedBlock(BlockInfoContiguous block) {
-    BlockCollection bc = block.getBlockCollection();
-    if (bc == null) {
+    if (block.isDeleted()) {
       // block does not belong to any file
       addToInvalidates(block);
       return MisReplicationResult.INVALID;
@@ -2806,7 +2806,8 @@ public class BlockManager {
       return MisReplicationResult.UNDER_CONSTRUCTION;
     }
     // calculate current replication
-    short expectedReplication = bc.getBlockReplication();
+    short expectedReplication =
+        block.getBlockCollection().getBlockReplication();
     NumberReplicas num = countNodes(block);
     int numCurrentReplica = num.liveReplicas();
     // add to under-replicated queue if need to be
@@ -3723,7 +3724,18 @@ public class BlockManager {
     postponedMisreplicatedBlocks.clear();
     postponedMisreplicatedBlocksCount.set(0);
   };
-  
+
+  public static LocatedBlock newLocatedBlock(
+      ExtendedBlock b, DatanodeStorageInfo[] storages,
+      long startOffset, boolean corrupt) {
+    // startOffset is unknown
+    return new LocatedBlock(
+        b, DatanodeStorageInfo.toDatanodeInfos(storages),
+        DatanodeStorageInfo.toStorageIDs(storages),
+        DatanodeStorageInfo.toStorageTypes(storages),
+        startOffset, corrupt,
+        null);
+  }
 
   private static class ReplicationWork {
 

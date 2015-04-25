@@ -447,6 +447,8 @@ Release 2.8.0 - UNRELEASED
 
   INCOMPATIBLE CHANGES
 
+    HADOOP-11746. rewrite test-patch.sh (aw)
+
   NEW FEATURES
 
     HADOOP-11226. Add a configuration to set ipc.Client's traffic class with
@@ -497,10 +499,16 @@ Release 2.8.0 - UNRELEASED
     HADOOP-11819. HttpServerFunctionalTest#prepareTestWebapp should create web
     app directory if it does not exist. (Rohith via vinayakumarb)
 
+    HADOOP-11827. Speed-up distcp buildListing() using threadpool
+    (Zoran Dimitrijevic via raviprak)
+
   OPTIMIZATIONS
 
     HADOOP-11785. Reduce the number of listStatus operation in distcp
     buildListing (Zoran Dimitrijevic via Colin P. McCabe)
+
+    HADOOP-11812. Implement listLocatedStatus for ViewFileSystem to speed up
+    split calculation (gera)
 
   BUG FIXES
 
@@ -519,6 +527,12 @@ Release 2.8.0 - UNRELEASED
     HADOOP-11811. Fix typos in hadoop-project/pom.xml and TestAccessControlList.
     (Brahma Reddy Battula via ozawa)
 
+    HADOOP-11704. DelegationTokenAuthenticationFilter must pass ipaddress
+    instead of hostname to ProxyUsers#authorize (Anubhav Dhoot via asuresh)
+
+    HADOOP-11846 TestCertificateUtil.testCorruptPEM failing on Jenkins JDK8.
+    (Larry McCay via stevel)
+
 Release 2.7.1 - UNRELEASED
 
   INCOMPATIBLE CHANGES
@@ -531,7 +545,7 @@ Release 2.7.1 - UNRELEASED
 
   BUG FIXES
 
-Release 2.7.0 - UNRELEASED
+Release 2.7.0 - 2015-04-20
 
   INCOMPATIBLE CHANGES
 

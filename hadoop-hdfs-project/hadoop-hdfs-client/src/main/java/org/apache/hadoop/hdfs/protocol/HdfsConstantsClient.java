@@ -31,4 +31,11 @@ public interface HdfsConstantsClient {
    * uses GRANDFATHER_INODE_ID for backward compatibility.
    */
   long GRANDFATHER_INODE_ID = 0;
+  byte BLOCK_STORAGE_POLICY_ID_UNSPECIFIED = 0;
+  /**
+   * A prefix put before the namenode URI inside the "service" field
+   * of a delgation token, indicating that the URI is a logical (HA)
+   * URI.
+   */
+  String HA_DT_SERVICE_PREFIX = "ha-";
 }
