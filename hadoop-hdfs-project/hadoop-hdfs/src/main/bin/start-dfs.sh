@@ -117,8 +117,6 @@ if [[ -n "${SECONDARY_NAMENODES}" ]]; then
 
   else
 
-    SECONDARY_NAMENODES=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -secondarynamenodes 2>/dev/null)
-
     if [[ "${SECONDARY_NAMENODES}" == "0.0.0.0" ]]; then
       SECONDARY_NAMENODES=$(hostname)
     fi
