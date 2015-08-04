@@ -1,22 +1,40 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.4.1 - 2014-06-30
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-10466](https://issues.apache.org/jira/browse/HADOOP-10466) | Lower the log level in UserGroupInformation |  Minor | security | Nicolas Liochon | Nicolas Liochon |
 | [HDFS-4052](https://issues.apache.org/jira/browse/HDFS-4052) | BlockManager#invalidateWork should print logs outside the lock |  Minor | . | Jing Zhao | Jing Zhao |
@@ -25,7 +43,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-11273](https://issues.apache.org/jira/browse/HADOOP-11273) | TestMiniKdc failure: login options not compatible with IBM JDK |  Major | test | Gao Zhong Liang | Gao Zhong Liang |
 | [HADOOP-10612](https://issues.apache.org/jira/browse/HADOOP-10612) | NFS failed to refresh the user group id mapping table |  Major | nfs | Brandon Li | Brandon Li |
@@ -81,11 +99,11 @@
 | [YARN-1986](https://issues.apache.org/jira/browse/YARN-1986) | In Fifo Scheduler, node heartbeat in between creating app and attempt causes NPE |  Critical | . | Jon Bringhurst | Hong Zhiguo |
 | [YARN-1976](https://issues.apache.org/jira/browse/YARN-1976) | Tracking url missing http protocol for FAILED application |  Major | . | Yesha Vora | Junping Du |
 | [YARN-1975](https://issues.apache.org/jira/browse/YARN-1975) | Used resources shows escaped html in CapacityScheduler and FairScheduler page |  Major | resourcemanager | Nathan Roberts | Mit Desai |
-| [YARN-1934](https://issues.apache.org/jira/browse/YARN-1934) | Potential NPE in ZKRMStateStore caused by handling Disconnected event from ZK. |  Blocker | resourcemanager | Rohith | Karthik Kambatla |
+| [YARN-1934](https://issues.apache.org/jira/browse/YARN-1934) | Potential NPE in ZKRMStateStore caused by handling Disconnected event from ZK. |  Blocker | resourcemanager | Rohith Sharma K S | Karthik Kambatla |
 | [YARN-1933](https://issues.apache.org/jira/browse/YARN-1933) | TestAMRestart and TestNodeHealthService failing sometimes on Windows |  Major | . | Jian He | Jian He |
 | [YARN-1932](https://issues.apache.org/jira/browse/YARN-1932) | Javascript injection on the job status page |  Blocker | . | Mit Desai | Mit Desai |
 | [YARN-1931](https://issues.apache.org/jira/browse/YARN-1931) | Private API change in YARN-1824 in 2.4 broke compatibility with previous releases |  Blocker | applications | Thomas Graves | Sandy Ryza |
-| [YARN-1929](https://issues.apache.org/jira/browse/YARN-1929) | DeadLock in RM when automatic failover is enabled. |  Blocker | resourcemanager | Rohith | Karthik Kambatla |
+| [YARN-1929](https://issues.apache.org/jira/browse/YARN-1929) | DeadLock in RM when automatic failover is enabled. |  Blocker | resourcemanager | Rohith Sharma K S | Karthik Kambatla |
 | [YARN-1928](https://issues.apache.org/jira/browse/YARN-1928) | TestAMRMRPCNodeUpdates fails ocassionally |  Major | . | Zhijie Shen | Zhijie Shen |
 | [YARN-1926](https://issues.apache.org/jira/browse/YARN-1926) | DistributedShell unit tests fail on Windows |  Major | . | Varun Vasudev | Varun Vasudev |
 | [YARN-1924](https://issues.apache.org/jira/browse/YARN-1924) | STATE\_STORE\_OP\_FAILED happens when ZKRMStateStore tries to update app(attempt) before storing it |  Critical | . | Arpit Gupta | Jian He |
@@ -102,7 +120,7 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HDFS-6189](https://issues.apache.org/jira/browse/HDFS-6189) | Multiple HDFS tests fail on Windows attempting to use a test root path containing a colon. |  Major | test | Chris Nauroth | Chris Nauroth |
 | [MAPREDUCE-5843](https://issues.apache.org/jira/browse/MAPREDUCE-5843) | TestMRKeyValueTextInputFormat failing on Windows |  Major | . | Varun Vasudev | Varun Vasudev |
@@ -115,7 +133,7 @@
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [YARN-2053](https://issues.apache.org/jira/browse/YARN-2053) | Slider AM fails to restart: NPE in RegisterApplicationMasterResponseProto$Builder.addAllNmTokensFromPreviousAttempts |  Major | resourcemanager | Sumit Mohanty | Wangda Tan |
 | [YARN-1962](https://issues.apache.org/jira/browse/YARN-1962) | Timeline server is enabled by default |  Major | . | Mohammad Kamrul Islam | Mohammad Kamrul Islam |
@@ -128,7 +146,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 

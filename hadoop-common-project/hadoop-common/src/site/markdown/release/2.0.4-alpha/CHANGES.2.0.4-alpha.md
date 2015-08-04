@@ -1,22 +1,40 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.0.4-alpha - 2013-04-25
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9379](https://issues.apache.org/jira/browse/HADOOP-9379) | capture the ulimit info after printing the log to the console |  Trivial | . | Arpit Gupta | Arpit Gupta |
 | [HADOOP-9374](https://issues.apache.org/jira/browse/HADOOP-9374) | Add tokens from -tokenCacheFile into UGI |  Major | security | Daryn Sharp | Daryn Sharp |
@@ -25,7 +43,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9471](https://issues.apache.org/jira/browse/HADOOP-9471) | hadoop-client wrongfully excludes jetty-util JAR, breaking webhdfs |  Major | build | Alejandro Abdelnur | Alejandro Abdelnur |
 | [HADOOP-9467](https://issues.apache.org/jira/browse/HADOOP-9467) | Metrics2 record filtering (.record.filter.include/exclude) does not filter by name |  Major | metrics | Chris Nauroth | Chris Nauroth |
@@ -57,13 +75,13 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HDFS-4577](https://issues.apache.org/jira/browse/HDFS-4577) | Webhdfs operations should declare if authentication is required |  Major | webhdfs | Daryn Sharp | Daryn Sharp |
 | [HDFS-4567](https://issues.apache.org/jira/browse/HDFS-4567) | Webhdfs does not need a token for token operations |  Major | webhdfs | Daryn Sharp | Daryn Sharp |
@@ -74,7 +92,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 

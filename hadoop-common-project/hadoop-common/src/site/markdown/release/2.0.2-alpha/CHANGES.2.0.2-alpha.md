@@ -1,10 +1,28 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.0.2-alpha - 2012-10-09
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8794](https://issues.apache.org/jira/browse/HADOOP-8794) | Modifiy bin/hadoop to point to HADOOP\_YARN\_HOME |  Major | . | Vinod Kumar Vavilapalli | Vinod Kumar Vavilapalli |
 | [HADOOP-8710](https://issues.apache.org/jira/browse/HADOOP-8710) | Remove ability for users to easily run the trash emptier |  Major | fs | Eli Collins | Eli Collins |
@@ -28,7 +46,7 @@
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8644](https://issues.apache.org/jira/browse/HADOOP-8644) | AuthenticatedURL should be able to use SSLFactory |  Critical | security | Alejandro Abdelnur | Alejandro Abdelnur |
 | [HADOOP-8581](https://issues.apache.org/jira/browse/HADOOP-8581) | add support for HTTPS to the web UIs |  Major | security | Alejandro Abdelnur | Alejandro Abdelnur |
@@ -51,7 +69,7 @@
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8754](https://issues.apache.org/jira/browse/HADOOP-8754) | Deprecate all the RPC.getServer() variants |  Minor | ipc | Brandon Li | Brandon Li |
 | [HADOOP-8748](https://issues.apache.org/jira/browse/HADOOP-8748) | Move dfsclient retry to a util class |  Minor | io | Arun C Murthy | Arun C Murthy |
@@ -181,7 +199,8 @@
 | [MAPREDUCE-3659](https://issues.apache.org/jira/browse/MAPREDUCE-3659) | Host-based token support |  Major | security | Daryn Sharp | Daryn Sharp |
 | [MAPREDUCE-3289](https://issues.apache.org/jira/browse/MAPREDUCE-3289) | Make use of fadvise in the NM's shuffle handler |  Major | mrv2, nodemanager, performance | Todd Lipcon | Todd Lipcon |
 | [MAPREDUCE-2786](https://issues.apache.org/jira/browse/MAPREDUCE-2786) | TestDFSIO should also test compression reading/writing from command-line. |  Minor | benchmarks | Plamen Jeliazkov | Plamen Jeliazkov |
-| [YARN-420](https://issues.apache.org/jira/browse/YARN-420) | Enable the RM to work with AM's that are not managed by it |  Major | . | Bikas Saha | Bikas Saha |
+| [YARN-420](https://issues.apache.org/jira/browse/YARN-420) | Enable the RM to work with AM's that are not managed by it |  Major | applications/unmanaged-AM-launcher | Bikas Saha | Bikas Saha |
+| [YARN-419](https://issues.apache.org/jira/browse/YARN-419) | Add client side for Unmanaged-AMs |  Major | applications/unmanaged-AM-launcher | Bikas Saha | Bikas Saha |
 | [YARN-137](https://issues.apache.org/jira/browse/YARN-137) | Change the default scheduler to the CapacityScheduler |  Major | scheduler | Siddharth Seth | Siddharth Seth |
 | [YARN-80](https://issues.apache.org/jira/browse/YARN-80) | Support delay scheduling for node locality in MR2's capacity scheduler |  Major | capacityscheduler | Todd Lipcon | Arun C Murthy |
 | [YARN-10](https://issues.apache.org/jira/browse/YARN-10) | dist-shell shouldn't have a (test) dependency on hadoop-mapreduce-client-core |  Major | . | Arun C Murthy | Hitesh Shah |
@@ -190,7 +209,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8801](https://issues.apache.org/jira/browse/HADOOP-8801) | ExitUtil#terminate should capture the exception stack trace |  Major | . | Eli Collins | Eli Collins |
 | [HADOOP-8781](https://issues.apache.org/jira/browse/HADOOP-8781) | hadoop-config.sh should add JAVA\_LIBRARY\_PATH to LD\_LIBRARY\_PATH |  Major | scripts | Alejandro Abdelnur | Alejandro Abdelnur |
@@ -262,7 +281,7 @@
 | [HADOOP-8433](https://issues.apache.org/jira/browse/HADOOP-8433) | Don't set HADOOP\_LOG\_DIR in hadoop-env.sh |  Major | scripts | Brahma Reddy Battula | Brahma Reddy Battula |
 | [HADOOP-8431](https://issues.apache.org/jira/browse/HADOOP-8431) | Running distcp wo args throws IllegalArgumentException |  Major | . | Eli Collins | Sandy Ryza |
 | [HADOOP-8423](https://issues.apache.org/jira/browse/HADOOP-8423) | MapFile.Reader.get() crashes jvm or throws EOFException on Snappy or LZO block-compressed data |  Major | io | Jason B | Todd Lipcon |
-| [HADOOP-8422](https://issues.apache.org/jira/browse/HADOOP-8422) | Deprecate FileSystem#getDefault* and getServerDefault methods that don't take a Path argument |  Minor | fs | Eli Collins | Eli Collins |
+| [HADOOP-8422](https://issues.apache.org/jira/browse/HADOOP-8422) | Deprecate FileSystem#getDefault\* and getServerDefault methods that don't take a Path argument |  Minor | fs | Eli Collins | Eli Collins |
 | [HADOOP-8408](https://issues.apache.org/jira/browse/HADOOP-8408) | MR doesn't work with a non-default ViewFS mount table and security enabled |  Major | viewfs | Aaron T. Myers | Aaron T. Myers |
 | [HADOOP-8406](https://issues.apache.org/jira/browse/HADOOP-8406) | CompressionCodecFactory.CODEC\_PROVIDERS iteration is thread-unsafe |  Major | io | Todd Lipcon | Todd Lipcon |
 | [HADOOP-8400](https://issues.apache.org/jira/browse/HADOOP-8400) | All commands warn "Kerberos krb5 configuration not found" when security is not enabled |  Major | security | Eli Collins | Alejandro Abdelnur |
@@ -555,7 +574,7 @@
 | [MAPREDUCE-4152](https://issues.apache.org/jira/browse/MAPREDUCE-4152) | map task left hanging after AM dies trying to connect to RM |  Major | mrv2 | Thomas Graves | Thomas Graves |
 | [MAPREDUCE-4148](https://issues.apache.org/jira/browse/MAPREDUCE-4148) | MapReduce should not have a compile-time dependency on HDFS |  Major | mrv2 | Tom White | Tom White |
 | [MAPREDUCE-4144](https://issues.apache.org/jira/browse/MAPREDUCE-4144) | ResourceManager NPE while handling NODE\_UPDATE |  Critical | mrv2 | Jason Lowe | Jason Lowe |
-| [MAPREDUCE-4140](https://issues.apache.org/jira/browse/MAPREDUCE-4140) | mapreduce classes incorrectly importing "clover.org.apache.*" classes |  Major | client, mrv2 | Patrick Hunt | Patrick Hunt |
+| [MAPREDUCE-4140](https://issues.apache.org/jira/browse/MAPREDUCE-4140) | mapreduce classes incorrectly importing "clover.org.apache.\*" classes |  Major | client, mrv2 | Patrick Hunt | Patrick Hunt |
 | [MAPREDUCE-4139](https://issues.apache.org/jira/browse/MAPREDUCE-4139) | Potential ResourceManager deadlock when SchedulerEventDispatcher is stopped |  Major | mrv2 | Jason Lowe | Jason Lowe |
 | [MAPREDUCE-4133](https://issues.apache.org/jira/browse/MAPREDUCE-4133) | MR over viewfs is broken |  Major | . | John George | John George |
 | [MAPREDUCE-4129](https://issues.apache.org/jira/browse/MAPREDUCE-4129) | Lots of unneeded counters log messages |  Major | mrv2 | Ahmed Radwan | Ahmed Radwan |
@@ -638,7 +657,7 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8283](https://issues.apache.org/jira/browse/HADOOP-8283) | Allow tests to control token service value |  Major | test | Daryn Sharp | Daryn Sharp |
 | [HDFS-3709](https://issues.apache.org/jira/browse/HDFS-3709) | TestStartup tests still binding to the ephemeral port |  Major | test | Eli Collins | Eli Collins |
@@ -653,7 +672,7 @@
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-7754](https://issues.apache.org/jira/browse/HADOOP-7754) | Expose file descriptors from Hadoop-wrapped local FileSystems |  Major | native, performance | Todd Lipcon | Todd Lipcon |
 | [HDFS-3502](https://issues.apache.org/jira/browse/HDFS-3502) | Change INodeFile and INodeFileUnderConstruction to package private |  Major | namenode | Tsz Wo Nicholas Sze | Tsz Wo Nicholas Sze |
@@ -684,7 +703,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8403](https://issues.apache.org/jira/browse/HADOOP-8403) | bump up POMs version to 2.0.1-SNAPSHOT |  Major | build | Alejandro Abdelnur | Alejandro Abdelnur |
 | [MAPREDUCE-4134](https://issues.apache.org/jira/browse/MAPREDUCE-4134) | Remove references of mapred.child.ulimit etc. since they are not being used any more |  Major | mrv2 | Ravi Prakash | Ravi Prakash |

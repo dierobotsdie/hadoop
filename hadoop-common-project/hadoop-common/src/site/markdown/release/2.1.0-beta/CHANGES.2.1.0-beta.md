@@ -1,10 +1,28 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.1.0-beta - 2013-08-22
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9832](https://issues.apache.org/jira/browse/HADOOP-9832) | Add RPC header to client ping |  Blocker | ipc | Daryn Sharp | Daryn Sharp |
 | [HADOOP-9820](https://issues.apache.org/jira/browse/HADOOP-9820) | RPCv9 wire protocol is insufficient to support multiplexing |  Blocker | ipc, security | Daryn Sharp | Daryn Sharp |
@@ -43,7 +61,7 @@
 | [YARN-841](https://issues.apache.org/jira/browse/YARN-841) | Annotate and document AuxService APIs |  Major | . | Siddharth Seth | Vinod Kumar Vavilapalli |
 | [YARN-840](https://issues.apache.org/jira/browse/YARN-840) | Move ProtoUtils to  yarn.api.records.pb.impl |  Major | . | Jian He | Jian He |
 | [YARN-837](https://issues.apache.org/jira/browse/YARN-837) | ClusterInfo.java doesn't seem to belong to org.apache.hadoop.yarn |  Major | . | Zhijie Shen | Zhijie Shen |
-| [YARN-834](https://issues.apache.org/jira/browse/YARN-834) | Review/fix annotations for yarn-client module and clearly differentiate *Async apis |  Blocker | . | Arun C Murthy | Zhijie Shen |
+| [YARN-834](https://issues.apache.org/jira/browse/YARN-834) | Review/fix annotations for yarn-client module and clearly differentiate \*Async apis |  Blocker | . | Arun C Murthy | Zhijie Shen |
 | [YARN-831](https://issues.apache.org/jira/browse/YARN-831) | Remove resource min from GetNewApplicationResponse |  Blocker | . | Jian He | Jian He |
 | [YARN-829](https://issues.apache.org/jira/browse/YARN-829) | Rename RMTokenSelector to be RMDelegationTokenSelector |  Major | . | Zhijie Shen | Zhijie Shen |
 | [YARN-828](https://issues.apache.org/jira/browse/YARN-828) | Remove YarnVersionAnnotation |  Major | . | Zhijie Shen | Zhijie Shen |
@@ -93,7 +111,7 @@
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9763](https://issues.apache.org/jira/browse/HADOOP-9763) | Extends LightWeightGSet to support eviction of expired elements |  Major | util | Tsz Wo Nicholas Sze | Tsz Wo Nicholas Sze |
 | [HADOOP-9515](https://issues.apache.org/jira/browse/HADOOP-9515) | Add general interface for NFS and Mount |  Major | . | Brandon Li | Brandon Li |
@@ -116,7 +134,7 @@
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9845](https://issues.apache.org/jira/browse/HADOOP-9845) | Update protobuf to 2.5 from 2.4.x |  Blocker | performance | stack | Alejandro Abdelnur |
 | [HADOOP-9792](https://issues.apache.org/jira/browse/HADOOP-9792) | Retry the methods that are tagged @AtMostOnce along with @Idempotent |  Major | ipc | Suresh Srinivas | Suresh Srinivas |
@@ -170,6 +188,7 @@
 | [HDFS-4996](https://issues.apache.org/jira/browse/HDFS-4996) | ClientProtocol#metaSave can be made idempotent by overwriting the output file instead of appending to it |  Minor | namenode | Chris Nauroth | Chris Nauroth |
 | [HDFS-4992](https://issues.apache.org/jira/browse/HDFS-4992) | Make balancer's thread count configurable |  Major | balancer & mover | Max Lapan | Max Lapan |
 | [HDFS-4978](https://issues.apache.org/jira/browse/HDFS-4978) | Make disallowSnapshot idempotent |  Major | . | Jing Zhao | Jing Zhao |
+| [HDFS-4942](https://issues.apache.org/jira/browse/HDFS-4942) | Add retry cache support in Namenode |  Major | ha, namenode | Suresh Srinivas | Suresh Srinivas |
 | [HDFS-4932](https://issues.apache.org/jira/browse/HDFS-4932) | Avoid a wide line on the name node webUI if we have more Journal nodes |  Minor | ha, namenode | Fengdong Yu | Fengdong Yu |
 | [HDFS-4914](https://issues.apache.org/jira/browse/HDFS-4914) | When possible, Use DFSClient.Conf instead of Configuration |  Minor | hdfs-client | Tsz Wo Nicholas Sze | Tsz Wo Nicholas Sze |
 | [HDFS-4912](https://issues.apache.org/jira/browse/HDFS-4912) | Cleanup FSNamesystem#startFileInternal |  Major | namenode | Suresh Srinivas | Suresh Srinivas |
@@ -252,7 +271,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9872](https://issues.apache.org/jira/browse/HADOOP-9872) | Improve protoc version handling and detection |  Blocker | build | Alejandro Abdelnur | Alejandro Abdelnur |
 | [HADOOP-9850](https://issues.apache.org/jira/browse/HADOOP-9850) | RPC kerberos errors don't trigger relogin |  Blocker | ipc | Daryn Sharp | Daryn Sharp |
@@ -609,7 +628,7 @@
 | [YARN-968](https://issues.apache.org/jira/browse/YARN-968) | RM admin commands don't work |  Blocker | . | Kihwal Lee | Vinod Kumar Vavilapalli |
 | [YARN-960](https://issues.apache.org/jira/browse/YARN-960) | TestMRCredentials and  TestBinaryTokenFile are failing on trunk |  Blocker | . | Alejandro Abdelnur | Daryn Sharp |
 | [YARN-945](https://issues.apache.org/jira/browse/YARN-945) | AM register failing after AMRMToken |  Blocker | . | Bikas Saha | Vinod Kumar Vavilapalli |
-| [YARN-937](https://issues.apache.org/jira/browse/YARN-937) | Fix unmanaged AM in non-secure/secure setup post YARN-701 |  Blocker | . | Arun C Murthy | Alejandro Abdelnur |
+| [YARN-937](https://issues.apache.org/jira/browse/YARN-937) | Fix unmanaged AM in non-secure/secure setup post YARN-701 |  Blocker | applications/unmanaged-AM-launcher | Arun C Murthy | Alejandro Abdelnur |
 | [YARN-932](https://issues.apache.org/jira/browse/YARN-932) | TestResourceLocalizationService.testLocalizationInit can fail on JDK7 |  Major | . | Sandy Ryza | Karthik Kambatla |
 | [YARN-919](https://issues.apache.org/jira/browse/YARN-919) | Document setting default heap sizes in yarn env |  Minor | . | Mayank Bansal | Mayank Bansal |
 | [YARN-912](https://issues.apache.org/jira/browse/YARN-912) | Create exceptions package in common/api for yarn and move client facing exceptions to them |  Major | . | Bikas Saha | Mayank Bansal |
@@ -715,7 +734,7 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9624](https://issues.apache.org/jira/browse/HADOOP-9624) | TestFSMainOperationsLocalFileSystem failed when the Hadoop test root path has "X" in its name |  Minor | test | Xi Fang | Xi Fang |
 | [HADOOP-9287](https://issues.apache.org/jira/browse/HADOOP-9287) | Parallel testing hadoop-common |  Major | test | Tsuyoshi Ozawa | Andrey Klochkov |
@@ -733,7 +752,7 @@
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9720](https://issues.apache.org/jira/browse/HADOOP-9720) | Rename Client#uuid to Client#clientId |  Major | . | Suresh Srinivas | Arpit Agarwal |
 | [HADOOP-9619](https://issues.apache.org/jira/browse/HADOOP-9619) | Mark stability of .proto files |  Major | documentation | Sanjay Radia | Sanjay Radia |
@@ -857,7 +876,7 @@
 | [YARN-469](https://issues.apache.org/jira/browse/YARN-469) | Make scheduling mode in FS pluggable |  Major | scheduler | Karthik Kambatla | Karthik Kambatla |
 | [YARN-468](https://issues.apache.org/jira/browse/YARN-468) | coverage fix for org.apache.hadoop.yarn.server.webproxy.amfilter |  Major | . | Aleksey Gorshkov | Aleksey Gorshkov |
 | [YARN-467](https://issues.apache.org/jira/browse/YARN-467) | Jobs fail during resource localization when public distributed-cache hits unix directory limits |  Major | nodemanager | Omkar Vinit Joshi | Omkar Vinit Joshi |
-| [YARN-450](https://issues.apache.org/jira/browse/YARN-450) | Define value for * in the scheduling protocol |  Major | . | Bikas Saha | Zhijie Shen |
+| [YARN-450](https://issues.apache.org/jira/browse/YARN-450) | Define value for \* in the scheduling protocol |  Major | . | Bikas Saha | Zhijie Shen |
 | [YARN-444](https://issues.apache.org/jira/browse/YARN-444) | Move special container exit codes from YarnConfiguration to API |  Major | api, applications/distributed-shell | Sandy Ryza | Sandy Ryza |
 | [YARN-441](https://issues.apache.org/jira/browse/YARN-441) | Clean up unused collection methods in various APIs |  Major | . | Siddharth Seth | Xuan Gong |
 | [YARN-422](https://issues.apache.org/jira/browse/YARN-422) | Add NM client library |  Major | . | Bikas Saha | Zhijie Shen |
@@ -880,7 +899,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [MAPREDUCE-5286](https://issues.apache.org/jira/browse/MAPREDUCE-5286) | startContainer call should use the ContainerToken instead of Container [YARN-684] |  Major | . | Siddharth Seth | Vinod Kumar Vavilapalli |
 | [MAPREDUCE-5194](https://issues.apache.org/jira/browse/MAPREDUCE-5194) | Heed interrupts during Fetcher shutdown |  Minor | task | Chris Douglas | Chris Douglas |

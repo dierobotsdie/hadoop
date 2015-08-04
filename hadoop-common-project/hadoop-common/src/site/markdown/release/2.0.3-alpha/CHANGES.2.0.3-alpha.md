@@ -1,10 +1,28 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.0.3-alpha - 2013-02-14
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9070](https://issues.apache.org/jira/browse/HADOOP-9070) | Kerberos SASL server cannot find kerberos key |  Blocker | ipc | Daryn Sharp | Daryn Sharp |
 | [HADOOP-8999](https://issues.apache.org/jira/browse/HADOOP-8999) | SASL negotiation is flawed |  Major | ipc | Daryn Sharp | Daryn Sharp |
@@ -23,7 +41,7 @@
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9090](https://issues.apache.org/jira/browse/HADOOP-9090) | Support on-demand publish of metrics |  Minor | metrics | Mostafa Elhemali | Mostafa Elhemali |
 | [HADOOP-9054](https://issues.apache.org/jira/browse/HADOOP-9054) | Add AuthenticationHandler that uses Kerberos but allows for an alternate form of authentication for browsers |  Major | security | Robert Kanter | Robert Kanter |
@@ -47,7 +65,7 @@
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9276](https://issues.apache.org/jira/browse/HADOOP-9276) | Allow BoundedByteArrayOutputStream to be resettable |  Minor | . | Arun C Murthy | Arun C Murthy |
 | [HADOOP-9247](https://issues.apache.org/jira/browse/HADOOP-9247) | parametrize Clover "generateXxx" properties to make them re-definable via -D in mvn calls |  Minor | . | Ivan A. Veselovsky | Ivan A. Veselovsky |
@@ -165,7 +183,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9289](https://issues.apache.org/jira/browse/HADOOP-9289) | FsShell rm -f fails for non-matching globs |  Blocker | fs | Daryn Sharp | Daryn Sharp |
 | [HADOOP-9278](https://issues.apache.org/jira/browse/HADOOP-9278) | HarFileSystem may leak file handle |  Major | fs | Chris Nauroth | Chris Nauroth |
@@ -228,6 +246,7 @@
 | [HADOOP-8616](https://issues.apache.org/jira/browse/HADOOP-8616) | ViewFS configuration requires a trailing slash |  Major | viewfs | Eli Collins | Sandy Ryza |
 | [HADOOP-8589](https://issues.apache.org/jira/browse/HADOOP-8589) | ViewFs tests fail when tests and home dirs are nested |  Major | fs, test | Andrey Klochkov | Sanjay Radia |
 | [HADOOP-8418](https://issues.apache.org/jira/browse/HADOOP-8418) | Fix UGI for IBM JDK running on Windows |  Major | security | Luke Lu | Yu Gao |
+| [HADOOP-7294](https://issues.apache.org/jira/browse/HADOOP-7294) | FileUtil uses wrong stat command for FreeBSD |  Major | fs | Vitalii Tymchyshyn |  |
 | [HADOOP-7115](https://issues.apache.org/jira/browse/HADOOP-7115) | Add a cache for getpwuid\_r and getpwgid\_r calls |  Major | . | Arun C Murthy | Alejandro Abdelnur |
 | [HADOOP-6762](https://issues.apache.org/jira/browse/HADOOP-6762) | exception while doing RPC I/O closes channel |  Critical | . | sam rash | sam rash |
 | [HADOOP-6607](https://issues.apache.org/jira/browse/HADOOP-6607) | Add different variants of non caching HTTP headers |  Minor | io | Steve Loughran | Alejandro Abdelnur |
@@ -480,7 +499,7 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9217](https://issues.apache.org/jira/browse/HADOOP-9217) | Print thread dumps when hadoop-common tests fail |  Major | test | Andrey Klochkov | Andrey Klochkov |
 | [HADOOP-9119](https://issues.apache.org/jira/browse/HADOOP-9119) | Add test to FileSystemContractBaseTest to verify integrity of overwritten files |  Minor | fs, test | Steve Loughran | Steve Loughran |
@@ -496,7 +515,7 @@
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9035](https://issues.apache.org/jira/browse/HADOOP-9035) | Generalize setup of LoginContext |  Major | security | Daryn Sharp | Daryn Sharp |
 | [HADOOP-9021](https://issues.apache.org/jira/browse/HADOOP-9021) | Enforce configured SASL method on the server |  Major | ipc, security | Daryn Sharp | Daryn Sharp |
@@ -556,7 +575,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-8860](https://issues.apache.org/jira/browse/HADOOP-8860) | Split MapReduce and YARN sections in documentation navigation |  Major | documentation | Tom White | Tom White |
 | [HADOOP-8427](https://issues.apache.org/jira/browse/HADOOP-8427) | Convert Forrest docs to APT, incremental |  Major | documentation | Eli Collins | Andy Isaacson |

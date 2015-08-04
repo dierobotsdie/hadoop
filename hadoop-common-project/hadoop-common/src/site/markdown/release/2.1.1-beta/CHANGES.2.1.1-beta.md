@@ -1,10 +1,28 @@
-# Hadoop Changelog
+
+<!---
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+-->
+# Apache Hadoop Changelog
 
 ## Release 2.1.1-beta - 2013-09-16
 
 ### INCOMPATIBLE CHANGES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9944](https://issues.apache.org/jira/browse/HADOOP-9944) | RpcRequestHeaderProto defines callId as uint32 while ipc.Client.CONNECTION\_CONTEXT\_CALL\_ID is signed (-3) |  Blocker | . | Arun C Murthy | Arun C Murthy |
 | [YARN-1170](https://issues.apache.org/jira/browse/YARN-1170) | yarn proto definitions should specify package as 'hadoop.yarn' |  Blocker | . | Arun C Murthy | Binglin Chang |
@@ -13,7 +31,7 @@
 
 ### NEW FEATURES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9789](https://issues.apache.org/jira/browse/HADOOP-9789) | Support server advertised kerberos principals |  Critical | ipc, security | Daryn Sharp | Daryn Sharp |
 | [HDFS-5118](https://issues.apache.org/jira/browse/HDFS-5118) | Provide testing support for DFSClient to drop RPC responses |  Major | . | Jing Zhao | Jing Zhao |
@@ -22,7 +40,7 @@
 
 ### IMPROVEMENTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9962](https://issues.apache.org/jira/browse/HADOOP-9962) | in order to avoid dependency divergence within Hadoop itself lets enable DependencyConvergence |  Major | build | Roman Shaposhnik | Roman Shaposhnik |
 | [HADOOP-9945](https://issues.apache.org/jira/browse/HADOOP-9945) | HAServiceState should have a state for stopped services |  Minor | ha | Karthik Kambatla | Karthik Kambatla |
@@ -63,7 +81,7 @@
 
 ### BUG FIXES:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HADOOP-9977](https://issues.apache.org/jira/browse/HADOOP-9977) | Hadoop services won't start with different keypass and keystorepass when https is enabled |  Major | security | Yesha Vora | Chris Nauroth |
 | [HADOOP-9961](https://issues.apache.org/jira/browse/HADOOP-9961) | versions of a few transitive dependencies diverged between hadoop subprojects |  Minor | build | Roman Shaposhnik | Roman Shaposhnik |
@@ -170,13 +188,13 @@
 
 ### TESTS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 
 
 ### SUB-TASKS:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [HDFS-5249](https://issues.apache.org/jira/browse/HDFS-5249) | Fix dumper thread which may die silently |  Major | nfs | Brandon Li | Brandon Li |
 | [HDFS-5234](https://issues.apache.org/jira/browse/HDFS-5234) | Move RpcFrameDecoder out of the public API |  Minor | nfs | Haohui Mai | Haohui Mai |
@@ -198,7 +216,7 @@
 | [MAPREDUCE-5476](https://issues.apache.org/jira/browse/MAPREDUCE-5476) | Job can fail when RM restarts after staging dir is cleaned but before MR successfully unregister with RM |  Blocker | . | Jian He | Jian He |
 | [MAPREDUCE-5466](https://issues.apache.org/jira/browse/MAPREDUCE-5466) | Historyserver does not refresh the result of restarted jobs after RM restart |  Blocker | . | Yesha Vora | Jian He |
 | [MAPREDUCE-5462](https://issues.apache.org/jira/browse/MAPREDUCE-5462) | In map-side sort, swap entire meta entries instead of indexes for better cache performance |  Major | performance, task | Sandy Ryza | Sandy Ryza |
-| [MAPREDUCE-5441](https://issues.apache.org/jira/browse/MAPREDUCE-5441) | JobClient exit whenever RM issue Reboot command to 1st attempt App Master. |  Major | applicationmaster, client | Rohith | Jian He |
+| [MAPREDUCE-5441](https://issues.apache.org/jira/browse/MAPREDUCE-5441) | JobClient exit whenever RM issue Reboot command to 1st attempt App Master. |  Major | applicationmaster, client | Rohith Sharma K S | Jian He |
 | [YARN-1184](https://issues.apache.org/jira/browse/YARN-1184) | ClassCastException is thrown during preemption When a huge job is submitted to a queue B whose resources is used by a job in queueA |  Major | capacityscheduler, resourcemanager | J.Andreina | Chris Douglas |
 | [YARN-1116](https://issues.apache.org/jira/browse/YARN-1116) | Populate AMRMTokens back to AMRMTokenSecretManager after RM restarts |  Major | resourcemanager | Jian He | Jian He |
 | [YARN-1085](https://issues.apache.org/jira/browse/YARN-1085) | Yarn and MRv2 should do HTTP client authentication in kerberos setup. |  Blocker | nodemanager, resourcemanager | Jaimin D Jetly | Omkar Vinit Joshi |
@@ -213,7 +231,7 @@
 
 ### OTHER:
 
-| JIRA | Description | Priority | Component | Reporter | Contributor |
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
 | [YARN-1034](https://issues.apache.org/jira/browse/YARN-1034) | Remove "experimental" in the Fair Scheduler documentation |  Trivial | documentation, scheduler | Sandy Ryza | Karthik Kambatla |
 | [YARN-1001](https://issues.apache.org/jira/browse/YARN-1001) | YARN should provide per application-type and state statistics |  Blocker | api | Srimanth Gunturi | Zhijie Shen |
