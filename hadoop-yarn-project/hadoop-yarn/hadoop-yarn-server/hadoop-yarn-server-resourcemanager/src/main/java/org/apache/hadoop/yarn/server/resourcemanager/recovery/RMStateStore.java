@@ -44,6 +44,7 @@ import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationSubmissionContext;
 import org.apache.hadoop.yarn.api.records.impl.pb.ApplicationSubmissionContextPBImpl;
+import org.apache.hadoop.yarn.conf.YarnConfiguration;
 import org.apache.hadoop.yarn.event.AsyncDispatcher;
 import org.apache.hadoop.yarn.event.Dispatcher;
 import org.apache.hadoop.yarn.event.EventHandler;
@@ -62,7 +63,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.AggregateAppR
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEventType;
-import org.apache.hadoop.yarn.state.InvalidStateTransitonException;
+import org.apache.hadoop.yarn.state.InvalidStateTransitionException;
 import org.apache.hadoop.yarn.state.SingleArcTransition;
 import org.apache.hadoop.yarn.state.StateMachine;
 import org.apache.hadoop.yarn.state.StateMachineFactory;
@@ -841,7 +842,7 @@ public abstract class RMStateStore extends AbstractService {
             + getRMStateStoreState());
       }
 
-    } catch (InvalidStateTransitonException e) {
+    } catch (InvalidStateTransitionException e) {
       LOG.error("Can't handle this event at current state", e);
     } finally {
       this.writeLock.unlock();
@@ -855,6 +856,7 @@ public abstract class RMStateStore extends AbstractService {
    * @param failureCause the exception due to which the operation failed
    */
   protected void notifyStoreOperationFailed(Exception failureCause) {
+    LOG.error("State store operation failed ", failureCause);
     if (failureCause instanceof StoreFencedException) {
       updateFencedState();
       Thread standByTransitionThread =
@@ -862,8 +864,11 @@ public abstract class RMStateStore extends AbstractService {
       standByTransitionThread.setName("StandByTransitionThread Handler");
       standByTransitionThread.start();
     } else {
-      rmDispatcher.getEventHandler().handle(
-        new RMFatalEvent(RMFatalEventType.STATE_STORE_OP_FAILED, failureCause));
+      if (YarnConfiguration.shouldRMFailFast(getConfig())) {
+        rmDispatcher.getEventHandler().handle(
+            new RMFatalEvent(RMFatalEventType.STATE_STORE_OP_FAILED,
+                failureCause));
+      }
     }
   }
  
@@ -906,6 +911,15 @@ public abstract class RMStateStore extends AbstractService {
    * @throws Exception
    */
   public abstract void deleteStore() throws Exception;
+
+  /**
+   * Derived classes must implement this method to remove application from the
+   * state store
+   * 
+   * @throws Exception
+   */
+  public abstract void removeApplication(ApplicationId removeAppId)
+      throws Exception;
 
   public void setResourceManager(ResourceManager rm) {
     this.resourceManager = rm;

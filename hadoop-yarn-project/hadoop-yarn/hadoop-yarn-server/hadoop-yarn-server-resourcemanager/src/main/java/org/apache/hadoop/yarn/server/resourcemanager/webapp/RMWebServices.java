@@ -20,10 +20,11 @@ package org.apache.hadoop.yarn.server.resourcemanager.webapp;
 
 import java.io.IOException;
 import java.lang.reflect.UndeclaredThrowableException;
-import java.security.AccessControlException;
 import java.nio.ByteBuffer;
+import java.security.AccessControlException;
 import java.security.Principal;
 import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -31,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 
@@ -38,6 +40,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
+import javax.ws.rs.FormParam;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
@@ -63,25 +66,25 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod;
 import org.apache.hadoop.security.authentication.server.KerberosAuthenticationHandler;
 import org.apache.hadoop.security.authorize.AuthorizationException;
+import org.apache.hadoop.security.token.SecretManager.InvalidToken;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.security.token.delegation.web.DelegationTokenAuthenticationHandler;
 import org.apache.hadoop.util.StringUtils;
+import org.apache.hadoop.yarn.api.protocolrecords.CancelDelegationTokenRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.CancelDelegationTokenResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.GetApplicationsRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.GetDelegationTokenRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.GetDelegationTokenResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.GetNewApplicationRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.GetNewApplicationResponse;
 import org.apache.hadoop.yarn.api.protocolrecords.KillApplicationRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.KillApplicationResponse;
-import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationResponse;
-import org.apache.hadoop.security.token.SecretManager.InvalidToken;
-import org.apache.hadoop.yarn.api.protocolrecords.CancelDelegationTokenRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.CancelDelegationTokenResponse;
-import org.apache.hadoop.yarn.api.protocolrecords.GetDelegationTokenRequest;
-import org.apache.hadoop.yarn.api.protocolrecords.GetDelegationTokenResponse;
+import org.apache.hadoop.yarn.api.protocolrecords.MoveApplicationAcrossQueuesRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RenewDelegationTokenRequest;
 import org.apache.hadoop.yarn.api.protocolrecords.RenewDelegationTokenResponse;
-import org.apache.hadoop.yarn.api.protocolrecords.MoveApplicationAcrossQueuesRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationRequest;
+import org.apache.hadoop.yarn.api.protocolrecords.SubmitApplicationResponse;
 import org.apache.hadoop.yarn.api.records.ApplicationAccessType;
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
@@ -90,6 +93,7 @@ import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.hadoop.yarn.api.records.NodeId;
+import org.apache.hadoop.yarn.api.records.NodeLabel;
 import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.QueueACL;
@@ -100,11 +104,13 @@ import org.apache.hadoop.yarn.exceptions.YarnException;
 import org.apache.hadoop.yarn.exceptions.YarnRuntimeException;
 import org.apache.hadoop.yarn.factories.RecordFactory;
 import org.apache.hadoop.yarn.factory.providers.RecordFactoryProvider;
+import org.apache.hadoop.yarn.nodelabels.RMNodeLabel;
 import org.apache.hadoop.yarn.security.client.RMDelegationTokenIdentifier;
 import org.apache.hadoop.yarn.server.resourcemanager.RMAuditLogger;
 import org.apache.hadoop.yarn.server.resourcemanager.RMAuditLogger.AuditConstants;
 import org.apache.hadoop.yarn.server.resourcemanager.RMServerUtils;
 import org.apache.hadoop.yarn.server.resourcemanager.ResourceManager;
+import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsManager;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
@@ -115,12 +121,11 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairSchedule
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fifo.FifoScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppAttemptInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppAttemptsInfo;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NewApplication;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppInfo;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppState;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppQueue;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ApplicationSubmissionContextInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppState;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ApplicationStatisticsInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ApplicationSubmissionContextInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.AppsInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.CapacitySchedulerInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ClusterInfo;
@@ -129,21 +134,30 @@ import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.CredentialsInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.DelegationToken;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.FairSchedulerInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.FifoSchedulerInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.LabelsToNodesInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.LocalResourceInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NewApplication;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeLabelInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeLabelsInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeToLabelsEntry;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeToLabelsInfo;
+import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeToLabelsEntryList;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodesInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.ResourceInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.SchedulerInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.SchedulerTypeInfo;
 import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.StatisticsItemInfo;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeLabelsInfo;
-import org.apache.hadoop.yarn.server.resourcemanager.webapp.dao.NodeToLabelsInfo;
+import org.apache.hadoop.yarn.server.security.ApplicationACLsManager;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
+import org.apache.hadoop.yarn.util.AdHocLogDumper;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.webapp.BadRequestException;
+import org.apache.hadoop.yarn.webapp.ForbiddenException;
 import org.apache.hadoop.yarn.webapp.NotFoundException;
 import org.apache.hadoop.yarn.webapp.util.WebAppUtils;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 
@@ -160,6 +174,9 @@ public class RMWebServices {
   private final Configuration conf;
   private @Context HttpServletResponse response;
 
+  @VisibleForTesting
+  boolean isDistributedNodeLabelConfiguration = false;
+
   public final static String DELEGATION_TOKEN_HEADER =
       "Hadoop-YARN-RM-Delegation-Token";
 
@@ -167,6 +184,19 @@ public class RMWebServices {
   public RMWebServices(final ResourceManager rm, Configuration conf) {
     this.rm = rm;
     this.conf = conf;
+    isDistributedNodeLabelConfiguration =
+        YarnConfiguration.isDistributedNodeLabelConfiguration(conf);
+  }
+
+  private void checkAndThrowIfDistributedNodeLabelConfEnabled(String operation)
+      throws IOException {
+    if (isDistributedNodeLabelConfiguration) {
+      String msg =
+          String.format("Error when invoke method=%s because of "
+              + "distributed node label configuration enabled.", operation);
+      LOG.error(msg);
+      throw new IOException(msg);
+    }
   }
 
   RMWebServices(ResourceManager rm, Configuration conf,
@@ -226,7 +256,9 @@ public class RMWebServices {
     if (rs instanceof CapacityScheduler) {
       CapacityScheduler cs = (CapacityScheduler) rs;
       CSQueue root = cs.getRootQueue();
-      sinfo = new CapacitySchedulerInfo(root);
+      sinfo =
+          new CapacitySchedulerInfo(root, cs, new RMNodeLabel(
+              RMNodeLabelsManager.NO_LABEL));
     } else if (rs instanceof FairScheduler) {
       FairScheduler fs = (FairScheduler) rs;
       sinfo = new FairSchedulerInfo(fs);
@@ -236,6 +268,39 @@ public class RMWebServices {
       throw new NotFoundException("Unknown scheduler configured");
     }
     return new SchedulerTypeInfo(sinfo);
+  }
+
+  @POST
+  @Path("/scheduler/logs")
+  @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
+  public String dumpSchedulerLogs(@FormParam("time") String time,
+      @Context HttpServletRequest hsr) throws IOException {
+    init();
+    UserGroupInformation callerUGI = getCallerUserGroupInformation(hsr, true);
+    ApplicationACLsManager aclsManager = rm.getApplicationACLsManager();
+    if (aclsManager.areACLsEnabled()) {
+      if (callerUGI == null || !aclsManager.isAdmin(callerUGI)) {
+        String msg = "Only admins can carry out this operation.";
+        throw new ForbiddenException(msg);
+      }
+    }
+    ResourceScheduler rs = rm.getResourceScheduler();
+    int period = Integer.parseInt(time);
+    if (period <= 0) {
+      throw new BadRequestException("Period must be greater than 0");
+    }
+    final String logHierarchy =
+        "org.apache.hadoop.yarn.server.resourcemanager.scheduler";
+    String logfile = "yarn-scheduler-debug.log";
+    if (rs instanceof CapacityScheduler) {
+      logfile = "yarn-capacity-scheduler-debug.log";
+    } else if (rs instanceof FairScheduler) {
+      logfile = "yarn-fair-scheduler-debug.log";
+    }
+    AdHocLogDumper dumper = new AdHocLogDumper(logHierarchy, logfile);
+    // time period is sent to us in seconds
+    dumper.dumpLogs("DEBUG", period * 1000);
+    return "Capacity scheduler logs are being created.";
   }
 
   /**
@@ -294,7 +359,7 @@ public class RMWebServices {
     RMNode ni = this.rm.getRMContext().getRMNodes().get(nid);
     boolean isInactive = false;
     if (ni == null) {
-      ni = this.rm.getRMContext().getInactiveRMNodes().get(nid.getHost());
+      ni = this.rm.getRMContext().getInactiveRMNodes().get(nid);
       if (ni == null) {
         throw new NotFoundException("nodeId, " + nodeId + ", is not found");
       }
@@ -739,58 +804,114 @@ public class RMWebServices {
   @GET
   @Path("/get-node-to-labels")
   @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
-  public NodeToLabelsInfo getNodeToLabels(@Context HttpServletRequest hsr) 
-    throws IOException {
+  public NodeToLabelsInfo getNodeToLabels(@Context HttpServletRequest hsr)
+      throws IOException {
     init();
 
     NodeToLabelsInfo ntl = new NodeToLabelsInfo();
     HashMap<String, NodeLabelsInfo> ntlMap = ntl.getNodeToLabels();
-    Map<NodeId, Set<String>> nodeIdToLabels =   
-      rm.getRMContext().getNodeLabelManager().getNodeLabels();
-      
-    for (Map.Entry<NodeId, Set<String>> nitle : nodeIdToLabels.entrySet()) {
-      ntlMap.put(nitle.getKey().toString(), 
-        new NodeLabelsInfo(nitle.getValue()));
+    Map<NodeId, Set<NodeLabel>> nodeIdToLabels = rm.getRMContext()
+        .getNodeLabelManager().getNodeLabelsInfo();
+
+    for (Map.Entry<NodeId, Set<NodeLabel>> nitle : nodeIdToLabels.entrySet()) {
+      List<NodeLabel> labels = new ArrayList<NodeLabel>(nitle.getValue());
+      ntlMap.put(nitle.getKey().toString(), new NodeLabelsInfo(labels));
     }
 
     return ntl;
   }
-  
+
+  @GET
+  @Path("/label-mappings")
+  @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
+  public LabelsToNodesInfo getLabelsToNodes(
+      @QueryParam("labels") Set<String> labels) throws IOException {
+    init();
+
+    LabelsToNodesInfo lts = new LabelsToNodesInfo();
+    Map<NodeLabelInfo, NodeIDsInfo> ltsMap = lts.getLabelsToNodes();
+    Map<NodeLabel, Set<NodeId>> labelsToNodeId = null;
+    if (labels == null || labels.size() == 0) {
+      labelsToNodeId =
+          rm.getRMContext().getNodeLabelManager().getLabelsInfoToNodes();
+    } else {
+      labelsToNodeId =
+          rm.getRMContext().getNodeLabelManager().getLabelsInfoToNodes(labels);
+    }
+
+    for (Entry<NodeLabel, Set<NodeId>> entry : labelsToNodeId.entrySet()) {
+      List<String> nodeIdStrList = new ArrayList<String>();
+      for (NodeId nodeId : entry.getValue()) {
+        nodeIdStrList.add(nodeId.toString());
+      }
+      ltsMap.put(new NodeLabelInfo(entry.getKey()), new NodeIDsInfo(
+          nodeIdStrList));
+    }
+    return lts;
+  }
+
   @POST
   @Path("/replace-node-to-labels")
   @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
-  public Response replaceLabelsOnNodes(
-    final NodeToLabelsInfo newNodeToLabels,
-    @Context HttpServletRequest hsr) 
-    throws IOException {
+  public Response replaceLabelsOnNodes(final NodeToLabelsEntryList newNodeToLabels,
+      @Context HttpServletRequest hsr) throws IOException {
+    Map<NodeId, Set<String>> nodeIdToLabels =
+        new HashMap<NodeId, Set<String>>();
+
+    for (NodeToLabelsEntry nitle : newNodeToLabels.getNodeToLabels()) {
+      nodeIdToLabels.put(
+          ConverterUtils.toNodeIdWithDefaultPort(nitle.getNodeId()),
+          new HashSet<String>(nitle.getNodeLabels()));
+    }
+
+    return replaceLabelsOnNode(nodeIdToLabels, hsr, "/replace-node-to-labels");
+  }
+
+  @POST
+  @Path("/nodes/{nodeId}/replace-labels")
+  @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
+  public Response replaceLabelsOnNode(
+      @QueryParam("labels") Set<String> newNodeLabelsName,
+      @Context HttpServletRequest hsr, @PathParam("nodeId") String nodeId)
+      throws Exception {
+    NodeId nid = ConverterUtils.toNodeIdWithDefaultPort(nodeId);
+    Map<NodeId, Set<String>> newLabelsForNode =
+        new HashMap<NodeId, Set<String>>();
+    newLabelsForNode.put(nid,
+        new HashSet<String>(newNodeLabelsName));
+
+    return replaceLabelsOnNode(newLabelsForNode, hsr,
+        "/nodes/nodeid/replace-labels");
+  }
+
+  private Response replaceLabelsOnNode(
+      Map<NodeId, Set<String>> newLabelsForNode, HttpServletRequest hsr,
+      String operation) throws IOException {
     init();
-    
+
+    checkAndThrowIfDistributedNodeLabelConfEnabled("replaceLabelsOnNode");
+
     UserGroupInformation callerUGI = getCallerUserGroupInformation(hsr, true);
     if (callerUGI == null) {
-      String msg = "Unable to obtain user name, user not authenticated for"
-        + " post to .../replace-node-to-labels";
+      String msg =
+          "Unable to obtain user name, user not authenticated for"
+              + " post to ..." + operation;
       throw new AuthorizationException(msg);
     }
-    if (!rm.getRMContext().getNodeLabelManager().checkAccess(callerUGI)) {
-      String msg = "User " + callerUGI.getShortUserName() + " not authorized"
-        + " for post to .../replace-node-to-labels ";
-      throw new AuthorizationException(msg);
-    }
-    
-    Map<NodeId, Set<String>> nodeIdToLabels = 
-      new HashMap<NodeId, Set<String>>();
 
-    for (Map.Entry<String, NodeLabelsInfo> nitle : 
-      newNodeToLabels.getNodeToLabels().entrySet()) {
-     nodeIdToLabels.put(ConverterUtils.toNodeIdWithDefaultPort(nitle.getKey()),
-       new HashSet<String>(nitle.getValue().getNodeLabels()));
+    if (!rm.getRMContext().getNodeLabelManager().checkAccess(callerUGI)) {
+      String msg =
+          "User " + callerUGI.getShortUserName() + " not authorized"
+              + " for post to ..." + operation;
+      throw new AuthorizationException(msg);
     }
-    
-    rm.getRMContext().getNodeLabelManager().replaceLabelsOnNode(nodeIdToLabels);
+
+    rm.getRMContext().getNodeLabelManager()
+        .replaceLabelsOnNode(newLabelsForNode);
 
     return Response.status(Status.OK).build();
   }
-  
+
   @GET
   @Path("/get-node-labels")
   @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
@@ -798,9 +919,9 @@ public class RMWebServices {
     throws IOException {
     init();
 
-    NodeLabelsInfo ret = 
-      new NodeLabelsInfo(rm.getRMContext().getNodeLabelManager()
-        .getClusterNodeLabels());
+    List<NodeLabel> nodeLabels = rm.getRMContext().getNodeLabelManager()
+        .getClusterNodeLabels();
+    NodeLabelsInfo ret = new NodeLabelsInfo(nodeLabels);
 
     return ret;
   }
@@ -826,8 +947,7 @@ public class RMWebServices {
     }
     
     rm.getRMContext().getNodeLabelManager()
-        .addToCluserNodeLabels(new HashSet<String>(
-          newNodeLabels.getNodeLabels()));
+        .addToCluserNodeLabels(newNodeLabels.getNodeLabels());
             
     return Response.status(Status.OK).build();
 
@@ -836,77 +956,42 @@ public class RMWebServices {
   @POST
   @Path("/remove-node-labels")
   @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
-  public Response removeFromCluserNodeLabels(final NodeLabelsInfo oldNodeLabels,
-      @Context HttpServletRequest hsr)
-      throws Exception {
+  public Response removeFromCluserNodeLabels(
+      @QueryParam("labels") Set<String> oldNodeLabels,
+      @Context HttpServletRequest hsr) throws Exception {
     init();
-    
+
     UserGroupInformation callerUGI = getCallerUserGroupInformation(hsr, true);
     if (callerUGI == null) {
       String msg = "Unable to obtain user name, user not authenticated for"
-        + " post to .../remove-node-labels";
+          + " post to .../remove-node-labels";
       throw new AuthorizationException(msg);
     }
     if (!rm.getRMContext().getNodeLabelManager().checkAccess(callerUGI)) {
       String msg = "User " + callerUGI.getShortUserName() + " not authorized"
-        + " for post to .../remove-node-labels ";
+          + " for post to .../remove-node-labels ";
       throw new AuthorizationException(msg);
     }
-    
-    rm.getRMContext().getNodeLabelManager()
-        .removeFromClusterNodeLabels(new HashSet<String>(
-          oldNodeLabels.getNodeLabels()));
-            
-    return Response.status(Status.OK).build();
 
+    rm.getRMContext()
+        .getNodeLabelManager()
+        .removeFromClusterNodeLabels(
+            new HashSet<String>(oldNodeLabels));
+
+    return Response.status(Status.OK).build();
   }
   
   @GET
   @Path("/nodes/{nodeId}/get-labels")
   @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
   public NodeLabelsInfo getLabelsOnNode(@Context HttpServletRequest hsr,
-                                  @PathParam("nodeId") String nodeId) 
-    throws IOException {
+      @PathParam("nodeId") String nodeId) throws IOException {
     init();
 
     NodeId nid = ConverterUtils.toNodeIdWithDefaultPort(nodeId);
-    return new NodeLabelsInfo(
-      rm.getRMContext().getNodeLabelManager().getLabelsOnNode(nid));
-
-  }
-  
-  @POST
-  @Path("/nodes/{nodeId}/replace-labels")
-  @Produces({ MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML })
-  public Response replaceLabelsOnNode(NodeLabelsInfo newNodeLabelsInfo,
-      @Context HttpServletRequest hsr, @PathParam("nodeId") String nodeId)
-      throws Exception {
-    init();
-    
-    UserGroupInformation callerUGI = getCallerUserGroupInformation(hsr, true);
-    if (callerUGI == null) {
-      String msg = "Unable to obtain user name, user not authenticated for"
-        + " post to .../nodes/nodeid/replace-labels";
-      throw new AuthorizationException(msg);
-    }
-
-    if (!rm.getRMContext().getNodeLabelManager().checkAccess(callerUGI)) {
-      String msg = "User " + callerUGI.getShortUserName() + " not authorized"
-        + " for post to .../nodes/nodeid/replace-labels";
-      throw new AuthorizationException(msg);
-    }
-    
-    NodeId nid = ConverterUtils.toNodeIdWithDefaultPort(nodeId);
-    
-    Map<NodeId, Set<String>> newLabelsForNode = new HashMap<NodeId,
-      Set<String>>();
-    
-    newLabelsForNode.put(nid, new HashSet<String>(newNodeLabelsInfo.getNodeLabels()));
-    
-    rm.getRMContext().getNodeLabelManager().replaceLabelsOnNode(newLabelsForNode);
-    
-    return Response.status(Status.OK).build();
-
+    List<NodeLabel> labels = new ArrayList<NodeLabel>(rm.getRMContext()
+        .getNodeLabelManager().getLabelsInfoByNode(nid));
+    return new NodeLabelsInfo(labels);
   }
 
   protected Response killApp(RMApp app, UserGroupInformation callerUGI,

@@ -76,7 +76,7 @@ public class TestFSNamesystem {
     DFSTestUtil.formatNameNode(conf);
     FSNamesystem fsn = FSNamesystem.loadFromDisk(conf);
     LeaseManager leaseMan = fsn.getLeaseManager();
-    leaseMan.addLease("client1", "importantFile");
+    leaseMan.addLease("client1", fsn.getFSDirectory().allocateNewInodeId());
     assertEquals(1, leaseMan.countLease());
     fsn.clear();
     leaseMan = fsn.getLeaseManager();
@@ -212,5 +212,25 @@ public class TestFSNamesystem {
     assertTrue(root.getChildrenList(Snapshot.CURRENT_STATE_ID).isEmpty());
     fsn.imageLoadComplete();
     assertTrue(fsn.isImageLoaded());
+  }
+
+  @Test
+  public void testGetEffectiveLayoutVersion() {
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(true, -60, -61, -63));
+    assertEquals(-61,
+        FSNamesystem.getEffectiveLayoutVersion(true, -61, -61, -63));
+    assertEquals(-62,
+        FSNamesystem.getEffectiveLayoutVersion(true, -62, -61, -63));
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(true, -63, -61, -63));
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(false, -60, -61, -63));
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(false, -61, -61, -63));
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(false, -62, -61, -63));
+    assertEquals(-63,
+        FSNamesystem.getEffectiveLayoutVersion(false, -63, -61, -63));
   }
 }

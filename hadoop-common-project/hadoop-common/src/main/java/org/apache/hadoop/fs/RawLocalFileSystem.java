@@ -33,6 +33,10 @@ import java.io.OutputStream;
 import java.io.FileDescriptor;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.FileTime;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.StringTokenizer;
@@ -58,6 +62,8 @@ public class RawLocalFileSystem extends FileSystem {
   private Path workingDir;
   // Temporary workaround for HADOOP-9652.
   private static boolean useDeprecatedFileStatus = true;
+
+  private FsPermission umask;
 
   @VisibleForTesting
   public static void useStatIfAvailable() {
@@ -92,6 +98,7 @@ public class RawLocalFileSystem extends FileSystem {
   public void initialize(URI uri, Configuration conf) throws IOException {
     super.initialize(uri, conf);
     setConf(conf);
+    umask = FsPermission.getUMask(conf);
   }
   
   /*******************************************************
@@ -211,9 +218,13 @@ public class RawLocalFileSystem extends FileSystem {
     private LocalFSFileOutputStream(Path f, boolean append,
         FsPermission permission) throws IOException {
       File file = pathToFile(f);
+      if (!append && permission == null) {
+        permission = FsPermission.getFileDefault();
+      }
       if (permission == null) {
         this.fos = new FileOutputStream(file, append);
       } else {
+        permission = permission.applyUMask(umask);
         if (Shell.WINDOWS && NativeIO.isAvailable()) {
           this.fos = NativeIO.Windows.createFileOutputStreamWithMode(file,
               append, permission.toShort());
@@ -264,11 +275,13 @@ public class RawLocalFileSystem extends FileSystem {
     if (!exists(f)) {
       throw new FileNotFoundException("File " + f + " not found");
     }
-    if (getFileStatus(f).isDirectory()) {
+    FileStatus status = getFileStatus(f);
+    if (status.isDirectory()) {
       throw new IOException("Cannot append to a diretory (=" + f + " )");
     }
     return new FSDataOutputStream(new BufferedOutputStream(
-        createOutputStreamWithMode(f, true, null), bufferSize), statistics);
+        createOutputStreamWithMode(f, true, null), bufferSize), statistics,
+        status.getLen());
   }
 
   @Override
@@ -446,35 +459,38 @@ public class RawLocalFileSystem extends FileSystem {
     if (!localf.exists()) {
       throw new FileNotFoundException("File " + f + " does not exist");
     }
-    if (localf.isFile()) {
-      if (!useDeprecatedFileStatus) {
-        return new FileStatus[] { getFileStatus(f) };
+
+    if (localf.isDirectory()) {
+      String[] names = localf.list();
+      if (names == null) {
+        return null;
       }
-      return new FileStatus[] {
-        new DeprecatedRawLocalFileStatus(localf, getDefaultBlockSize(f), this)};
+      results = new FileStatus[names.length];
+      int j = 0;
+      for (int i = 0; i < names.length; i++) {
+        try {
+          // Assemble the path using the Path 3 arg constructor to make sure
+          // paths with colon are properly resolved on Linux
+          results[j] = getFileStatus(new Path(f, new Path(null, null,
+                                                          names[i])));
+          j++;
+        } catch (FileNotFoundException e) {
+          // ignore the files not found since the dir list may have have
+          // changed since the names[] list was generated.
+        }
+      }
+      if (j == names.length) {
+        return results;
+      }
+      return Arrays.copyOf(results, j);
     }
 
-    String[] names = localf.list();
-    if (names == null) {
-      return null;
+    if (!useDeprecatedFileStatus) {
+      return new FileStatus[] { getFileStatus(f) };
     }
-    results = new FileStatus[names.length];
-    int j = 0;
-    for (int i = 0; i < names.length; i++) {
-      try {
-        // Assemble the path using the Path 3 arg constructor to make sure
-        // paths with colon are properly resolved on Linux
-        results[j] = getFileStatus(new Path(f, new Path(null, null, names[i])));
-        j++;
-      } catch (FileNotFoundException e) {
-        // ignore the files not found since the dir list may have have changed
-        // since the names[] list was generated.
-      }
-    }
-    if (j == names.length) {
-      return results;
-    }
-    return Arrays.copyOf(results, j);
+    return new FileStatus[] {
+        new DeprecatedRawLocalFileStatus(localf,
+        getDefaultBlockSize(f), this) };
   }
   
   protected boolean mkOneDir(File p2f) throws IOException {
@@ -484,27 +500,27 @@ public class RawLocalFileSystem extends FileSystem {
   protected boolean mkOneDirWithMode(Path p, File p2f, FsPermission permission)
       throws IOException {
     if (permission == null) {
-      return p2f.mkdir();
-    } else {
-      if (Shell.WINDOWS && NativeIO.isAvailable()) {
-        try {
-          NativeIO.Windows.createDirectoryWithMode(p2f, permission.toShort());
-          return true;
-        } catch (IOException e) {
-          if (LOG.isDebugEnabled()) {
-            LOG.debug(String.format(
-                "NativeIO.createDirectoryWithMode error, path = %s, mode = %o",
-                p2f, permission.toShort()), e);
-          }
-          return false;
+      permission = FsPermission.getDirDefault();
+    }
+    permission = permission.applyUMask(umask);
+    if (Shell.WINDOWS && NativeIO.isAvailable()) {
+      try {
+        NativeIO.Windows.createDirectoryWithMode(p2f, permission.toShort());
+        return true;
+      } catch (IOException e) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(String.format(
+              "NativeIO.createDirectoryWithMode error, path = %s, mode = %o",
+              p2f, permission.toShort()), e);
         }
-      } else {
-        boolean b = p2f.mkdir();
-        if (b) {
-          setPermission(p, permission);
-        }
-        return b;
+        return false;
       }
+    } else {
+      boolean b = p2f.mkdir();
+      if (b) {
+        setPermission(p, permission);
+      }
+      return b;
     }
   }
 
@@ -635,9 +651,14 @@ public class RawLocalFileSystem extends FileSystem {
       return !super.getOwner().isEmpty(); 
     }
     
-    DeprecatedRawLocalFileStatus(File f, long defaultBlockSize, FileSystem fs) {
+    DeprecatedRawLocalFileStatus(File f, long defaultBlockSize, FileSystem fs)
+      throws IOException {
       super(f.length(), f.isDirectory(), 1, defaultBlockSize,
-          f.lastModified(), new Path(f.getPath()).makeQualified(fs.getUri(),
+          f.lastModified(),
+          Files.readAttributes(f.toPath(),
+            BasicFileAttributes.class).lastAccessTime().toMillis(),
+          null, null, null,
+          new Path(f.getPath()).makeQualified(fs.getUri(),
             fs.getWorkingDirectory()));
     }
     
@@ -749,25 +770,20 @@ public class RawLocalFileSystem extends FileSystem {
   }
  
   /**
-   * Sets the {@link Path}'s last modified time <em>only</em> to the given
-   * valid time.
+   * Sets the {@link Path}'s last modified time and last access time to
+   * the given valid times.
    *
    * @param mtime the modification time to set (only if greater than zero).
-   * @param atime currently ignored.
-   * @throws IOException if setting the last modified time fails.
+   * @param atime the access time to set (only if greater than zero).
+   * @throws IOException if setting the times fails.
    */
   @Override
   public void setTimes(Path p, long mtime, long atime) throws IOException {
-    File f = pathToFile(p);
-    if(mtime >= 0) {
-      if(!f.setLastModified(mtime)) {
-        throw new IOException(
-          "couldn't set last-modified time to " +
-          mtime +
-          " for " +
-          f.getAbsolutePath());
-      }
-    }
+    BasicFileAttributeView view = Files.getFileAttributeView(
+        pathToFile(p).toPath(), BasicFileAttributeView.class);
+    FileTime fmtime = (mtime >= 0) ? FileTime.fromMillis(mtime) : null;
+    FileTime fatime = (atime >= 0) ? FileTime.fromMillis(atime) : null;
+    view.setTimes(fmtime, fatime, null);
   }
 
   @Override
@@ -775,9 +791,13 @@ public class RawLocalFileSystem extends FileSystem {
     return true;
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public void createSymlink(Path target, Path link, boolean createParent)
       throws IOException {
+    if (!FileSystem.areSymlinksEnabled()) {
+      throw new UnsupportedOperationException("Symlinks not supported");
+    }
     final String targetScheme = target.toUri().getScheme();
     if (targetScheme != null && !"file".equals(targetScheme)) {
       throw new IOException("Unable to create symlink to non-local file "+

@@ -72,6 +72,8 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.container.Cont
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.ContainerLocalizer;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.ResourceLocalizationService;
 import org.apache.hadoop.yarn.server.nodemanager.WindowsSecureContainerExecutor;
+import org.apache.hadoop.yarn.server.nodemanager.executor.ContainerSignalContext;
+import org.apache.hadoop.yarn.server.nodemanager.executor.ContainerStartContext;
 import org.apache.hadoop.yarn.server.nodemanager.util.ProcessIdFileReader;
 import org.apache.hadoop.yarn.util.Apps;
 import org.apache.hadoop.yarn.util.AuxiliaryServiceHelper;
@@ -299,9 +301,17 @@ public class ContainerLaunch implements Callable<Integer> {
       }
       else {
         exec.activateContainer(containerID, pidFilePath);
-        ret = exec.launchContainer(container, nmPrivateContainerScriptPath,
-                nmPrivateTokensPath, user, appIdStr, containerWorkDir,
-                localDirs, logDirs);
+        ret = exec.launchContainer(new ContainerStartContext.Builder()
+            .setContainer(container)
+            .setLocalizedResources(localResources)
+            .setNmPrivateContainerScriptPath(nmPrivateContainerScriptPath)
+            .setNmPrivateTokensPath(nmPrivateTokensPath)
+            .setUser(user)
+            .setAppId(appIdStr)
+            .setContainerWorkDir(containerWorkDir)
+            .setLocalDirs(localDirs)
+            .setLogDirs(logDirs)
+            .build());
       }
     } catch (Throwable e) {
       LOG.warn("Failed to launch container.", e);
@@ -416,7 +426,13 @@ public class ContainerLaunch implements Callable<Integer> {
           ? Signal.TERM
           : Signal.KILL;
 
-        boolean result = exec.signalContainer(user, processId, signal);
+        boolean result = exec.signalContainer(
+            new ContainerSignalContext.Builder()
+                .setContainer(container)
+                .setUser(user)
+                .setPid(processId)
+                .setSignal(signal)
+                .build());
 
         LOG.debug("Sent signal " + signal + " to pid " + processId
           + " as user " + user
@@ -514,6 +530,8 @@ public class ContainerLaunch implements Callable<Integer> {
 
     public abstract void command(List<String> command) throws IOException;
 
+    public abstract void whitelistedEnv(String key, String value) throws IOException;
+
     public abstract void env(String key, String value) throws IOException;
 
     public final void symlink(Path src, Path dst) throws IOException {
@@ -572,6 +590,11 @@ public class ContainerLaunch implements Callable<Integer> {
     }
 
     @Override
+    public void whitelistedEnv(String key, String value) {
+      line("export ", key, "=${", key, ":-", "\"", value, "\"}");
+    }
+
+    @Override
     public void env(String key, String value) {
       line("export ", key, "=\"", value, "\"");
     }
@@ -609,6 +632,12 @@ public class ContainerLaunch implements Callable<Integer> {
     @Override
     public void command(List<String> command) throws IOException {
       lineWithLenCheck("@call ", StringUtils.join(" ", command));
+      errorCheck();
+    }
+
+    @Override
+    public void whitelistedEnv(String key, String value) throws IOException {
+      lineWithLenCheck("@set ", key, "=", value);
       errorCheck();
     }
 
@@ -726,8 +755,29 @@ public class ContainerLaunch implements Callable<Integer> {
     if (Shell.WINDOWS) {
       
       String inputClassPath = environment.get(Environment.CLASSPATH.name());
+
       if (inputClassPath != null && !inputClassPath.isEmpty()) {
-        StringBuilder newClassPath = new StringBuilder(inputClassPath);
+
+        //On non-windows, localized resources
+        //from distcache are available via the classpath as they were placed
+        //there but on windows they are not available when the classpath
+        //jar is created and so they "are lost" and have to be explicitly
+        //added to the classpath instead.  This also means that their position
+        //is lost relative to other non-distcache classpath entries which will
+        //break things like mapreduce.job.user.classpath.first.  An environment
+        //variable can be set to indicate that distcache entries should come
+        //first
+
+        boolean preferLocalizedJars = Boolean.valueOf(
+          environment.get(Environment.CLASSPATH_PREPEND_DISTCACHE.name())
+          );
+
+        boolean needsSeparator = false;
+        StringBuilder newClassPath = new StringBuilder();
+        if (!preferLocalizedJars) {
+          newClassPath.append(inputClassPath);
+          needsSeparator = true;
+        }
 
         // Localized resources do not exist at the desired paths yet, because the
         // container launch script has not run to create symlinks yet.  This
@@ -741,7 +791,12 @@ public class ContainerLaunch implements Callable<Integer> {
 
           for (String linkName : entry.getValue()) {
             // Append resource.
-            newClassPath.append(File.pathSeparator).append(pwd.toString())
+            if (needsSeparator) {
+              newClassPath.append(File.pathSeparator);
+            } else {
+              needsSeparator = true;
+            }
+            newClassPath.append(pwd.toString())
               .append(Path.SEPARATOR).append(linkName);
 
             // FileUtil.createJarWithClassPath must use File.toURI to convert
@@ -757,6 +812,12 @@ public class ContainerLaunch implements Callable<Integer> {
               newClassPath.append(Path.SEPARATOR);
             }
           }
+        }
+        if (preferLocalizedJars) {
+          if (needsSeparator) {
+            newClassPath.append(File.pathSeparator);
+          }
+          newClassPath.append(inputClassPath);
         }
 
         // When the container launches, it takes the parent process's environment

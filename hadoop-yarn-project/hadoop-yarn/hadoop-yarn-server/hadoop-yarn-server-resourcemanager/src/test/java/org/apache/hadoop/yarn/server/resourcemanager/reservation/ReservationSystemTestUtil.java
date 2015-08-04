@@ -45,6 +45,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.MockNodes;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContextImpl;
 import org.apache.hadoop.yarn.server.resourcemanager.nodelabels.RMNodeLabelsManager;
+import org.apache.hadoop.yarn.server.resourcemanager.reservation.planning.AlignedPlannerWithGreedy;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.AbstractYarnScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.CapacityScheduler;
@@ -89,7 +90,7 @@ public class ReservationSystemTestUtil {
     Assert.assertEquals(planQName, plan.getQueueName());
     Assert.assertEquals(8192, plan.getTotalCapacity().getMemory());
     Assert.assertTrue(
-        plan.getReservationAgent() instanceof GreedyReservationAgent);
+        plan.getReservationAgent() instanceof AlignedPlannerWithGreedy);
     Assert.assertTrue(
         plan.getSharingPolicy() instanceof CapacityOverTimePolicy);
   }
@@ -102,7 +103,7 @@ public class ReservationSystemTestUtil {
     Assert.assertEquals(newQ, newPlan.getQueueName());
     Assert.assertEquals(1024, newPlan.getTotalCapacity().getMemory());
     Assert
-        .assertTrue(newPlan.getReservationAgent() instanceof GreedyReservationAgent);
+        .assertTrue(newPlan.getReservationAgent() instanceof AlignedPlannerWithGreedy);
     Assert
         .assertTrue(newPlan.getSharingPolicy() instanceof CapacityOverTimePolicy);
   }
@@ -378,14 +379,15 @@ public class ReservationSystemTestUtil {
     return rr;
   }
 
-  public static Map<ReservationInterval, ReservationRequest> generateAllocation(
+  public static Map<ReservationInterval, Resource> generateAllocation(
       long startTime, long step, int[] alloc) {
-    Map<ReservationInterval, ReservationRequest> req =
-        new TreeMap<ReservationInterval, ReservationRequest>();
+    Map<ReservationInterval, Resource> req =
+        new TreeMap<ReservationInterval, Resource>();
     for (int i = 0; i < alloc.length; i++) {
       req.put(new ReservationInterval(startTime + i * step, startTime + (i + 1)
-          * step), ReservationRequest.newInstance(
-          Resource.newInstance(1024, 1), alloc[i]));
+          * step), ReservationSystemUtil.toResource(ReservationRequest
+          .newInstance(
+          Resource.newInstance(1024, 1), alloc[i])));
     }
     return req;
   }

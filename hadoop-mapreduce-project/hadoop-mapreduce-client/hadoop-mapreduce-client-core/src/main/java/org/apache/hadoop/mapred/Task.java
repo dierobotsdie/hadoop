@@ -149,6 +149,8 @@ abstract public class Task implements Writable, Configurable {
   private String user;                            // user running the job
   private TaskAttemptID taskId;                   // unique, includes job id
   private int partition;                          // id within job
+  private byte[] encryptedSpillKey = new byte[] {0};  // Key Used to encrypt
+  // intermediate spills
   TaskStatus taskStatus;                          // current status of the task
   protected JobStatus.State jobRunStateForCleanup;
   protected boolean jobCleanup = false;
@@ -260,6 +262,24 @@ abstract public class Task implements Writable, Configurable {
    */
   public void setJobTokenSecret(SecretKey tokenSecret) {
     this.tokenSecret = tokenSecret;
+  }
+
+  /**
+   * Get Encrypted spill key
+   * @return encrypted spill key
+   */
+  public byte[] getEncryptedSpillKey() {
+    return encryptedSpillKey;
+  }
+
+  /**
+   * Set Encrypted spill key
+   * @param encryptedSpillKey key
+   */
+  public void setEncryptedSpillKey(byte[] encryptedSpillKey) {
+    if (encryptedSpillKey != null) {
+      this.encryptedSpillKey = encryptedSpillKey;
+    }
   }
 
   /**
@@ -492,7 +512,9 @@ abstract public class Task implements Writable, Configurable {
     out.writeBoolean(writeSkipRecs);
     out.writeBoolean(taskCleanup);
     Text.writeString(out, user);
+    out.writeInt(encryptedSpillKey.length);
     extraData.write(out);
+    out.write(encryptedSpillKey);
   }
   
   public void readFields(DataInput in) throws IOException {
@@ -517,7 +539,10 @@ abstract public class Task implements Writable, Configurable {
       setPhase(TaskStatus.Phase.CLEANUP);
     }
     user = StringInterner.weakIntern(Text.readString(in));
+    int len = in.readInt();
+    encryptedSpillKey = new byte[len];
     extraData.readFields(in);
+    in.readFully(encryptedSpillKey);
   }
 
   @Override

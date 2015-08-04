@@ -40,7 +40,6 @@ import org.junit.Assert;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.ha.ClientBaseWithFixes;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.token.Token;
 import org.apache.hadoop.security.token.delegation.DelegationKey;
@@ -76,7 +75,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.security.ClientToAMTokenSec
 import org.apache.hadoop.yarn.server.security.MasterKeyData;
 import org.apache.hadoop.yarn.util.ConverterUtils;
 
-public class RMStateStoreTestBase extends ClientBaseWithFixes{
+public class RMStateStoreTestBase {
 
   public static final Log LOG = LogFactory.getLog(RMStateStoreTestBase.class);
 
@@ -110,6 +109,12 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
       return this;
     }
 
+  }
+
+  public static class StoreStateVerifier {
+    void afterStoreApp(RMStateStore store, ApplicationId appId) {}
+    void afterStoreAppAttempt(RMStateStore store, ApplicationAttemptId
+            appAttId) {}
   }
 
   interface RMStateStoreHelper {
@@ -173,7 +178,7 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
     when(mockAttempt.getRMAppAttemptMetrics())
         .thenReturn(mockRmAppAttemptMetrics);
     when(mockRmAppAttemptMetrics.getAggregateAppResourceUsage())
-        .thenReturn(new AggregateAppResourceUsage(0,0));
+        .thenReturn(new AggregateAppResourceUsage(0, 0));
     dispatcher.attemptId = attemptId;
     store.storeNewApplicationAttempt(mockAttempt);
     waitNotify(dispatcher);
@@ -181,6 +186,12 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
   }
 
   void testRMAppStateStore(RMStateStoreHelper stateStoreHelper)
+          throws Exception {
+    testRMAppStateStore(stateStoreHelper, new StoreStateVerifier());
+  }
+
+  void testRMAppStateStore(RMStateStoreHelper stateStoreHelper,
+                           StoreStateVerifier verifier)
       throws Exception {
     long submitTime = System.currentTimeMillis();
     long startTime = System.currentTimeMillis() + 1234;
@@ -205,6 +216,7 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
         .toApplicationAttemptId("appattempt_1352994193343_0001_000001");
     ApplicationId appId1 = attemptId1.getApplicationId();
     storeApp(store, appId1, submitTime, startTime);
+    verifier.afterStoreApp(store, appId1);
 
     // create application token and client token key for attempt1
     Token<AMRMTokenIdentifier> appAttemptToken1 =
@@ -236,6 +248,7 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
     storeApp(store, appIdRemoved, submitTime, startTime);
     storeAttempt(store, attemptIdRemoved,
         "container_1352994193343_0002_01_000001", null, null, dispatcher);
+    verifier.afterStoreAppAttempt(store, attemptIdRemoved);
 
     RMApp mockRemovedApp = mock(RMApp.class);
     RMAppAttemptMetrics mockRmAppAttemptMetrics = 
@@ -589,6 +602,21 @@ public class RMStateStoreTestBase extends ClientBaseWithFixes{
     for (RMApp app : appList) {
       Assert.assertFalse(stateStoreHelper.appExists(app));
     }
+  }
+
+  public void testRemoveApplication(RMStateStoreHelper stateStoreHelper)
+      throws Exception {
+    RMStateStore store = stateStoreHelper.getRMStateStore();
+    int noOfApps = 2;
+    ArrayList<RMApp> appList =
+        createAndStoreApps(stateStoreHelper, store, noOfApps);
+
+    RMApp rmApp1 = appList.get(0);
+    store.removeApplication(rmApp1.getApplicationId());
+    Assert.assertFalse(stateStoreHelper.appExists(rmApp1));
+
+    RMApp rmApp2 = appList.get(1);
+    Assert.assertTrue(stateStoreHelper.appExists(rmApp2));
   }
 
   protected void modifyAppState() throws Exception {

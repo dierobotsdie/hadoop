@@ -198,7 +198,7 @@ public class FsVolumeImpl implements FsVolumeSpi {
   }
 
   private static class FsVolumeReferenceImpl implements FsVolumeReference {
-    private final FsVolumeImpl volume;
+    private FsVolumeImpl volume;
 
     FsVolumeReferenceImpl(FsVolumeImpl volume) throws ClosedChannelException {
       this.volume = volume;
@@ -211,7 +211,10 @@ public class FsVolumeImpl implements FsVolumeSpi {
      */
     @Override
     public void close() throws IOException {
-      volume.unreference();
+      if (volume != null) {
+        volume.unreference();
+        volume = null;
+      }
     }
 
     @Override
@@ -271,7 +274,18 @@ public class FsVolumeImpl implements FsVolumeSpi {
     return getBlockPoolSlice(bpid).getTmpDir();
   }
 
-  void decDfsUsed(String bpid, long value) {
+  void onBlockFileDeletion(String bpid, long value) {
+    decDfsUsed(bpid, value);
+    if (isTransientStorage()) {
+      dataset.releaseLockedMemory(value, true);
+    }
+  }
+
+  void onMetaFileDeletion(String bpid, long value) {
+    decDfsUsed(bpid, value);
+  }
+
+  private void decDfsUsed(String bpid, long value) {
     synchronized(dataset) {
       BlockPoolSlice bp = bpSlices.get(bpid);
       if (bp != null) {
@@ -305,9 +319,11 @@ public class FsVolumeImpl implements FsVolumeSpi {
   }
   
   /**
-   * Calculate the capacity of the filesystem, after removing any
-   * reserved capacity.
-   * @return the unreserved number of bytes left in this filesystem. May be zero.
+   * Return either the configured capacity of the file system if configured; or
+   * the capacity of the file system excluding space reserved for non-HDFS.
+   * 
+   * @return the unreserved number of bytes left in this filesystem. May be
+   *         zero.
    */
   @VisibleForTesting
   public long getCapacity() {
@@ -329,10 +345,16 @@ public class FsVolumeImpl implements FsVolumeSpi {
     this.configuredCapacity = capacity;
   }
 
+  /*
+   * Calculate the available space of the filesystem, excluding space reserved
+   * for non-HDFS and space reserved for RBW
+   * 
+   * @return the available number of bytes left in this filesystem. May be zero.
+   */
   @Override
   public long getAvailable() throws IOException {
     long remaining = getCapacity() - getDfsUsed() - reservedForRbw.get();
-    long available = usage.getAvailable();
+    long available = usage.getAvailable() - reserved - reservedForRbw.get();
     if (remaining > available) {
       remaining = available;
     }
@@ -414,6 +436,13 @@ public class FsVolumeImpl implements FsVolumeSpi {
           newReservation = 0;
         }
       } while (!reservedForRbw.compareAndSet(oldReservation, newReservation));
+    }
+  }
+
+  @Override
+  public void releaseLockedMemory(long bytesToRelease) {
+    if (isTransientStorage()) {
+      dataset.releaseLockedMemory(bytesToRelease, false);
     }
   }
 
@@ -751,7 +780,12 @@ public class FsVolumeImpl implements FsVolumeSpi {
   File createRbwFile(String bpid, Block b) throws IOException {
     checkReference();
     reserveSpaceForRbw(b.getNumBytes());
-    return getBlockPoolSlice(bpid).createRbwFile(b);
+    try {
+      return getBlockPoolSlice(bpid).createRbwFile(b);
+    } catch (IOException exception) {
+      releaseReservedSpace(b.getNumBytes());
+      throw exception;
+    }
   }
 
   /**

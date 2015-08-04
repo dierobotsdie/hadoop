@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -58,7 +59,9 @@ import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.Conta
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.launcher.ContainersLauncherEventType;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.LocalResourceRequest;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.event.ContainerLocalizationCleanupEvent;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.event.ContainerLocalizationEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.event.ContainerLocalizationRequestEvent;
+import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.event.LocalizationEventType;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.sharedcache.SharedCacheUploadEvent;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.localizer.sharedcache.SharedCacheUploadEventType;
 import org.apache.hadoop.yarn.server.nodemanager.containermanager.loghandler.event.LogHandlerContainerFinishedEvent;
@@ -68,7 +71,7 @@ import org.apache.hadoop.yarn.server.nodemanager.metrics.NodeManagerMetrics;
 import org.apache.hadoop.yarn.server.nodemanager.recovery.NMStateStoreService;
 import org.apache.hadoop.yarn.server.nodemanager.recovery.NMStateStoreService.RecoveredContainerStatus;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
-import org.apache.hadoop.yarn.state.InvalidStateTransitonException;
+import org.apache.hadoop.yarn.state.InvalidStateTransitionException;
 import org.apache.hadoop.yarn.state.MultipleArcTransition;
 import org.apache.hadoop.yarn.state.SingleArcTransition;
 import org.apache.hadoop.yarn.state.StateMachine;
@@ -93,6 +96,7 @@ public class ContainerImpl implements Container {
   private int exitCode = ContainerExitStatus.INVALID;
   private final StringBuilder diagnostics;
   private boolean wasLaunched;
+  private long containerLocalizationStartTime;
   private long containerLaunchStartTime;
   private static Clock clock = new SystemClock();
 
@@ -431,9 +435,10 @@ public class ContainerImpl implements Container {
     this.readLock.lock();
     try {
       return NMContainerStatus.newInstance(this.containerId, getCurrentState(),
-        getResource(), diagnostics.toString(), exitCode,
-        containerTokenIdentifier.getPriority(),
-        containerTokenIdentifier.getCreationTime());
+          getResource(), diagnostics.toString(), exitCode,
+          containerTokenIdentifier.getPriority(),
+          containerTokenIdentifier.getCreationTime(),
+          containerTokenIdentifier.getNodeLabelExpression());
     } finally {
       this.readLock.unlock();
     }
@@ -489,16 +494,21 @@ public class ContainerImpl implements Container {
   // resource usage.
   @SuppressWarnings("unchecked") // dispatcher not typed
   private void sendContainerMonitorStartEvent() {
-      long pmemBytes = getResource().getMemory() * 1024 * 1024L;
-      float pmemRatio = daemonConf.getFloat(
-          YarnConfiguration.NM_VMEM_PMEM_RATIO,
-          YarnConfiguration.DEFAULT_NM_VMEM_PMEM_RATIO);
-      long vmemBytes = (long) (pmemRatio * pmemBytes);
-      int cpuVcores = getResource().getVirtualCores();
+    long launchDuration = clock.getTime() - containerLaunchStartTime;
+    metrics.addContainerLaunchDuration(launchDuration);
 
-      dispatcher.getEventHandler().handle(
-          new ContainerStartMonitoringEvent(containerId,
-              vmemBytes, pmemBytes, cpuVcores));
+    long pmemBytes = getResource().getMemory() * 1024 * 1024L;
+    float pmemRatio = daemonConf.getFloat(
+        YarnConfiguration.NM_VMEM_PMEM_RATIO,
+        YarnConfiguration.DEFAULT_NM_VMEM_PMEM_RATIO);
+    long vmemBytes = (long) (pmemRatio * pmemBytes);
+    int cpuVcores = getResource().getVirtualCores();
+    long localizationDuration = containerLaunchStartTime -
+        containerLocalizationStartTime;
+    dispatcher.getEventHandler().handle(
+        new ContainerStartMonitoringEvent(containerId,
+        vmemBytes, pmemBytes, cpuVcores, launchDuration,
+        localizationDuration));
   }
 
   private void addDiagnostics(String... diags) {
@@ -597,6 +607,7 @@ public class ContainerImpl implements Container {
         }
       }
 
+      container.containerLocalizationStartTime = clock.getTime();
       // Send requests for public, private resources
       Map<String,LocalResource> cntrRsrc = ctxt.getLocalResources();
       if (!cntrRsrc.isEmpty()) {
@@ -638,7 +649,7 @@ public class ContainerImpl implements Container {
           return ContainerState.LOCALIZATION_FAILED;
         }
         Map<LocalResourceVisibility, Collection<LocalResourceRequest>> req =
-            new HashMap<LocalResourceVisibility, 
+            new LinkedHashMap<LocalResourceVisibility,
                         Collection<LocalResourceRequest>>();
         if (!container.publicRsrcs.isEmpty()) {
           req.put(LocalResourceVisibility.PUBLIC, container.publicRsrcs);
@@ -714,7 +725,12 @@ public class ContainerImpl implements Container {
         return ContainerState.LOCALIZING;
       }
 
+      container.dispatcher.getEventHandler().handle(
+          new ContainerLocalizationEvent(LocalizationEventType.
+              CONTAINER_RESOURCES_LOCALIZED, container));
+
       container.sendLaunchEvent();
+      container.metrics.endInitingContainer();
 
       // If this is a recovered container that has already launched, skip
       // uploading resources to the shared cache. We do this to avoid uploading
@@ -732,7 +748,6 @@ public class ContainerImpl implements Container {
                 SharedCacheUploadEventType.UPLOAD));
       }
 
-      container.metrics.endInitingContainer();
       return ContainerState.LOCALIZED;
     }
   }
@@ -748,8 +763,6 @@ public class ContainerImpl implements Container {
       container.sendContainerMonitorStartEvent();
       container.metrics.runningContainer();
       container.wasLaunched  = true;
-      long duration = clock.getTime() - container.containerLaunchStartTime;
-      container.metrics.addContainerLaunchDuration(duration);
 
       if (container.recoveredAsKilled) {
         LOG.info("Killing " + container.containerId
@@ -1092,13 +1105,6 @@ public class ContainerImpl implements Container {
       ContainerDiagnosticsUpdateEvent updateEvent =
           (ContainerDiagnosticsUpdateEvent) event;
       container.addDiagnostics(updateEvent.getDiagnosticsUpdate(), "\n");
-      try {
-        container.stateStore.storeContainerDiagnostics(container.containerId,
-            container.diagnostics);
-      } catch (IOException e) {
-        LOG.warn("Unable to update state store diagnostics for "
-            + container.containerId, e);
-      }
     }
   }
 
@@ -1115,7 +1121,7 @@ public class ContainerImpl implements Container {
       try {
         newState =
             stateMachine.doTransition(event.getType(), event);
-      } catch (InvalidStateTransitonException e) {
+      } catch (InvalidStateTransitionException e) {
         LOG.warn("Can't handle this event at current state: Current: ["
             + oldState + "], eventType: [" + event.getType() + "]", e);
       }

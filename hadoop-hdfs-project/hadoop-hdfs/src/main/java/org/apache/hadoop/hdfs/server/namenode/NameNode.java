@@ -33,6 +33,7 @@ import org.apache.hadoop.ha.HealthCheckFailedException;
 import org.apache.hadoop.ha.ServiceFailedException;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSUtil;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.HAUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.protocol.ClientProtocol;
@@ -73,7 +74,6 @@ import org.apache.hadoop.util.GenericOptionsParser;
 import org.apache.hadoop.util.JvmPauseMonitor;
 import org.apache.hadoop.util.ServicePlugin;
 import org.apache.hadoop.util.StringUtils;
-import org.apache.log4j.LogManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -246,7 +246,7 @@ public class NameNode implements NameNodeStatusMXBean {
     DFS_HA_AUTO_FAILOVER_ENABLED_KEY
   };
   
-  private static final String USAGE = "Usage: java NameNode ["
+  private static final String USAGE = "Usage: hdfs namenode ["
       + StartupOption.BACKUP.getName() + "] | \n\t["
       + StartupOption.CHECKPOINT.getName() + "] | \n\t["
       + StartupOption.FORMAT.getName() + " ["
@@ -262,7 +262,6 @@ public class NameNode implements NameNodeStatusMXBean {
       + StartupOption.ROLLBACK.getName() + "] | \n\t["
       + StartupOption.ROLLINGUPGRADE.getName() + " "
       + RollingUpgradeStartupOption.getAllOptionString() + " ] | \n\t["
-      + StartupOption.FINALIZE.getName() + "] | \n\t["
       + StartupOption.IMPORT.getName() + "] | \n\t["
       + StartupOption.INITIALIZESHAREDEDITS.getName() + "] | \n\t["
       + StartupOption.BOOTSTRAPSTANDBY.getName() + "] | \n\t["
@@ -404,7 +403,7 @@ public class NameNode implements NameNodeStatusMXBean {
       return;
     }
 
-    if (DFSUtil.getNameServiceIds(conf).contains(nnHost)) {
+    if (DFSUtilClient.getNameServiceIds(conf).contains(nnHost)) {
       // host name is logical
       clientNamenodeAddress = nnHost;
     } else if (nnUri.getPort() > 0) {
@@ -486,7 +485,7 @@ public class NameNode implements NameNodeStatusMXBean {
   public static URI getUri(InetSocketAddress namenode) {
     int port = namenode.getPort();
     String portString = port == DEFAULT_PORT ? "" : (":"+port);
-    return URI.create(HdfsConstants.HDFS_URI_SCHEME + "://" 
+    return URI.create(HdfsConstants.HDFS_URI_SCHEME + "://"
         + namenode.getHostName()+portString);
   }
 
@@ -639,7 +638,8 @@ public class NameNode implements NameNodeStatusMXBean {
       startHttpServer(conf);
     }
 
-    this.spanReceiverHost = SpanReceiverHost.getInstance(conf);
+    this.spanReceiverHost =
+      SpanReceiverHost.get(conf, DFSConfigKeys.DFS_SERVER_HTRACE_PREFIX);
 
     loadNamesystem(conf);
 
@@ -777,8 +777,6 @@ public class NameNode implements NameNodeStatusMXBean {
    * metadata</li>
    * <li>{@link StartupOption#ROLLBACK ROLLBACK} - roll the  
    *            cluster back to the previous state</li>
-   * <li>{@link StartupOption#FINALIZE FINALIZE} - finalize 
-   *            previous upgrade</li>
    * <li>{@link StartupOption#IMPORT IMPORT} - import checkpoint</li>
    * </ul>
    * The option is passed via configuration field: 
@@ -1159,7 +1157,8 @@ public class NameNode implements NameNodeStatusMXBean {
             LOG.trace("copying op: " + op);
           }
           if (!segmentOpen) {
-            newSharedEditLog.startLogSegment(op.txid, false);
+            newSharedEditLog.startLogSegment(op.txid, false,
+                fsns.getEffectiveLayoutVersion());
             segmentOpen = true;
           }
 
@@ -1305,8 +1304,6 @@ public class NameNode implements NameNodeStatusMXBean {
         startOpt.setRollingUpgradeStartupOption(args[i]);
       } else if (StartupOption.ROLLBACK.getName().equalsIgnoreCase(cmd)) {
         startOpt = StartupOption.ROLLBACK;
-      } else if (StartupOption.FINALIZE.getName().equalsIgnoreCase(cmd)) {
-        startOpt = StartupOption.FINALIZE;
       } else if (StartupOption.IMPORT.getName().equalsIgnoreCase(cmd)) {
         startOpt = StartupOption.IMPORT;
       } else if (StartupOption.BOOTSTRAPSTANDBY.getName().equalsIgnoreCase(cmd)) {
@@ -1440,13 +1437,6 @@ public class NameNode implements NameNodeStatusMXBean {
         System.out.println(NNStorage.newClusterID());
         terminate(0);
         return null;
-      }
-      case FINALIZE: {
-        System.err.println("Use of the argument '" + StartupOption.FINALIZE +
-            "' is no longer supported. To finalize an upgrade, start the NN " +
-            " and then run `hdfs dfsadmin -finalizeUpgrade'");
-        terminate(1);
-        return null; // avoid javac warning
       }
       case ROLLBACK: {
         boolean aborted = doRollback(conf, true);

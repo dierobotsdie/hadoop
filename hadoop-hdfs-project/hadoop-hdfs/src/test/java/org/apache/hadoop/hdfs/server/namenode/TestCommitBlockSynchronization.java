@@ -22,11 +22,14 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeID;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstruction;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoUnderConstructionContiguous;
 import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStorageInfo;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.junit.Test;
+import org.mockito.internal.util.reflection.Whitebox;
 
 import java.io.IOException;
 
@@ -45,7 +48,9 @@ public class TestCommitBlockSynchronization {
   private FSNamesystem makeNameSystemSpy(Block block, INodeFile file)
       throws IOException {
     Configuration conf = new Configuration();
+    FSEditLog editlog = mock(FSEditLog.class);
     FSImage image = new FSImage(conf);
+    Whitebox.setInternalState(image, "editLog", editlog);
     final DatanodeStorageInfo[] targets = {};
 
     FSNamesystem namesystem = new FSNamesystem(conf, image);
@@ -64,18 +69,21 @@ public class TestCommitBlockSynchronization {
     namesystem.dir.getINodeMap().put(file);
 
     FSNamesystem namesystemSpy = spy(namesystem);
-    BlockInfoContiguousUnderConstruction blockInfo = new BlockInfoContiguousUnderConstruction(
-        block, (short) 1, HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION, targets);
+    BlockInfoUnderConstruction blockInfo =
+        new BlockInfoUnderConstructionContiguous(
+        block, (short) 1, HdfsServerConstants.BlockUCState.UNDER_CONSTRUCTION,
+            targets);
     blockInfo.setBlockCollection(file);
     blockInfo.setGenerationStamp(genStamp);
     blockInfo.initializeBlockRecovery(genStamp);
-    doReturn(true).when(file).removeLastBlock(any(Block.class));
+    doReturn(blockInfo).when(file).removeLastBlock(any(Block.class));
     doReturn(true).when(file).isUnderConstruction();
+    doReturn(new BlockInfoContiguous[1]).when(file).getBlocks();
 
     doReturn(blockInfo).when(namesystemSpy).getStoredBlock(any(Block.class));
     doReturn(blockInfo).when(file).getLastBlock();
     doReturn("").when(namesystemSpy).closeFileCommitBlocks(
-        any(INodeFile.class), any(BlockInfoContiguous.class));
+        any(INodeFile.class), any(BlockInfo.class));
     doReturn(mock(FSEditLog.class)).when(namesystemSpy).getEditLog();
 
     return namesystemSpy;
@@ -103,7 +111,7 @@ public class TestCommitBlockSynchronization {
         lastBlock, genStamp, length, false, false, newTargets, null);
 
     // Simulate 'completing' the block.
-    BlockInfoContiguous completedBlockInfo = new BlockInfoContiguous(block, (short) 1);
+    BlockInfo completedBlockInfo = new BlockInfoContiguous(block, (short) 1);
     completedBlockInfo.setBlockCollection(file);
     completedBlockInfo.setGenerationStamp(genStamp);
     doReturn(completedBlockInfo).when(namesystemSpy)
@@ -152,7 +160,7 @@ public class TestCommitBlockSynchronization {
           true, newTargets, null);
 
     // Simulate removing the last block from the file.
-    doReturn(false).when(file).removeLastBlock(any(Block.class));
+    doReturn(null).when(file).removeLastBlock(any(Block.class));
 
     // Repeat the call to make sure it does not throw
     namesystemSpy.commitBlockSynchronization(
@@ -175,7 +183,7 @@ public class TestCommitBlockSynchronization {
     namesystemSpy.commitBlockSynchronization(
         lastBlock, genStamp, length, true, false, newTargets, null);
 
-    BlockInfoContiguous completedBlockInfo = new BlockInfoContiguous(block, (short) 1);
+    BlockInfo completedBlockInfo = new BlockInfoContiguous(block, (short) 1);
     completedBlockInfo.setBlockCollection(file);
     completedBlockInfo.setGenerationStamp(genStamp);
     doReturn(completedBlockInfo).when(namesystemSpy)

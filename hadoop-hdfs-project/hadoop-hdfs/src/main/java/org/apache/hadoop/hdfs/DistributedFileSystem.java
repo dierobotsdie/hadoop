@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,7 @@ import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.BlockStorageLocation;
+import org.apache.hadoop.fs.BlockStoragePolicySpi;
 import org.apache.hadoop.fs.CacheFlag;
 import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.CreateFlag;
@@ -63,6 +66,7 @@ import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.hdfs.client.HdfsAdmin;
 import org.apache.hadoop.hdfs.client.HdfsDataOutputStream;
+import org.apache.hadoop.hdfs.client.impl.CorruptFileBlockIterator;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveEntry;
 import org.apache.hadoop.hdfs.protocol.CacheDirectiveInfo;
@@ -159,12 +163,12 @@ public class DistributedFileSystem extends FileSystem {
 
   @Override
   public long getDefaultBlockSize() {
-    return dfs.getDefaultBlockSize();
+    return dfs.getConf().getDefaultBlockSize();
   }
 
   @Override
   public short getDefaultReplication() {
-    return dfs.getDefaultReplication();
+    return dfs.getConf().getDefaultReplication();
   }
 
   @Override
@@ -531,6 +535,7 @@ public class DistributedFileSystem extends FileSystem {
    * @param src The source path referring to either a directory or a file.
    * @param policyName The name of the storage policy.
    */
+  @Override
   public void setStoragePolicy(final Path src, final String policyName)
       throws IOException {
     statistics.incrementWriteOps(1);
@@ -545,19 +550,43 @@ public class DistributedFileSystem extends FileSystem {
       @Override
       public Void next(final FileSystem fs, final Path p)
           throws IOException {
-        if (fs instanceof DistributedFileSystem) {
-          ((DistributedFileSystem) fs).setStoragePolicy(p, policyName);
-          return null;
-        } else {
-          throw new UnsupportedOperationException(
-              "Cannot perform setStoragePolicy on a non-DistributedFileSystem: "
-                  + src + " -> " + p);
-        }
+        fs.setStoragePolicy(p, policyName);
+        return null;
       }
     }.resolve(this, absF);
   }
 
-  /** Get all the existing storage policies */
+  @Override
+  public BlockStoragePolicySpi getStoragePolicy(Path path) throws IOException {
+    statistics.incrementReadOps(1);
+    Path absF = fixRelativePart(path);
+
+    return new FileSystemLinkResolver<BlockStoragePolicySpi>() {
+      @Override
+      public BlockStoragePolicySpi doCall(final Path p) throws IOException {
+        return getClient().getStoragePolicy(getPathName(p));
+      }
+
+      @Override
+      public BlockStoragePolicySpi next(final FileSystem fs, final Path p)
+          throws IOException, UnresolvedLinkException {
+        return fs.getStoragePolicy(p);
+      }
+    }.resolve(this, absF);
+  }
+
+  @Override
+  public Collection<BlockStoragePolicy> getAllStoragePolicies()
+      throws IOException {
+    return Arrays.asList(dfs.getStoragePolicies());
+  }
+
+  /**
+   * Deprecated. Prefer {@link FileSystem#getAllStoragePolicies()}
+   * @return
+   * @throws IOException
+   */
+  @Deprecated
   public BlockStoragePolicy[] getStoragePolicies() throws IOException {
     statistics.incrementReadOps(1);
     return dfs.getStoragePolicies();
@@ -1285,12 +1314,16 @@ public class DistributedFileSystem extends FileSystem {
     }.resolve(this, absF);
   }
 
+  @SuppressWarnings("deprecation")
   @Override
   public void createSymlink(final Path target, final Path link,
       final boolean createParent) throws AccessControlException,
       FileAlreadyExistsException, FileNotFoundException,
       ParentNotDirectoryException, UnsupportedFileSystemException, 
       IOException {
+    if (!FileSystem.areSymlinksEnabled()) {
+      throw new UnsupportedOperationException("Symlinks not supported");
+    }
     statistics.incrementWriteOps(1);
     final Path absF = fixRelativePart(link);
     new FileSystemLinkResolver<Void>() {
@@ -1533,7 +1566,7 @@ public class DistributedFileSystem extends FileSystem {
   
   @Override
   protected URI canonicalizeUri(URI uri) {
-    if (HAUtil.isLogicalUri(getConf(), uri)) {
+    if (HAUtilClient.isLogicalUri(getConf(), uri)) {
       // Don't try to DNS-resolve logical URIs, since the 'authority'
       // portion isn't a proper hostname
       return uri;
@@ -2045,16 +2078,59 @@ public class DistributedFileSystem extends FileSystem {
   }
   
   /* HDFS only */
-  public void createEncryptionZone(Path path, String keyName)
+  public void createEncryptionZone(final Path path, final String keyName)
     throws IOException {
-    dfs.createEncryptionZone(getPathName(path), keyName);
+    Path absF = fixRelativePart(path);
+    new FileSystemLinkResolver<Void>() {
+      @Override
+      public Void doCall(final Path p) throws IOException,
+          UnresolvedLinkException {
+        dfs.createEncryptionZone(getPathName(p), keyName);
+        return null;
+      }
+
+      @Override
+      public Void next(final FileSystem fs, final Path p) throws IOException {
+        if (fs instanceof DistributedFileSystem) {
+          DistributedFileSystem myDfs = (DistributedFileSystem) fs;
+          myDfs.createEncryptionZone(p, keyName);
+          return null;
+        } else {
+          throw new UnsupportedOperationException(
+              "Cannot call createEncryptionZone"
+                  + " on a symlink to a non-DistributedFileSystem: " + path
+                  + " -> " + p);
+        }
+      }
+    }.resolve(this, absF);
   }
 
   /* HDFS only */
-  public EncryptionZone getEZForPath(Path path)
+  public EncryptionZone getEZForPath(final Path path)
           throws IOException {
     Preconditions.checkNotNull(path);
-    return dfs.getEZForPath(getPathName(path));
+    Path absF = fixRelativePart(path);
+    return new FileSystemLinkResolver<EncryptionZone>() {
+      @Override
+      public EncryptionZone doCall(final Path p) throws IOException,
+          UnresolvedLinkException {
+        return dfs.getEZForPath(getPathName(p));
+      }
+
+      @Override
+      public EncryptionZone next(final FileSystem fs, final Path p)
+          throws IOException {
+        if (fs instanceof DistributedFileSystem) {
+          DistributedFileSystem myDfs = (DistributedFileSystem) fs;
+          return myDfs.getEZForPath(p);
+        } else {
+          throw new UnsupportedOperationException(
+              "Cannot call getEZForPath"
+                  + " on a symlink to a non-DistributedFileSystem: " + path
+                  + " -> " + p);
+        }
+      }
+    }.resolve(this, absF);
   }
 
   /* HDFS only */
@@ -2190,7 +2266,7 @@ public class DistributedFileSystem extends FileSystem {
   public Token<?>[] addDelegationTokens(
       final String renewer, Credentials credentials) throws IOException {
     Token<?>[] tokens = super.addDelegationTokens(renewer, credentials);
-    if (dfs.getKeyProvider() != null) {
+    if (dfs.isHDFSEncryptionEnabled()) {
       KeyProviderDelegationTokenExtension keyProviderDelegationTokenExtension =
           KeyProviderDelegationTokenExtension.
               createKeyProviderDelegationTokenExtension(dfs.getKeyProvider());

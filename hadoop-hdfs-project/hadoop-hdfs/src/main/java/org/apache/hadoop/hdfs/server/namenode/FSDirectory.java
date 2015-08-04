@@ -21,13 +21,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.protobuf.InvalidProtocolBufferException;
-import org.apache.commons.io.Charsets;
 import org.apache.hadoop.HadoopIllegalArgumentException;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.crypto.CipherSuite;
 import org.apache.hadoop.crypto.CryptoProtocolVersion;
-import org.apache.hadoop.fs.FileAlreadyExistsException;
 import org.apache.hadoop.fs.FileEncryptionInfo;
 import org.apache.hadoop.fs.ParentNotDirectoryException;
 import org.apache.hadoop.fs.Path;
@@ -35,15 +33,11 @@ import org.apache.hadoop.fs.StorageType;
 import org.apache.hadoop.fs.UnresolvedLinkException;
 import org.apache.hadoop.fs.XAttr;
 import org.apache.hadoop.fs.XAttrSetFlag;
-import org.apache.hadoop.fs.permission.AclEntry;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.fs.permission.PermissionStatus;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.XAttrHelper;
-import org.apache.hadoop.hdfs.protocol.AclException;
-import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.EncryptionZone;
 import org.apache.hadoop.hdfs.protocol.FSLimitException.MaxDirectoryItemsExceededException;
@@ -54,14 +48,9 @@ import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.SnapshotAccessControlException;
 import org.apache.hadoop.hdfs.protocol.proto.HdfsProtos;
 import org.apache.hadoop.hdfs.protocolPB.PBHelper;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguous;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfoContiguousUnderConstruction;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
-import org.apache.hadoop.hdfs.server.blockmanagement.DatanodeStorageInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
-import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.BlockUCState;
-import org.apache.hadoop.hdfs.server.namenode.INode.BlocksMapUpdateInfo;
-import org.apache.hadoop.hdfs.server.namenode.snapshot.FileWithSnapshotFeature;
+import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.apache.hadoop.hdfs.util.ByteArray;
 import org.apache.hadoop.hdfs.util.EnumCounters;
 import org.apache.hadoop.security.AccessControlException;
@@ -76,6 +65,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.apache.hadoop.fs.BatchedRemoteIterator.BatchedListEntries;
@@ -87,8 +77,8 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_STORAGE_POLICY_ENABLED_DE
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_STORAGE_POLICY_ENABLED_KEY;
 import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.CRYPTO_XATTR_ENCRYPTION_ZONE;
 import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.CRYPTO_XATTR_FILE_ENCRYPTION_INFO;
+import static org.apache.hadoop.hdfs.server.common.HdfsServerConstants.SECURITY_XATTR_UNREADABLE_BY_SUPERUSER;
 import static org.apache.hadoop.hdfs.server.namenode.snapshot.Snapshot.CURRENT_STATE_ID;
-import static org.apache.hadoop.util.Time.now;
 
 /**
  * Both FSDirectory and FSNamesystem manage the state of the namespace.
@@ -100,6 +90,7 @@ import static org.apache.hadoop.util.Time.now;
 @InterfaceAudience.Private
 public class FSDirectory implements Closeable {
   static final Logger LOG = LoggerFactory.getLogger(FSDirectory.class);
+
   private static INodeDirectory createRoot(FSNamesystem namesystem) {
     final INodeDirectory r = new INodeDirectory(
         INodeId.ROOT_INODE_ID,
@@ -136,6 +127,7 @@ public class FSDirectory implements Closeable {
   private final int maxDirItems;
   private final int lsLimit;  // max list limit
   private final int contentCountLimit; // max content summary counts per run
+  private final long contentSleepMicroSec;
   private final INodeMap inodeMap; // Synchronized by dirLock
   private long yieldCount = 0; // keep track of lock yield count.
 
@@ -264,6 +256,9 @@ public class FSDirectory implements Closeable {
     this.contentCountLimit = conf.getInt(
         DFSConfigKeys.DFS_CONTENT_SUMMARY_LIMIT_KEY,
         DFSConfigKeys.DFS_CONTENT_SUMMARY_LIMIT_DEFAULT);
+    this.contentSleepMicroSec = conf.getLong(
+        DFSConfigKeys.DFS_CONTENT_SUMMARY_SLEEP_MICROSEC_KEY,
+        DFSConfigKeys.DFS_CONTENT_SUMMARY_SLEEP_MICROSEC_DEFAULT);
     
     // filesystem limits
     this.maxComponentLength = conf.getInt(
@@ -303,7 +298,7 @@ public class FSDirectory implements Closeable {
     return namesystem;
   }
 
-  private BlockManager getBlockManager() {
+  BlockManager getBlockManager() {
     return getFSNamesystem().getBlockManager();
   }
 
@@ -332,6 +327,9 @@ public class FSDirectory implements Closeable {
   boolean isAccessTimeSupported() {
     return accessTimePrecision > 0;
   }
+  long getAccessTimePrecision() {
+    return accessTimePrecision;
+  }
   boolean isQuotaByStorageTypeEnabled() {
     return quotaByStorageTypeEnabled;
   }
@@ -343,6 +341,10 @@ public class FSDirectory implements Closeable {
 
   int getContentCountLimit() {
     return contentCountLimit;
+  }
+
+  long getContentSleepMicroSec() {
+    return contentSleepMicroSec;
   }
 
   int getInodeXAttrsLimit() {
@@ -380,166 +382,6 @@ public class FSDirectory implements Closeable {
   /** Disable quota verification */
   void disableQuotaChecks() {
     skipQuotaCheck = true;
-  }
-
-  private static INodeFile newINodeFile(long id, PermissionStatus permissions,
-      long mtime, long atime, short replication, long preferredBlockSize) {
-    return newINodeFile(id, permissions, mtime, atime, replication,
-        preferredBlockSize, (byte)0);
-  }
-
-  private static INodeFile newINodeFile(long id, PermissionStatus permissions,
-      long mtime, long atime, short replication, long preferredBlockSize,
-      byte storagePolicyId) {
-    return new INodeFile(id, null, permissions, mtime, atime,
-        BlockInfoContiguous.EMPTY_ARRAY, replication, preferredBlockSize,
-        storagePolicyId);
-  }
-
-  /**
-   * Add the given filename to the fs.
-   * @return the new INodesInPath instance that contains the new INode
-   */
-  INodesInPath addFile(INodesInPath existing, String localName, PermissionStatus
-      permissions, short replication, long preferredBlockSize,
-      String clientName, String clientMachine)
-    throws FileAlreadyExistsException, QuotaExceededException,
-      UnresolvedLinkException, SnapshotAccessControlException, AclException {
-
-    long modTime = now();
-    INodeFile newNode = newINodeFile(allocateNewInodeId(), permissions, modTime,
-        modTime, replication, preferredBlockSize);
-    newNode.setLocalName(localName.getBytes(Charsets.UTF_8));
-    newNode.toUnderConstruction(clientName, clientMachine);
-
-    INodesInPath newiip;
-    writeLock();
-    try {
-      newiip = addINode(existing, newNode);
-    } finally {
-      writeUnlock();
-    }
-    if (newiip == null) {
-      NameNode.stateChangeLog.info("DIR* addFile: failed to add " +
-          existing.getPath() + "/" + localName);
-      return null;
-    }
-
-    if(NameNode.stateChangeLog.isDebugEnabled()) {
-      NameNode.stateChangeLog.debug("DIR* addFile: " + localName + " is added");
-    }
-    return newiip;
-  }
-
-  INodeFile addFileForEditLog(long id, INodesInPath existing, byte[] localName,
-      PermissionStatus permissions, List<AclEntry> aclEntries,
-      List<XAttr> xAttrs, short replication, long modificationTime, long atime,
-      long preferredBlockSize, boolean underConstruction, String clientName,
-      String clientMachine, byte storagePolicyId) {
-    final INodeFile newNode;
-    assert hasWriteLock();
-    if (underConstruction) {
-      newNode = newINodeFile(id, permissions, modificationTime,
-          modificationTime, replication, preferredBlockSize, storagePolicyId);
-      newNode.toUnderConstruction(clientName, clientMachine);
-    } else {
-      newNode = newINodeFile(id, permissions, modificationTime, atime,
-          replication, preferredBlockSize, storagePolicyId);
-    }
-
-    newNode.setLocalName(localName);
-    try {
-      INodesInPath iip = addINode(existing, newNode);
-      if (iip != null) {
-        if (aclEntries != null) {
-          AclStorage.updateINodeAcl(newNode, aclEntries, CURRENT_STATE_ID);
-        }
-        if (xAttrs != null) {
-          XAttrStorage.updateINodeXAttrs(newNode, xAttrs, CURRENT_STATE_ID);
-        }
-        return newNode;
-      }
-    } catch (IOException e) {
-      if(NameNode.stateChangeLog.isDebugEnabled()) {
-        NameNode.stateChangeLog.debug(
-            "DIR* FSDirectory.unprotectedAddFile: exception when add "
-                + existing.getPath() + " to the file system", e);
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Add a block to the file. Returns a reference to the added block.
-   */
-  BlockInfoContiguous addBlock(String path, INodesInPath inodesInPath,
-      Block block, DatanodeStorageInfo[] targets) throws IOException {
-    writeLock();
-    try {
-      final INodeFile fileINode = inodesInPath.getLastINode().asFile();
-      Preconditions.checkState(fileINode.isUnderConstruction());
-
-      // check quota limits and updated space consumed
-      updateCount(inodesInPath, 0, fileINode.getPreferredBlockSize(),
-          fileINode.getBlockReplication(), true);
-
-      // associate new last block for the file
-      BlockInfoContiguousUnderConstruction blockInfo =
-        new BlockInfoContiguousUnderConstruction(
-            block,
-            fileINode.getFileReplication(),
-            BlockUCState.UNDER_CONSTRUCTION,
-            targets);
-      getBlockManager().addBlockCollection(blockInfo, fileINode);
-      fileINode.addBlock(blockInfo);
-
-      if(NameNode.stateChangeLog.isDebugEnabled()) {
-        NameNode.stateChangeLog.debug("DIR* FSDirectory.addBlock: "
-            + path + " with " + block
-            + " block is added to the in-memory "
-            + "file system");
-      }
-      return blockInfo;
-    } finally {
-      writeUnlock();
-    }
-  }
-
-  /**
-   * Remove a block from the file.
-   * @return Whether the block exists in the corresponding file
-   */
-  boolean removeBlock(String path, INodesInPath iip, INodeFile fileNode,
-      Block block) throws IOException {
-    Preconditions.checkArgument(fileNode.isUnderConstruction());
-    writeLock();
-    try {
-      return unprotectedRemoveBlock(path, iip, fileNode, block);
-    } finally {
-      writeUnlock();
-    }
-  }
-  
-  boolean unprotectedRemoveBlock(String path, INodesInPath iip,
-      INodeFile fileNode, Block block) throws IOException {
-    // modify file-> block and blocksMap
-    // fileNode should be under construction
-    boolean removed = fileNode.removeLastBlock(block);
-    if (!removed) {
-      return false;
-    }
-    getBlockManager().removeBlockFromMap(block);
-
-    if(NameNode.stateChangeLog.isDebugEnabled()) {
-      NameNode.stateChangeLog.debug("DIR* FSDirectory.removeBlock: "
-          +path+" with "+block
-          +" block is removed from the file system");
-    }
-
-    // update space consumed
-    updateCount(iip, 0, -fileNode.getPreferredBlockSize(),
-        fileNode.getBlockReplication(), true);
-    return true;
   }
 
   /**
@@ -630,6 +472,23 @@ public class FSDirectory implements Closeable {
       updateCount(iip, nsDelta, ssDelta, replication, true);
     } finally {
       writeUnlock();
+    }
+  }
+
+  public void updateCount(INodesInPath iip, INode.QuotaDelta quotaDelta,
+      boolean check) throws QuotaExceededException {
+    QuotaCounts counts = quotaDelta.getCountsCopy();
+    updateCount(iip, iip.length() - 1, counts.negation(), check);
+    Map<INode, QuotaCounts> deltaInOtherPaths = quotaDelta.getUpdateMap();
+    for (Map.Entry<INode, QuotaCounts> entry : deltaInOtherPaths.entrySet()) {
+      INodesInPath path = INodesInPath.fromINode(entry.getKey());
+      updateCount(path, path.length() - 1, entry.getValue().negation(), check);
+    }
+    for (Map.Entry<INodeDirectory, QuotaCounts> entry :
+        quotaDelta.getQuotaDirMap().entrySet()) {
+      INodeDirectory quotaDir = entry.getKey();
+      quotaDir.getDirectoryWithQuotaFeature().addSpaceConsumed2Cache(
+          entry.getValue().negation());
     }
   }
 
@@ -734,7 +593,7 @@ public class FSDirectory implements Closeable {
     EnumCounters<StorageType> typeSpaceDeltas =
         new EnumCounters<StorageType>(StorageType.class);
     // Storage type and its quota are only available when storage policy is set
-    if (storagePolicyID != BlockStoragePolicySuite.ID_UNSPECIFIED) {
+    if (storagePolicyID != HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED) {
       BlockStoragePolicy storagePolicy = getBlockManager().getStoragePolicy(storagePolicyID);
 
       if (oldRep != newRep) {
@@ -876,7 +735,7 @@ public class FSDirectory implements Closeable {
 
   /** Verify if the inode name is legal. */
   void verifyINodeName(byte[] childName) throws HadoopIllegalArgumentException {
-    if (Arrays.equals(HdfsConstants.DOT_SNAPSHOT_DIR_BYTES, childName)) {
+    if (Arrays.equals(HdfsServerConstants.DOT_SNAPSHOT_DIR_BYTES, childName)) {
       String s = "\"" + HdfsConstants.DOT_SNAPSHOT_DIR + "\" is a reserved name.";
       if (!namesystem.isImageLoaded()) {
         s += "  Please rename it before upgrade.";
@@ -964,7 +823,7 @@ public class FSDirectory implements Closeable {
     // original location because a quota violation would cause the the item
     // to go "poof".  The fs limits must be bypassed for the same reason.
     if (checkQuota) {
-      final String parentPath = existing.getPath(pos - 1);
+      final String parentPath = existing.getPath();
       verifyMaxComponentLength(inode.getLocalNameBytes(), parentPath);
       verifyMaxDirItems(parent, parentPath);
     }
@@ -1043,108 +902,6 @@ public class FSDirectory implements Closeable {
 
   public INodeMap getINodeMap() {
     return inodeMap;
-  }
-
-  /**
-   * FSEditLogLoader implementation.
-   * Unlike FSNamesystem.truncate, this will not schedule block recovery.
-   */
-  void unprotectedTruncate(String src, String clientName, String clientMachine,
-                           long newLength, long mtime, Block truncateBlock)
-      throws UnresolvedLinkException, QuotaExceededException,
-      SnapshotAccessControlException, IOException {
-    INodesInPath iip = getINodesInPath(src, true);
-    INodeFile file = iip.getLastINode().asFile();
-    BlocksMapUpdateInfo collectedBlocks = new BlocksMapUpdateInfo();
-    boolean onBlockBoundary =
-        unprotectedTruncate(iip, newLength, collectedBlocks, mtime, null);
-
-    if(! onBlockBoundary) {
-      BlockInfoContiguous oldBlock = file.getLastBlock();
-      Block tBlk =
-      getFSNamesystem().prepareFileForTruncate(iip,
-          clientName, clientMachine, file.computeFileSize() - newLength,
-          truncateBlock);
-      assert Block.matchingIdAndGenStamp(tBlk, truncateBlock) &&
-          tBlk.getNumBytes() == truncateBlock.getNumBytes() :
-          "Should be the same block.";
-      if(oldBlock.getBlockId() != tBlk.getBlockId() &&
-         !file.isBlockInLatestSnapshot(oldBlock)) {
-        getBlockManager().removeBlockFromMap(oldBlock);
-      }
-    }
-    assert onBlockBoundary == (truncateBlock == null) :
-      "truncateBlock is null iff on block boundary: " + truncateBlock;
-    getFSNamesystem().removeBlocksAndUpdateSafemodeTotal(collectedBlocks);
-  }
-
-  boolean truncate(INodesInPath iip, long newLength,
-                   BlocksMapUpdateInfo collectedBlocks,
-                   long mtime, QuotaCounts delta)
-      throws IOException {
-    writeLock();
-    try {
-      return unprotectedTruncate(iip, newLength, collectedBlocks, mtime, delta);
-    } finally {
-      writeUnlock();
-    }
-  }
-
-  /**
-   * Truncate has the following properties:
-   * 1.) Any block deletions occur now.
-   * 2.) INode length is truncated now – new clients can only read up to
-   * the truncated length.
-   * 3.) INode will be set to UC and lastBlock set to UNDER_RECOVERY.
-   * 4.) NN will trigger DN truncation recovery and waits for DNs to report.
-   * 5.) File is considered UNDER_RECOVERY until truncation recovery completes.
-   * 6.) Soft and hard Lease expiration require truncation recovery to complete.
-   *
-   * @return true if on the block boundary or false if recovery is need
-   */
-  boolean unprotectedTruncate(INodesInPath iip, long newLength,
-                              BlocksMapUpdateInfo collectedBlocks,
-                              long mtime, QuotaCounts delta) throws IOException {
-    assert hasWriteLock();
-    INodeFile file = iip.getLastINode().asFile();
-    int latestSnapshot = iip.getLatestSnapshotId();
-    file.recordModification(latestSnapshot, true);
-
-    verifyQuotaForTruncate(iip, file, newLength, delta);
-
-    long remainingLength =
-        file.collectBlocksBeyondMax(newLength, collectedBlocks);
-    file.excludeSnapshotBlocks(latestSnapshot, collectedBlocks);
-    file.setModificationTime(mtime);
-    // return whether on a block boundary
-    return (remainingLength - newLength) == 0;
-  }
-
-  private void verifyQuotaForTruncate(INodesInPath iip, INodeFile file,
-      long newLength, QuotaCounts delta) throws QuotaExceededException {
-    if (!getFSNamesystem().isImageLoaded() || shouldSkipQuotaChecks()) {
-      // Do not check quota if edit log is still being processed
-      return;
-    }
-    final long diff = file.computeQuotaDeltaForTruncate(newLength);
-    final short repl = file.getBlockReplication();
-    delta.addStorageSpace(diff * repl);
-    final BlockStoragePolicy policy = getBlockStoragePolicySuite()
-        .getPolicy(file.getStoragePolicyID());
-    List<StorageType> types = policy.chooseStorageTypes(repl);
-    for (StorageType t : types) {
-      if (t.supportTypeQuota()) {
-        delta.addTypeSpace(t, diff);
-      }
-    }
-    if (diff > 0) {
-      readLock();
-      try {
-        verifyQuota(iip, iip.length() - 1, delta, null);
-      } finally {
-        readUnlock();
-      }
-    }
   }
 
   /**
@@ -1699,6 +1456,21 @@ public class FSDirectory implements Closeable {
             parentAccess, access, subAccess, ignoreEmptyDir);
       } finally {
         readUnlock();
+      }
+    }
+  }
+
+  void checkUnreadableBySuperuser(
+      FSPermissionChecker pc, INode inode, int snapshotId)
+      throws IOException {
+    if (pc.isSuperUser()) {
+      for (XAttr xattr : FSDirXAttrOp.getXAttrs(this, inode, snapshotId)) {
+        if (XAttrHelper.getPrefixName(xattr).
+            equals(SECURITY_XATTR_UNREADABLE_BY_SUPERUSER)) {
+          throw new AccessControlException(
+              "Access is denied for " + pc.getUser() + " since the superuser "
+              + "is not allowed to perform this operation.");
+        }
       }
     }
   }

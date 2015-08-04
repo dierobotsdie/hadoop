@@ -33,6 +33,7 @@ import org.apache.hadoop.fs.ChecksumException;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.UnresolvedLinkException;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
@@ -74,7 +75,7 @@ public class TestClientReportBadBlock {
     // disable block scanner
     conf.setInt(DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_KEY, -1); 
     // Set short retry timeouts so this test runs faster
-    conf.setInt(DFSConfigKeys.DFS_CLIENT_RETRY_WINDOW_BASE, 10);
+    conf.setInt(HdfsClientConfigKeys.Retry.WINDOW_BASE_KEY, 10);
     cluster = new MiniDFSCluster.Builder(conf).numDataNodes(numDataNodes)
         .build();
     cluster.waitActive();
@@ -191,7 +192,7 @@ public class TestClientReportBadBlock {
       verifyFirstBlockCorrupted(filePath, false);
       int expectedReplicaCount = repl-corruptBlocReplicas;
       verifyCorruptedBlockCount(filePath, expectedReplicaCount);
-      verifyFsckHealth("Target Replicas is 3 but found 1 replica");
+      verifyFsckHealth("Target Replicas is 3 but found 1 live replica");
       testFsckListCorruptFilesBlocks(filePath, 0);
     }
   }

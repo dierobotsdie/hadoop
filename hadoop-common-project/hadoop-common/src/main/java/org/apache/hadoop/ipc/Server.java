@@ -503,6 +503,17 @@ public abstract class Server {
     callQueue.swapQueue(getQueueClass(prefix, conf), maxQueueSize, prefix, conf);
   }
 
+  /**
+   * Get from config if client backoff is enabled on that port.
+   */
+  static boolean getClientBackoffEnable(
+      String prefix, Configuration conf) {
+    String name = prefix + "." +
+        CommonConfigurationKeys.IPC_BACKOFF_ENABLE;
+    return conf.getBoolean(name,
+        CommonConfigurationKeys.IPC_BACKOFF_ENABLE_DEFAULT);
+  }
+
   /** A call queued for handling. */
   public static class Call implements Schedulable {
     private final int callId;             // the client's call id
@@ -1477,9 +1488,6 @@ public abstract class Server {
     }
     
     private void doSaslReply(Message message) throws IOException {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("Sending sasl message "+message);
-      }
       setupResponse(saslResponse, saslCall,
           RpcStatusProto.SUCCESS, null,
           new RpcResponseWrapper(message), null, null);
@@ -1955,17 +1963,40 @@ public abstract class Server {
         // If the incoming RPC included tracing info, always continue the trace
         TraceInfo parentSpan = new TraceInfo(header.getTraceInfo().getTraceId(),
                                              header.getTraceInfo().getParentId());
-        traceSpan = Trace.startSpan(rpcRequest.toString(), parentSpan).detach();
+        traceSpan = Trace.startSpan(
+            RpcClientUtil.toTraceName(rpcRequest.toString()),
+            parentSpan).detach();
       }
 
       Call call = new Call(header.getCallId(), header.getRetryCount(),
           rpcRequest, this, ProtoUtil.convert(header.getRpcKind()),
           header.getClientId().toByteArray(), traceSpan);
 
-      callQueue.put(call);              // queue the call; maybe blocked here
+      if (callQueue.isClientBackoffEnabled()) {
+        // if RPC queue is full, we will ask the RPC client to back off by
+        // throwing RetriableException. Whether RPC client will honor
+        // RetriableException and retry depends on client ipc retry policy.
+        // For example, FailoverOnNetworkExceptionRetry handles
+        // RetriableException.
+        queueRequestOrAskClientToBackOff(call);
+      } else {
+        callQueue.put(call);              // queue the call; maybe blocked here
+      }
       incRpcCount();  // Increment the rpc count
     }
 
+    private void queueRequestOrAskClientToBackOff(Call call)
+        throws WrappedRpcServerException, InterruptedException {
+      // If rpc queue is full, we will ask the client to back off.
+      boolean isCallQueued = callQueue.offer(call);
+      if (!isCallQueued) {
+        rpcMetrics.incrClientBackoff();
+        RetriableException retriableException =
+            new RetriableException("Server is too busy.");
+        throw new WrappedRpcServerException(
+            RpcErrorCodeProto.ERROR_RPC_SERVER, retriableException);
+      }
+    }
 
     /**
      * Establish RPC connection setup by negotiating SASL if required, then
@@ -2124,6 +2155,7 @@ public abstract class Server {
           CurCall.set(call);
           if (call.traceSpan != null) {
             traceScope = Trace.continueSpan(call.traceSpan);
+            traceScope.getSpan().addTimelineAnnotation("called");
           }
 
           try {
@@ -2293,7 +2325,7 @@ public abstract class Server {
     // Setup appropriate callqueue
     final String prefix = getQueueClassPrefix();
     this.callQueue = new CallQueueManager<Call>(getQueueClass(prefix, conf),
-        maxQueueSize, prefix, conf);
+        getClientBackoffEnable(prefix, conf), maxQueueSize, prefix, conf);
 
     this.secretManager = (SecretManager<TokenIdentifier>) secretManager;
     this.authorize = 

@@ -17,6 +17,7 @@
  */
 package org.apache.hadoop.hdfs.server.namenode;
 
+import org.apache.commons.io.FileUtils;
 import com.google.common.util.concurrent.Uninterruptibles;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -27,7 +28,6 @@ import org.apache.hadoop.hdfs.DFSTestUtil;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.namenode.top.TopConf;
-import org.apache.hadoop.hdfs.server.namenode.top.window.RollingWindowManager;
 import org.apache.hadoop.io.nativeio.NativeIO;
 import org.apache.hadoop.io.nativeio.NativeIO.POSIX.NoMlockCacheManipulator;
 import org.apache.hadoop.util.VersionInfo;
@@ -45,8 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static org.apache.hadoop.hdfs.server.namenode.top.window.RollingWindowManager.Op;
-import static org.apache.hadoop.hdfs.server.namenode.top.window.RollingWindowManager.TopWindow;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -196,6 +194,8 @@ public class TestNameNodeMXBean {
       assertEquals(NativeIO.POSIX.getCacheManipulator().getMemlockLimit() *
           cluster.getDataNodes().size(),
               mbs.getAttribute(mxbeanName, "CacheCapacity"));
+      assertNull("RollingUpgradeInfo should be null when there is no rolling"
+          + " upgrade", mbs.getAttribute(mxbeanName, "RollingUpgradeStatus"));
     } finally {
       if (cluster != null) {
         for (URI dir : cluster.getNameDirs(0)) {
@@ -214,6 +214,8 @@ public class TestNameNodeMXBean {
     conf.setInt(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY, 1);
     conf.setInt(DFSConfigKeys.DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY, 1);
     MiniDFSCluster cluster = null;
+    FileSystem localFileSys = null;
+    Path dir = null;
 
     try {
       cluster = new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
@@ -226,10 +228,9 @@ public class TestNameNodeMXBean {
         "Hadoop:service=NameNode,name=NameNodeInfo");
 
       // Define include file to generate deadNodes metrics
-      FileSystem localFileSys = FileSystem.getLocal(conf);
+      localFileSys = FileSystem.getLocal(conf);
       Path workingDir = localFileSys.getWorkingDirectory();
-      Path dir = new Path(workingDir,
-        "build/test/data/temp/TestNameNodeMXBean");
+      dir = new Path(workingDir,"build/test/data/temp/TestNameNodeMXBean");
       Path includeFile = new Path(dir, "include");
       assertTrue(localFileSys.mkdirs(dir));
       StringBuilder includeHosts = new StringBuilder();
@@ -258,8 +259,10 @@ public class TestNameNodeMXBean {
         assertTrue(deadNode.containsKey("decommissioned"));
         assertTrue(deadNode.containsKey("xferaddr"));
       }
-
     } finally {
+      if ((localFileSys != null) && localFileSys.exists(dir)) {
+        FileUtils.deleteQuietly(new File(dir.toUri().getPath()));
+      }
       if (cluster != null) {
         cluster.shutdown();
       }

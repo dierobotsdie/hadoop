@@ -34,6 +34,7 @@ import org.apache.hadoop.hdfs.server.common.GenerationStamp;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
 import org.junit.Assert;
 import org.junit.Test;
+import org.mockito.Mockito;
 
 /**
  * This class provides tests for BlockInfo class, which is used in BlocksMap.
@@ -46,19 +47,39 @@ public class TestBlockInfo {
   private static final Log LOG = LogFactory
       .getLog("org.apache.hadoop.hdfs.TestBlockInfo");
 
+  @Test
+  public void testIsDeleted() {
+    BlockInfo blockInfo = new BlockInfoContiguous((short) 3);
+    BlockCollection bc = Mockito.mock(BlockCollection.class);
+    blockInfo.setBlockCollection(bc);
+    Assert.assertFalse(blockInfo.isDeleted());
+    blockInfo.setBlockCollection(null);
+    Assert.assertTrue(blockInfo.isDeleted());
+  }
 
   @Test
   public void testAddStorage() throws Exception {
-    BlockInfoContiguous blockInfo = new BlockInfoContiguous((short) 3);
+    BlockInfo blockInfo = new BlockInfoContiguous((short) 3);
 
     final DatanodeStorageInfo storage = DFSTestUtil.createDatanodeStorageInfo("storageID", "127.0.0.1");
 
-    boolean added = blockInfo.addStorage(storage);
+    boolean added = blockInfo.addStorage(storage, blockInfo);
 
     Assert.assertTrue(added);
     Assert.assertEquals(storage, blockInfo.getStorageInfo(0));
   }
 
+  @Test
+  public void testCopyConstructor() {
+    BlockInfo old = new BlockInfoContiguous((short) 3);
+    try {
+      BlockInfo copy = new BlockInfoContiguous((BlockInfoContiguous)old);
+      assertEquals(old.getBlockCollection(), copy.getBlockCollection());
+      assertEquals(old.getCapacity(), copy.getCapacity());
+    } catch (Exception e) {
+      Assert.fail("Copy constructor throws exception: " + e);
+    }
+  }
 
   @Test
   public void testReplaceStorage() throws Exception {
@@ -67,7 +88,7 @@ public class TestBlockInfo {
     final DatanodeStorageInfo storage1 = DFSTestUtil.createDatanodeStorageInfo("storageID1", "127.0.0.1");
     final DatanodeStorageInfo storage2 = new DatanodeStorageInfo(storage1.getDatanodeDescriptor(), new DatanodeStorage("storageID2"));
     final int NUM_BLOCKS = 10;
-    BlockInfoContiguous[] blockInfos = new BlockInfoContiguous[NUM_BLOCKS];
+    BlockInfo[] blockInfos = new BlockInfo[NUM_BLOCKS];
 
     // Create a few dummy blocks and add them to the first storage.
     for (int i = 0; i < NUM_BLOCKS; ++i) {
@@ -90,7 +111,7 @@ public class TestBlockInfo {
 
     DatanodeStorageInfo dd = DFSTestUtil.createDatanodeStorageInfo("s1", "1.1.1.1");
     ArrayList<Block> blockList = new ArrayList<Block>(MAX_BLOCKS);
-    ArrayList<BlockInfoContiguous> blockInfoList = new ArrayList<BlockInfoContiguous>();
+    ArrayList<BlockInfo> blockInfoList = new ArrayList<BlockInfo>();
     int headIndex;
     int curIndex;
 
@@ -108,7 +129,7 @@ public class TestBlockInfo {
     // list length should be equal to the number of blocks we inserted
     LOG.info("Checking list length...");
     assertEquals("Length should be MAX_BLOCK", MAX_BLOCKS, dd.numBlocks());
-    Iterator<BlockInfoContiguous> it = dd.getBlockIterator();
+    Iterator<BlockInfo> it = dd.getBlockIterator();
     int len = 0;
     while (it.hasNext()) {
       it.next();
@@ -130,7 +151,7 @@ public class TestBlockInfo {
     // move head of the list to the head - this should not change the list
     LOG.info("Moving head to the head...");
 
-    BlockInfoContiguous temp = dd.getBlockListHeadForTesting();
+    BlockInfo temp = dd.getBlockListHeadForTesting();
     curIndex = 0;
     headIndex = 0;
     dd.moveBlockToHead(temp, curIndex, headIndex);

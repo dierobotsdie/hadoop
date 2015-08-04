@@ -28,6 +28,7 @@ import static org.junit.Assume.assumeTrue;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
@@ -45,9 +46,11 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.commons.logging.impl.Log4JLogger;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.StorageType;
+import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.DFSClient;
 import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSTestUtil;
@@ -61,8 +64,10 @@ import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
 import org.apache.hadoop.hdfs.server.balancer.Balancer.Cli;
 import org.apache.hadoop.hdfs.server.balancer.Balancer.Parameters;
 import org.apache.hadoop.hdfs.server.balancer.Balancer.Result;
+import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.SimulatedFSDataset;
+import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.LazyPersistTestCase;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.test.GenericTestUtils;
 import org.apache.hadoop.util.Time;
@@ -117,13 +122,15 @@ public class TestBalancer {
     conf.setLong(DFSConfigKeys.DFS_BALANCER_MOVEDWINWIDTH_KEY, 2000L);
   }
 
-  static void initConfWithRamDisk(Configuration conf) {
+  static void initConfWithRamDisk(Configuration conf,
+                                  long ramDiskCapacity) {
     conf.setLong(DFS_BLOCK_SIZE_KEY, DEFAULT_RAM_DISK_BLOCK_SIZE);
+    conf.setLong(DFS_DATANODE_MAX_LOCKED_MEMORY_KEY, ramDiskCapacity);
     conf.setInt(DFS_NAMENODE_LAZY_PERSIST_FILE_SCRUB_INTERVAL_SEC, 3);
     conf.setLong(DFS_HEARTBEAT_INTERVAL_KEY, 1);
     conf.setInt(DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY, 500);
     conf.setInt(DFS_DATANODE_LAZY_WRITER_INTERVAL_SEC, 1);
-    conf.setInt(DFS_DATANODE_RAM_DISK_LOW_WATERMARK_BYTES, DEFAULT_RAM_DISK_BLOCK_SIZE);
+    LazyPersistTestCase.initCacheManipulator();
   }
 
   /* create a file with a length of <code>fileLen</code> */
@@ -620,7 +627,8 @@ public class TestBalancer {
             Balancer.Parameters.DEFAULT.policy,
             Balancer.Parameters.DEFAULT.threshold,
             Balancer.Parameters.DEFAULT.maxIdleIteration,
-            nodes.getNodesToBeExcluded(), nodes.getNodesToBeIncluded());
+            nodes.getNodesToBeExcluded(), nodes.getNodesToBeIncluded(),
+            false);
       }
 
       int expectedExcludedNodes = 0;
@@ -859,7 +867,8 @@ public class TestBalancer {
           Balancer.Parameters.DEFAULT.policy,
           Balancer.Parameters.DEFAULT.threshold,
           Balancer.Parameters.DEFAULT.maxIdleIteration,
-          datanodes, Balancer.Parameters.DEFAULT.nodesToBeIncluded);
+          datanodes, Balancer.Parameters.DEFAULT.nodesToBeIncluded,
+          false);
       final int r = Balancer.run(namenodes, p, conf);
       assertEquals(ExitStatus.SUCCESS.getExitCode(), r);
     } finally {
@@ -1242,7 +1251,6 @@ public class TestBalancer {
     final int SEED = 0xFADED;
     final short REPL_FACT = 1;
     Configuration conf = new Configuration();
-    initConfWithRamDisk(conf);
 
     final int defaultRamDiskCapacity = 10;
     final long ramDiskStorageLimit =
@@ -1251,6 +1259,8 @@ public class TestBalancer {
     final long diskStorageLimit =
       ((long) defaultRamDiskCapacity * DEFAULT_RAM_DISK_BLOCK_SIZE) +
       (DEFAULT_RAM_DISK_BLOCK_SIZE - 1);
+
+    initConfWithRamDisk(conf, ramDiskStorageLimit);
 
     cluster = new MiniDFSCluster
       .Builder(conf)
@@ -1288,12 +1298,7 @@ public class TestBalancer {
       Collection<URI> namenodes = DFSUtil.getNsServiceRpcUris(conf);
 
       // Run Balancer
-      Balancer.Parameters p = new Balancer.Parameters(
-        Parameters.DEFAULT.policy,
-        Parameters.DEFAULT.threshold,
-        Balancer.Parameters.DEFAULT.maxIdleIteration,
-        Parameters.DEFAULT.nodesToBeExcluded,
-        Parameters.DEFAULT.nodesToBeIncluded);
+      final Balancer.Parameters p = Parameters.DEFAULT;
       final int r = Balancer.run(namenodes, p, conf);
 
       // Validate no RAM_DISK block should be moved
@@ -1302,6 +1307,212 @@ public class TestBalancer {
       // Verify files are still on RAM_DISK
       DFSTestUtil.verifyFileReplicasOnStorageType(fs, client, path1, RAM_DISK);
       DFSTestUtil.verifyFileReplicasOnStorageType(fs, client, path2, RAM_DISK);
+    } finally {
+      cluster.shutdown();
+    }
+  }
+
+  /**
+   * Check that the balancer exits when there is an unfinalized upgrade.
+   */
+  @Test(timeout=300000)
+  public void testBalancerDuringUpgrade() throws Exception {
+    final int SEED = 0xFADED;
+    Configuration conf = new HdfsConfiguration();
+    conf.setLong(DFS_HEARTBEAT_INTERVAL_KEY, 1);
+    conf.setInt(DFS_NAMENODE_HEARTBEAT_RECHECK_INTERVAL_KEY, 500);
+    conf.setLong(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY, 1);
+
+    final int BLOCK_SIZE = 1024*1024;
+    cluster = new MiniDFSCluster
+        .Builder(conf)
+        .numDataNodes(1)
+        .storageCapacities(new long[] { BLOCK_SIZE * 10 })
+        .storageTypes(new StorageType[] { DEFAULT })
+        .storagesPerDatanode(1)
+        .build();
+
+    try {
+      cluster.waitActive();
+      // Create a file on the single DN
+      final String METHOD_NAME = GenericTestUtils.getMethodName();
+      final Path path1 = new Path("/" + METHOD_NAME + ".01.dat");
+
+      DistributedFileSystem fs = cluster.getFileSystem();
+      DFSTestUtil.createFile(fs, path1, BLOCK_SIZE, BLOCK_SIZE * 2, BLOCK_SIZE,
+          (short) 1, SEED);
+
+      // Add another DN with the same capacity, cluster is now unbalanced
+      cluster.startDataNodes(conf, 1, true, null, null);
+      cluster.triggerHeartbeats();
+      Collection<URI> namenodes = DFSUtil.getNsServiceRpcUris(conf);
+
+      // Run balancer
+      final Balancer.Parameters p = Parameters.DEFAULT;
+
+      fs.setSafeMode(HdfsConstants.SafeModeAction.SAFEMODE_ENTER);
+      fs.rollingUpgrade(HdfsConstants.RollingUpgradeAction.PREPARE);
+      fs.setSafeMode(HdfsConstants.SafeModeAction.SAFEMODE_LEAVE);
+
+      // Rolling upgrade should abort the balancer
+      assertEquals(ExitStatus.UNFINALIZED_UPGRADE.getExitCode(),
+          Balancer.run(namenodes, p, conf));
+
+      // Should work with the -runDuringUpgrade flag.
+      final Balancer.Parameters runDuringUpgrade =
+          new Balancer.Parameters(Parameters.DEFAULT.policy,
+              Parameters.DEFAULT.threshold,
+              Parameters.DEFAULT.maxIdleIteration,
+              Parameters.DEFAULT.nodesToBeExcluded,
+              Parameters.DEFAULT.nodesToBeIncluded,
+              true);
+      assertEquals(ExitStatus.SUCCESS.getExitCode(),
+          Balancer.run(namenodes, runDuringUpgrade, conf));
+
+      // Finalize the rolling upgrade
+      fs.rollingUpgrade(HdfsConstants.RollingUpgradeAction.FINALIZE);
+
+      // Should also work after finalization.
+      assertEquals(ExitStatus.SUCCESS.getExitCode(),
+          Balancer.run(namenodes, p, conf));
+
+    } finally {
+      cluster.shutdown();
+    }
+  }
+
+  /**
+   * Test special case. Two replicas belong to same block should not in same node.
+   * We have 2 nodes.
+   * We have a block in (DN0,SSD) and (DN1,DISK).
+   * Replica in (DN0,SSD) should not be moved to (DN1,SSD).
+   * Otherwise DN1 has 2 replicas.
+   */
+  @Test(timeout=100000)
+  public void testTwoReplicaShouldNotInSameDN() throws Exception {
+    final Configuration conf = new HdfsConfiguration();
+
+    int blockSize = 5 * 1024 * 1024 ;
+    conf.setLong(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, blockSize);
+    conf.setLong(DFSConfigKeys.DFS_HEARTBEAT_INTERVAL_KEY, 1L);
+    conf.setLong(DFSConfigKeys.DFS_NAMENODE_REPLICATION_INTERVAL_KEY, 1L);
+
+    int numOfDatanodes =2;
+    final MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf)
+        .numDataNodes(2)
+        .racks(new String[]{"/default/rack0", "/default/rack0"})
+        .storagesPerDatanode(2)
+        .storageTypes(new StorageType[][]{
+            {StorageType.SSD, StorageType.DISK},
+            {StorageType.SSD, StorageType.DISK}})
+        .storageCapacities(new long[][]{
+            {100 * blockSize, 20 * blockSize},
+            {20 * blockSize, 100 * blockSize}})
+        .build();
+
+    try {
+      cluster.waitActive();
+
+      //set "/bar" directory with ONE_SSD storage policy.
+      DistributedFileSystem fs = cluster.getFileSystem();
+      Path barDir = new Path("/bar");
+      fs.mkdir(barDir,new FsPermission((short)777));
+      fs.setStoragePolicy(barDir, HdfsConstants.ONESSD_STORAGE_POLICY_NAME);
+
+      // Insert 30 blocks. So (DN0,SSD) and (DN1,DISK) are about half full,
+      // and (DN0,SSD) and (DN1,DISK) are about 15% full.
+      long fileLen  = 30 * blockSize;
+      // fooFile has ONE_SSD policy. So
+      // (DN0,SSD) and (DN1,DISK) have 2 replicas belong to same block.
+      // (DN0,DISK) and (DN1,SSD) have 2 replicas belong to same block.
+      Path fooFile = new Path(barDir, "foo");
+      createFile(cluster, fooFile, fileLen, (short) numOfDatanodes, 0);
+      // update space info
+      cluster.triggerHeartbeats();
+
+      Balancer.Parameters p = Balancer.Parameters.DEFAULT;
+      Collection<URI> namenodes = DFSUtil.getNsServiceRpcUris(conf);
+      final int r = Balancer.run(namenodes, p, conf);
+
+      // Replica in (DN0,SSD) was not moved to (DN1,SSD), because (DN1,DISK)
+      // already has one. Otherwise DN1 will have 2 replicas.
+      // For same reason, no replicas were moved.
+      assertEquals(ExitStatus.NO_MOVE_PROGRESS.getExitCode(), r);
+
+    } finally {
+      cluster.shutdown();
+    }
+  }
+
+  /**
+   * Test running many balancer simultaneously.
+   *
+   * Case-1: First balancer is running. Now, running second one should get
+   * "Another balancer is running. Exiting.." IOException and fail immediately
+   *
+   * Case-2: When running second balancer 'balancer.id' file exists but the
+   * lease doesn't exists. Now, the second balancer should run successfully.
+   */
+  @Test(timeout = 100000)
+  public void testManyBalancerSimultaneously() throws Exception {
+    final Configuration conf = new HdfsConfiguration();
+    initConf(conf);
+    // add an empty node with half of the capacities(4 * CAPACITY) & the same
+    // rack
+    long[] capacities = new long[] { 4 * CAPACITY };
+    String[] racks = new String[] { RACK0 };
+    long newCapacity = 2 * CAPACITY;
+    String newRack = RACK0;
+    LOG.info("capacities = " + long2String(capacities));
+    LOG.info("racks      = " + Arrays.asList(racks));
+    LOG.info("newCapacity= " + newCapacity);
+    LOG.info("newRack    = " + newRack);
+    LOG.info("useTool    = " + false);
+    assertEquals(capacities.length, racks.length);
+    int numOfDatanodes = capacities.length;
+    cluster = new MiniDFSCluster.Builder(conf).numDataNodes(capacities.length)
+        .racks(racks).simulatedCapacities(capacities).build();
+    try {
+      cluster.waitActive();
+      client = NameNodeProxies.createProxy(conf,
+          cluster.getFileSystem(0).getUri(), ClientProtocol.class).getProxy();
+
+      long totalCapacity = sum(capacities);
+
+      // fill up the cluster to be 30% full
+      final long totalUsedSpace = totalCapacity * 3 / 10;
+      createFile(cluster, filePath, totalUsedSpace / numOfDatanodes,
+          (short) numOfDatanodes, 0);
+      // start up an empty node with the same capacity and on the same rack
+      cluster.startDataNodes(conf, 1, true, null, new String[] { newRack },
+          new long[] { newCapacity });
+
+      // Case1: Simulate first balancer by creating 'balancer.id' file. It
+      // will keep this file until the balancing operation is completed.
+      FileSystem fs = cluster.getFileSystem(0);
+      final FSDataOutputStream out = fs
+          .create(Balancer.BALANCER_ID_PATH, false);
+      out.writeBytes(InetAddress.getLocalHost().getHostName());
+      out.hflush();
+      assertTrue("'balancer.id' file doesn't exist!",
+          fs.exists(Balancer.BALANCER_ID_PATH));
+
+      // start second balancer
+      final String[] args = { "-policy", "datanode" };
+      final Tool tool = new Cli();
+      tool.setConf(conf);
+      int exitCode = tool.run(args); // start balancing
+      assertEquals("Exit status code mismatches",
+          ExitStatus.IO_EXCEPTION.getExitCode(), exitCode);
+
+      // Case2: Release lease so that another balancer would be able to
+      // perform balancing.
+      out.close();
+      assertTrue("'balancer.id' file doesn't exist!",
+          fs.exists(Balancer.BALANCER_ID_PATH));
+      exitCode = tool.run(args); // start balancing
+      assertEquals("Exit status code mismatches",
+          ExitStatus.SUCCESS.getExitCode(), exitCode);
     } finally {
       cluster.shutdown();
     }

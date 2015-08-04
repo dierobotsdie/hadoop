@@ -174,7 +174,7 @@ Usage: `hadoop fs -count [-q] [-h] [-v] <paths> `
 
 Count the number of directories, files and bytes under the paths that match the specified file pattern. The output columns with -count are: DIR\_COUNT, FILE\_COUNT, CONTENT\_SIZE, PATHNAME
 
-The output columns with -count -q are: QUOTA, REMAINING\_QUATA, SPACE\_QUOTA, REMAINING\_SPACE\_QUOTA, DIR\_COUNT, FILE\_COUNT, CONTENT\_SIZE, PATHNAME
+The output columns with -count -q are: QUOTA, REMAINING\_QUOTA, SPACE\_QUOTA, REMAINING\_SPACE\_QUOTA, DIR\_COUNT, FILE\_COUNT, CONTENT\_SIZE, PATHNAME
 
 The -h option shows sizes in human readable format.
 
@@ -185,7 +185,7 @@ Example:
 * `hadoop fs -count hdfs://nn1.example.com/file1 hdfs://nn2.example.com/file2`
 * `hadoop fs -count -q hdfs://nn1.example.com/file1`
 * `hadoop fs -count -q -h hdfs://nn1.example.com/file1`
-* `hdfs dfs -count -q -h -v hdfs://nn1.example.com/file1`
+* `hadoop fs -count -q -h -v hdfs://nn1.example.com/file1`
 
 Exit Code:
 
@@ -286,9 +286,9 @@ The following primary expressions are recognised:
 
     Evaluates as true if the basename of the file matches the pattern using standard file system globbing. If -iname is used then the match is case insensitive.
 
-*   -print<br />-print0Always
+*   -print<br />-print0
 
-    evaluates to true. Causes the current pathname to be written to standard output. If the -print0 expression is used then an ASCII NULL character is appended.
+    Always evaluates to true. Causes the current pathname to be written to standard output. If the -print0 expression is used then an ASCII NULL character is appended.
 
 The following operators are recognised:
 
@@ -382,10 +382,11 @@ Return usage output.
 ls
 ----
 
-Usage: `hadoop fs -ls [-d] [-h] [-R] [-t] [-S] [-r] [-u] <args> `
+Usage: `hadoop fs -ls [-C] [-d] [-h] [-R] [-t] [-S] [-r] [-u] <args> `
 
 Options:
 
+* -C: Display the paths of files and directories only.
 * -d: Directories are listed as plain files.
 * -h: Format file sizes in a human-readable fashion (eg 64.0m instead of 67108864).
 * -R: Recursively list subdirectories encountered.

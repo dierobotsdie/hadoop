@@ -52,7 +52,6 @@ import org.apache.hadoop.hdfs.DistributedFileSystem;
 import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
-import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.datatransfer.DataTransferProtoUtil;
 import org.apache.hadoop.hdfs.protocol.datatransfer.IOStreamPair;
 import org.apache.hadoop.hdfs.protocol.datatransfer.Sender;
@@ -118,6 +117,8 @@ public class Dispatcher {
 
   /** The maximum number of concurrent blocks moves at a datanode */
   private final int maxConcurrentMovesPerNode;
+
+  private final int ioFileBufferSize;
 
   private static class GlobalBlockMap {
     private final Map<Block, DBlock> map = new HashMap<Block, DBlock>();
@@ -309,13 +310,14 @@ public class Dispatcher {
         unbufOut = saslStreams.out;
         unbufIn = saslStreams.in;
         out = new DataOutputStream(new BufferedOutputStream(unbufOut,
-            HdfsConstants.IO_FILE_BUFFER_SIZE));
+            ioFileBufferSize));
         in = new DataInputStream(new BufferedInputStream(unbufIn,
-            HdfsConstants.IO_FILE_BUFFER_SIZE));
+            ioFileBufferSize));
 
         sendRequest(out, eb, accessToken);
         receiveResponse(in);
         nnc.getBytesMoved().addAndGet(block.getNumBytes());
+        target.getDDatanode().setHasSuccess();
         LOG.info("Successfully moved " + this);
       } catch (IOException e) {
         LOG.warn("Failed to move " + this + ": " + e.getMessage());
@@ -469,6 +471,25 @@ public class Dispatcher {
       public String toString() {
         return getDisplayName();
       }
+
+      @Override
+      public int hashCode() {
+        return getStorageType().hashCode() ^ getDatanodeInfo().hashCode();
+      }
+
+      @Override
+      public boolean equals(Object obj) {
+        if (this == obj) {
+          return true;
+        } else if (obj == null || !(obj instanceof StorageGroup)) {
+          return false;
+        } else {
+          final StorageGroup that = (StorageGroup) obj;
+          return this.getStorageType() == that.getStorageType()
+              && this.getDatanodeInfo().equals(that.getDatanodeInfo());
+        }
+      }
+
     }
 
     final DatanodeInfo datanode;
@@ -480,6 +501,7 @@ public class Dispatcher {
     /** blocks being moved but not confirmed yet */
     private final List<PendingMove> pendings;
     private volatile boolean hasFailure = false;
+    private volatile boolean hasSuccess = false;
     private final int maxConcurrentMoves;
 
     @Override
@@ -552,6 +574,10 @@ public class Dispatcher {
 
     void setHasFailure() {
       this.hasFailure = true;
+    }
+
+    void setHasSuccess() {
+      this.hasSuccess = true;
     }
   }
 
@@ -753,6 +779,16 @@ public class Dispatcher {
         }
       }
     }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      return super.equals(obj);
+    }
   }
 
   public Dispatcher(NameNodeConnector nnc, Set<String> includedNodes,
@@ -773,6 +809,7 @@ public class Dispatcher {
     this.saslClient = new SaslDataTransferClient(conf,
         DataTransferSaslUtil.getSaslPropertiesResolver(conf),
         TrustedChannelResolver.getInstance(conf), nnc.fallbackToSimpleAuth);
+    this.ioFileBufferSize = DFSUtil.getIoFileBufferSize(conf);
   }
 
   public DistributedFileSystem getDistributedFileSystem() {
@@ -934,6 +971,18 @@ public class Dispatcher {
   }
 
   /**
+   * @return true if some moves are success.
+   */
+  public static boolean checkForSuccess(
+      Iterable<? extends StorageGroup> targets) {
+    boolean hasSuccess = false;
+    for (StorageGroup t : targets) {
+      hasSuccess |= t.getDDatanode().hasSuccess;
+    }
+    return hasSuccess;
+  }
+
+  /**
    * Decide if the block is a good candidate to be moved from source to target.
    * A block is a good candidate if
    * 1. the block is not in the process of being moved/has not been moved;
@@ -942,6 +991,9 @@ public class Dispatcher {
    */
   private boolean isGoodBlockCandidate(StorageGroup source, StorageGroup target,
       StorageType targetStorageType, DBlock block) {
+    if (source.equals(target)) {
+      return false;
+    }
     if (target.storageType != targetStorageType) {
       return false;
     }
@@ -949,9 +1001,19 @@ public class Dispatcher {
     if (movedBlocks.contains(block.getBlock())) {
       return false;
     }
-    if (block.isLocatedOn(target)) {
-      return false;
+    final DatanodeInfo targetDatanode = target.getDatanodeInfo();
+    if (source.getDatanodeInfo().equals(targetDatanode)) {
+      // the block is moved inside same DN
+      return true;
     }
+
+    // check if block has replica in target node
+    for (StorageGroup blockLocation : block.getLocations()) {
+      if (blockLocation.getDatanodeInfo().equals(targetDatanode)) {
+        return false;
+      }
+    }
+
     if (cluster.isNodeGroupAware()
         && isOnSameNodeGroupWithReplicas(source, target, block)) {
       return false;

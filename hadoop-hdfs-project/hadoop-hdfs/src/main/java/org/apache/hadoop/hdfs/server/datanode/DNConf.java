@@ -30,6 +30,8 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CACHEREPORT_INTERVAL_MSEC
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_SOCKET_TIMEOUT_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_WRITE_PACKET_SIZE_KEY;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_NON_LOCAL_LAZY_PERSIST;
+import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_NON_LOCAL_LAZY_PERSIST_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_DEFAULT;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_MAX_LOCKED_MEMORY_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_SOCKET_WRITE_TIMEOUT_KEY;
@@ -82,7 +84,7 @@ public class DNConf {
   final long heartBeatInterval;
   final long blockReportInterval;
   final long blockReportSplitThreshold;
-  final long initialBlockReportDelay;
+  final long initialBlockReportDelayMs;
   final long cacheReportInterval;
   final long dfsclientSlowIoWarningThresholdMs;
   final long datanodeSlowIoWarningThresholdMs;
@@ -98,6 +100,9 @@ public class DNConf {
   final long restartReplicaExpiry;
 
   final long maxLockedMemory;
+
+  // Allow LAZY_PERSIST writes from non-local clients?
+  private final boolean allowNonLocalLazyPersist;
 
   public DNConf(Configuration conf) {
     this.conf = conf;
@@ -155,10 +160,11 @@ public class DNConf {
         DFS_BLOCKREPORT_INITIAL_DELAY_DEFAULT) * 1000L;
     if (initBRDelay >= blockReportInterval) {
       initBRDelay = 0;
-      DataNode.LOG.info("dfs.blockreport.initialDelay is greater than " +
-          "dfs.blockreport.intervalMsec." + " Setting initial delay to 0 msec:");
+      DataNode.LOG.info("dfs.blockreport.initialDelay is "
+          + "greater than or equal to" + "dfs.blockreport.intervalMsec."
+          + " Setting initial delay to 0 msec:");
     }
-    initialBlockReportDelay = initBRDelay;
+    initialBlockReportDelayMs = initBRDelay;
     
     heartBeatInterval = conf.getLong(DFS_HEARTBEAT_INTERVAL_KEY,
         DFS_HEARTBEAT_INTERVAL_DEFAULT) * 1000L;
@@ -191,6 +197,10 @@ public class DNConf {
     this.restartReplicaExpiry = conf.getLong(
         DFS_DATANODE_RESTART_REPLICA_EXPIRY_KEY,
         DFS_DATANODE_RESTART_REPLICA_EXPIRY_DEFAULT) * 1000L;
+
+    this.allowNonLocalLazyPersist = conf.getBoolean(
+        DFS_DATANODE_NON_LOCAL_LAZY_PERSIST,
+        DFS_DATANODE_NON_LOCAL_LAZY_PERSIST_DEFAULT);
   }
 
   // We get minimumNameNodeVersion via a method so it can be mocked out in tests.
@@ -263,5 +273,9 @@ public class DNConf {
    */
   public boolean getIgnoreSecurePortsForTesting() {
     return ignoreSecurePortsForTesting;
+  }
+
+  public boolean getAllowNonLocalLazyPersist() {
+    return allowNonLocalLazyPersist;
   }
 }

@@ -35,6 +35,7 @@ import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
 import org.apache.hadoop.yarn.api.records.ApplicationResourceUsageReport;
 import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.NodeState;
+import org.apache.hadoop.yarn.api.records.QueueInfo;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceBlacklistRequest;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
@@ -90,12 +91,20 @@ public class RMServerUtils {
    * Utility method to validate a list resource requests, by insuring that the
    * requested memory/vcore is non-negative and not greater than max
    */
-  public static void validateResourceRequests(List<ResourceRequest> ask,
-      Resource maximumResource, String queueName, YarnScheduler scheduler)
+  public static void normalizeAndValidateRequests(List<ResourceRequest> ask,
+      Resource maximumResource, String queueName, YarnScheduler scheduler,
+      RMContext rmContext)
       throws InvalidResourceRequestException {
+    // Get queue from scheduler
+    QueueInfo queueInfo = null;
+    try {
+      queueInfo = scheduler.getQueueInfo(queueName, false, false);
+    } catch (IOException e) {
+    }
+
     for (ResourceRequest resReq : ask) {
-      SchedulerUtils.validateResourceRequest(resReq, maximumResource,
-          queueName, scheduler);
+      SchedulerUtils.normalizeAndvalidateRequest(resReq, maximumResource,
+          queueName, scheduler, rmContext, queueInfo);
     }
   }
 

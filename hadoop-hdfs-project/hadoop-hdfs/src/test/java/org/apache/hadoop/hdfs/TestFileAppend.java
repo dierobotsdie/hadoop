@@ -68,7 +68,7 @@ public class TestFileAppend{
   //
   // verify that the data written to the full blocks are sane
   // 
-  private void checkFile(FileSystem fileSys, Path name, int repl)
+  private void checkFile(DistributedFileSystem fileSys, Path name, int repl)
     throws IOException {
     boolean done = false;
 
@@ -96,9 +96,9 @@ public class TestFileAppend{
     byte[] expected = 
         new byte[AppendTestUtil.NUM_BLOCKS * AppendTestUtil.BLOCK_SIZE];
     if (simulatedStorage) {
-      for (int i= 0; i < expected.length; i++) {  
-        expected[i] = SimulatedFSDataset.DEFAULT_DATABYTE;
-      }
+      LocatedBlocks lbs = fileSys.getClient().getLocatedBlocks(name.toString(),
+          0, AppendTestUtil.FILE_SIZE);
+      DFSTestUtil.fillExpectedBuf(lbs, expected);
     } else {
       System.arraycopy(fileContents, 0, expected, 0, expected.length);
     }
@@ -193,7 +193,7 @@ public class TestFileAppend{
     }
     fileContents = AppendTestUtil.initBuffer(AppendTestUtil.FILE_SIZE);
     MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf).build();
-    FileSystem fs = cluster.getFileSystem();
+    DistributedFileSystem fs = cluster.getFileSystem();
     try {
 
       // create a new file.
@@ -249,7 +249,7 @@ public class TestFileAppend{
     }
     fileContents = AppendTestUtil.initBuffer(AppendTestUtil.FILE_SIZE);
     MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf).build();
-    FileSystem fs = cluster.getFileSystem();
+    DistributedFileSystem fs = cluster.getFileSystem();
     try {
 
       // create a new file.
@@ -599,6 +599,28 @@ public class TestFileAppend{
       }
     } finally {
       IOUtils.closeStream(fs);
+      cluster.shutdown();
+    }
+  }
+  
+  @Test(timeout = 10000)
+  public void testAppendCorruptedBlock() throws Exception {
+    Configuration conf = new HdfsConfiguration();
+    conf.setInt(DFSConfigKeys.DFS_BLOCK_SIZE_KEY, 1024);
+    conf.setInt(DFSConfigKeys.DFS_REPLICATION_KEY, 1);
+    conf.setInt("dfs.min.replication", 1);
+    MiniDFSCluster cluster = new MiniDFSCluster.Builder(conf).numDataNodes(1)
+        .build();
+    try {
+      DistributedFileSystem fs = cluster.getFileSystem();
+      Path fileName = new Path("/appendCorruptBlock");
+      DFSTestUtil.createFile(fs, fileName, 512, (short) 1, 0);
+      DFSTestUtil.waitReplication(fs, fileName, (short) 1);
+      Assert.assertTrue("File not created", fs.exists(fileName));
+      ExtendedBlock block = DFSTestUtil.getFirstBlock(fs, fileName);
+      cluster.corruptBlockOnDataNodes(block);
+      DFSTestUtil.appendFile(fs, fileName, "appendCorruptBlock");
+    } finally {
       cluster.shutdown();
     }
   }

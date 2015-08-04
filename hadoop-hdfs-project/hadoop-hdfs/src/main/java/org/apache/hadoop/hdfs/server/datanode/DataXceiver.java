@@ -46,8 +46,10 @@ import java.nio.channels.ClosedChannelException;
 import java.security.MessageDigest;
 import java.util.Arrays;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.logging.Log;
 import org.apache.hadoop.fs.StorageType;
+import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.ExtendedBlockId;
 import org.apache.hadoop.hdfs.net.Peer;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -70,7 +72,6 @@ import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmR
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.Status;
 import org.apache.hadoop.hdfs.protocolPB.PBHelper;
 import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
-import org.apache.hadoop.hdfs.security.token.block.BlockTokenSecretManager;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.apache.hadoop.hdfs.server.datanode.DataNode.ShortCircuitFdsUnsupportedException;
 import org.apache.hadoop.hdfs.server.datanode.DataNode.ShortCircuitFdsVersionException;
@@ -110,7 +111,9 @@ class DataXceiver extends Receiver implements Runnable {
   private final InputStream socketIn;
   private OutputStream socketOut;
   private BlockReceiver blockReceiver = null;
-  
+  private final int ioFileBufferSize;
+  private final int smallBufferSize;
+
   /**
    * Client Name used in previous operation. Not available on first request
    * on the socket.
@@ -132,6 +135,8 @@ class DataXceiver extends Receiver implements Runnable {
     this.datanode = datanode;
     this.dataXceiverServer = dataXceiverServer;
     this.connectToDnViaHostname = datanode.getDnConf().connectToDnViaHostname;
+    this.ioFileBufferSize = DFSUtil.getIoFileBufferSize(datanode.getConf());
+    this.smallBufferSize = DFSUtil.getSmallBufferSize(datanode.getConf());
     remoteAddress = peer.getRemoteAddressString();
     final int colonIdx = remoteAddress.indexOf(':');
     remoteAddressWithoutPort =
@@ -192,7 +197,7 @@ class DataXceiver extends Receiver implements Runnable {
           socketIn, datanode.getXferAddress().getPort(),
           datanode.getDatanodeId());
         input = new BufferedInputStream(saslStreams.in,
-          HdfsConstants.SMALL_BUFFER_SIZE);
+            smallBufferSize);
         socketOut = saslStreams.out;
       } catch (InvalidMagicNumberException imne) {
         if (imne.isHandshake4Encryption()) {
@@ -421,6 +426,7 @@ class DataXceiver extends Receiver implements Runnable {
 
   private void sendShmSuccessResponse(DomainSocket sock, NewShmInfo shmInfo)
       throws IOException {
+    DataNodeFaultInjector.get().sendShortCircuitShmResponse();
     ShortCircuitShmResponseProto.newBuilder().setStatus(SUCCESS).
         setId(PBHelper.convert(shmInfo.shmId)).build().
         writeDelimitedTo(socketOut);
@@ -479,10 +485,19 @@ class DataXceiver extends Receiver implements Runnable {
         }
       }
       if ((!success) && (peer == null)) {
-        // If we failed to pass the shared memory segment to the client,
-        // close the UNIX domain socket now.  This will trigger the 
-        // DomainSocketWatcher callback, cleaning up the segment.
-        IOUtils.cleanup(null, sock);
+        // The socket is now managed by the DomainSocketWatcher.  However,
+        // we failed to pass it to the client.  We call shutdown() on the
+        // UNIX domain socket now.  This will trigger the DomainSocketWatcher
+        // callback.  The callback will close the domain socket.
+        // We don't want to close the socket here, since that might lead to
+        // bad behavior inside the poll() call.  See HADOOP-11802 for details.
+        try {
+          LOG.warn("Failed to send success response back to the client.  " +
+              "Shutting down socket for " + shmInfo.shmId + ".");
+          sock.shutdown();
+        } catch (IOException e) {
+          LOG.warn("Failed to shut down socket in error handler", e);
+        }
       }
       IOUtils.cleanup(null, shmInfo);
     }
@@ -505,9 +520,9 @@ class DataXceiver extends Receiver implements Runnable {
     long read = 0;
     OutputStream baseStream = getOutputStream();
     DataOutputStream out = new DataOutputStream(new BufferedOutputStream(
-        baseStream, HdfsConstants.SMALL_BUFFER_SIZE));
+        baseStream, smallBufferSize));
     checkAccess(out, true, block, blockToken,
-        Op.READ_BLOCK, BlockTokenSecretManager.AccessMode.READ);
+        Op.READ_BLOCK, BlockTokenIdentifier.AccessMode.READ);
   
     // send the block
     BlockSender blockSender = null;
@@ -605,7 +620,7 @@ class DataXceiver extends Receiver implements Runnable {
       final long latestGenerationStamp,
       DataChecksum requestedChecksum,
       CachingStrategy cachingStrategy,
-      final boolean allowLazyPersist,
+      boolean allowLazyPersist,
       final boolean pinning,
       final boolean[] targetPinnings) throws IOException {
     previousOpClientName = clientname;
@@ -614,6 +629,8 @@ class DataXceiver extends Receiver implements Runnable {
     final boolean isClient = !isDatanode;
     final boolean isTransfer = stage == BlockConstructionStage.TRANSFER_RBW
         || stage == BlockConstructionStage.TRANSFER_FINALIZED;
+    allowLazyPersist = allowLazyPersist &&
+        (dnConf.getAllowNonLocalLazyPersist() || peer.isLocal());
     long size = 0;
     // check single target for transfer-RBW/Finalized 
     if (isTransfer && targets.length > 0) {
@@ -646,12 +663,9 @@ class DataXceiver extends Receiver implements Runnable {
         + localAddress);
 
     // reply to upstream datanode or client 
-    final DataOutputStream replyOut = new DataOutputStream(
-        new BufferedOutputStream(
-            getOutputStream(),
-            HdfsConstants.SMALL_BUFFER_SIZE));
+    final DataOutputStream replyOut = getBufferedOutputStream();
     checkAccess(replyOut, isClient, block, blockToken,
-        Op.WRITE_BLOCK, BlockTokenSecretManager.AccessMode.WRITE);
+        Op.WRITE_BLOCK, BlockTokenIdentifier.AccessMode.WRITE);
 
     DataOutputStream mirrorOut = null;  // stream to next target
     DataInputStream mirrorIn = null;    // reply from next target
@@ -664,7 +678,7 @@ class DataXceiver extends Receiver implements Runnable {
       if (isDatanode || 
           stage != BlockConstructionStage.PIPELINE_CLOSE_RECOVERY) {
         // open a block receiver
-        blockReceiver = new BlockReceiver(block, storageType, in,
+        blockReceiver = getBlockReceiver(block, storageType, in,
             peer.getRemoteAddressString(),
             peer.getLocalAddressString(),
             stage, latestGenerationStamp, minBytesRcvd, maxBytesRcvd,
@@ -708,22 +722,21 @@ class DataXceiver extends Receiver implements Runnable {
           unbufMirrorOut = saslStreams.out;
           unbufMirrorIn = saslStreams.in;
           mirrorOut = new DataOutputStream(new BufferedOutputStream(unbufMirrorOut,
-              HdfsConstants.SMALL_BUFFER_SIZE));
+              smallBufferSize));
           mirrorIn = new DataInputStream(unbufMirrorIn);
 
-          // Do not propagate allowLazyPersist to downstream DataNodes.
           if (targetPinnings != null && targetPinnings.length > 0) {
             new Sender(mirrorOut).writeBlock(originalBlock, targetStorageTypes[0],
               blockToken, clientname, targets, targetStorageTypes, srcDataNode,
               stage, pipelineSize, minBytesRcvd, maxBytesRcvd,
               latestGenerationStamp, requestedChecksum, cachingStrategy,
-              false, targetPinnings[0], targetPinnings);
+                allowLazyPersist, targetPinnings[0], targetPinnings);
           } else {
             new Sender(mirrorOut).writeBlock(originalBlock, targetStorageTypes[0],
               blockToken, clientname, targets, targetStorageTypes, srcDataNode,
               stage, pipelineSize, minBytesRcvd, maxBytesRcvd,
               latestGenerationStamp, requestedChecksum, cachingStrategy,
-              false, false, targetPinnings);
+                allowLazyPersist, false, targetPinnings);
           }
 
           mirrorOut.flush();
@@ -838,8 +851,8 @@ class DataXceiver extends Receiver implements Runnable {
     }
 
     //update metrics
-    datanode.metrics.addWriteBlockOp(elapsed());
-    datanode.metrics.incrWritesFromClient(peer.isLocal(), size);
+    datanode.getMetrics().addWriteBlockOp(elapsed());
+    datanode.getMetrics().incrWritesFromClient(peer.isLocal(), size);
   }
 
   @Override
@@ -849,7 +862,7 @@ class DataXceiver extends Receiver implements Runnable {
       final DatanodeInfo[] targets,
       final StorageType[] targetStorageTypes) throws IOException {
     checkAccess(socketOut, true, blk, blockToken,
-        Op.TRANSFER_BLOCK, BlockTokenSecretManager.AccessMode.COPY);
+        Op.TRANSFER_BLOCK, BlockTokenIdentifier.AccessMode.COPY);
     previousOpClientName = clientName;
     updateCurrentThreadName(Op.TRANSFER_BLOCK + " " + blk);
 
@@ -911,7 +924,7 @@ class DataXceiver extends Receiver implements Runnable {
     final DataOutputStream out = new DataOutputStream(
         getOutputStream());
     checkAccess(out, true, block, blockToken,
-        Op.BLOCK_CHECKSUM, BlockTokenSecretManager.AccessMode.READ);
+        Op.BLOCK_CHECKSUM, BlockTokenIdentifier.AccessMode.READ);
     // client side now can specify a range of the block for checksum
     long requestLength = block.getNumBytes();
     Preconditions.checkArgument(requestLength >= 0);
@@ -923,7 +936,7 @@ class DataXceiver extends Receiver implements Runnable {
         .getMetaDataInputStream(block);
     
     final DataInputStream checksumIn = new DataInputStream(
-        new BufferedInputStream(metadataIn, HdfsConstants.IO_FILE_BUFFER_SIZE));
+        new BufferedInputStream(metadataIn, ioFileBufferSize));
     updateCurrentThreadName("Getting checksum for block " + block);
     try {
       //read metadata file
@@ -976,7 +989,7 @@ class DataXceiver extends Receiver implements Runnable {
     if (datanode.isBlockTokenEnabled) {
       try {
         datanode.blockPoolTokenSecretManager.checkAccess(blockToken, null, block,
-            BlockTokenSecretManager.AccessMode.COPY);
+            BlockTokenIdentifier.AccessMode.COPY);
       } catch (InvalidToken e) {
         LOG.warn("Invalid access token in request from " + remoteAddress
             + " for OP_COPY_BLOCK for block " + block + " : "
@@ -1015,7 +1028,7 @@ class DataXceiver extends Receiver implements Runnable {
       // set up response stream
       OutputStream baseStream = getOutputStream();
       reply = new DataOutputStream(new BufferedOutputStream(
-          baseStream, HdfsConstants.SMALL_BUFFER_SIZE));
+          baseStream, smallBufferSize));
 
       // send status first
       writeSuccessWithChecksumInfo(blockSender, reply);
@@ -1064,7 +1077,7 @@ class DataXceiver extends Receiver implements Runnable {
     if (datanode.isBlockTokenEnabled) {
       try {
         datanode.blockPoolTokenSecretManager.checkAccess(blockToken, null, block,
-            BlockTokenSecretManager.AccessMode.REPLACE);
+            BlockTokenIdentifier.AccessMode.REPLACE);
       } catch (InvalidToken e) {
         LOG.warn("Invalid access token in request from " + remoteAddress
             + " for OP_REPLACE_BLOCK for block " + block + " : "
@@ -1122,10 +1135,10 @@ class DataXceiver extends Receiver implements Runnable {
         unbufProxyOut = saslStreams.out;
         unbufProxyIn = saslStreams.in;
         
-        proxyOut = new DataOutputStream(new BufferedOutputStream(unbufProxyOut, 
-            HdfsConstants.SMALL_BUFFER_SIZE));
+        proxyOut = new DataOutputStream(new BufferedOutputStream(unbufProxyOut,
+            smallBufferSize));
         proxyReply = new DataInputStream(new BufferedInputStream(unbufProxyIn,
-            HdfsConstants.IO_FILE_BUFFER_SIZE));
+            ioFileBufferSize));
         
         /* send request to the proxy */
         IoeDuringCopyBlockOperation = true;
@@ -1146,7 +1159,7 @@ class DataXceiver extends Receiver implements Runnable {
         DataChecksum remoteChecksum = DataTransferProtoUtil.fromProto(
             checksumInfo.getChecksum());
         // open a block receiver and check if the block does not exist
-        blockReceiver = new BlockReceiver(block, storageType,
+        blockReceiver = getBlockReceiver(block, storageType,
             proxyReply, proxySock.getRemoteSocketAddress().toString(),
             proxySock.getLocalSocketAddress().toString(),
             null, 0, 0, 0, "", null, datanode, remoteChecksum,
@@ -1201,6 +1214,39 @@ class DataXceiver extends Receiver implements Runnable {
     datanode.metrics.addReplaceBlockOp(elapsed());
   }
 
+
+  /**
+   * Separated for testing.
+   */
+  @VisibleForTesting
+  BlockReceiver getBlockReceiver(
+      final ExtendedBlock block, final StorageType storageType,
+      final DataInputStream in,
+      final String inAddr, final String myAddr,
+      final BlockConstructionStage stage,
+      final long newGs, final long minBytesRcvd, final long maxBytesRcvd,
+      final String clientname, final DatanodeInfo srcDataNode,
+      final DataNode dn, DataChecksum requestedChecksum,
+      CachingStrategy cachingStrategy,
+      final boolean allowLazyPersist,
+      final boolean pinning) throws IOException {
+    return new BlockReceiver(block, storageType, in,
+        inAddr, myAddr, stage, newGs, minBytesRcvd, maxBytesRcvd,
+        clientname, srcDataNode, dn, requestedChecksum,
+        cachingStrategy, allowLazyPersist, pinning);
+  }
+
+  /**
+   * Separated for testing.
+   * @return
+   */
+  @VisibleForTesting
+  DataOutputStream getBufferedOutputStream() {
+    return new DataOutputStream(
+        new BufferedOutputStream(getOutputStream(), smallBufferSize));
+  }
+
+
   private long elapsed() {
     return monotonicNow() - opStartTime;
   }
@@ -1251,7 +1297,7 @@ class DataXceiver extends Receiver implements Runnable {
       final ExtendedBlock blk,
       final Token<BlockTokenIdentifier> t,
       final Op op,
-      final BlockTokenSecretManager.AccessMode mode) throws IOException {
+      final BlockTokenIdentifier.AccessMode mode) throws IOException {
     if (datanode.isBlockTokenEnabled) {
       if (LOG.isDebugEnabled()) {
         LOG.debug("Checking block access token for block '" + blk.getBlockId()
@@ -1264,7 +1310,7 @@ class DataXceiver extends Receiver implements Runnable {
           if (reply) {
             BlockOpResponseProto.Builder resp = BlockOpResponseProto.newBuilder()
               .setStatus(ERROR_ACCESS_TOKEN);
-            if (mode == BlockTokenSecretManager.AccessMode.WRITE) {
+            if (mode == BlockTokenIdentifier.AccessMode.WRITE) {
               DatanodeRegistration dnR = 
                 datanode.getDNRegistrationForBP(blk.getBlockPoolId());
               // NB: Unconditionally using the xfer addr w/o hostname

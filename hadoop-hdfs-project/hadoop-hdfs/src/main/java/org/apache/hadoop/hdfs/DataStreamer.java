@@ -38,9 +38,14 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.fs.StorageType;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys.BlockWrite;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.DSQuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
@@ -49,6 +54,7 @@ import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
 import org.apache.hadoop.hdfs.protocol.NSQuotaExceededException;
+import org.apache.hadoop.hdfs.protocol.QuotaByStorageTypeExceededException;
 import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
 import org.apache.hadoop.hdfs.protocol.datatransfer.BlockConstructionStage;
@@ -68,6 +74,7 @@ import org.apache.hadoop.hdfs.server.datanode.CachingStrategy;
 import org.apache.hadoop.hdfs.server.namenode.NotReplicatedYetException;
 import org.apache.hadoop.hdfs.util.ByteArrayManager;
 import org.apache.hadoop.io.IOUtils;
+import org.apache.hadoop.io.MultipleIOException;
 import org.apache.hadoop.ipc.RemoteException;
 import org.apache.hadoop.net.NetUtils;
 import org.apache.hadoop.security.AccessControlException;
@@ -82,6 +89,7 @@ import org.apache.htrace.Span;
 import org.apache.htrace.Trace;
 import org.apache.htrace.TraceInfo;
 import org.apache.htrace.TraceScope;
+
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -109,7 +117,10 @@ import com.google.common.cache.RemovalNotification;
  *
  *********************************************************************/
 
+@InterfaceAudience.Private
 class DataStreamer extends Daemon {
+  static final Log LOG = LogFactory.getLog(DataStreamer.class);
+
   /**
    * Create a socket for a write pipeline
    *
@@ -120,19 +131,19 @@ class DataStreamer extends Daemon {
    */
   static Socket createSocketForPipeline(final DatanodeInfo first,
       final int length, final DFSClient client) throws IOException {
-    final String dnAddr = first.getXferAddr(
-        client.getConf().connectToDnViaHostname);
-    if (DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("Connecting to datanode " + dnAddr);
+    final DfsClientConf conf = client.getConf();
+    final String dnAddr = first.getXferAddr(conf.isConnectToDnViaHostname());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Connecting to datanode " + dnAddr);
     }
     final InetSocketAddress isa = NetUtils.createSocketAddr(dnAddr);
     final Socket sock = client.socketFactory.createSocket();
     final int timeout = client.getDatanodeReadTimeout(length);
-    NetUtils.connect(sock, isa, client.getRandomLocalInterfaceAddr(), client.getConf().socketTimeout);
+    NetUtils.connect(sock, isa, client.getRandomLocalInterfaceAddr(), conf.getSocketTimeout());
     sock.setSoTimeout(timeout);
     sock.setSendBufferSize(HdfsConstants.DEFAULT_DATA_SOCKET_SIZE);
-    if(DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("Send buf size " + sock.getSendBufferSize());
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("Send buf size " + sock.getSendBufferSize());
     }
     return sock;
   }
@@ -161,6 +172,167 @@ class DataStreamer extends Daemon {
     }
     packets.clear();
   }
+  
+  static class LastExceptionInStreamer {
+    private IOException thrown;
+
+    synchronized void set(Throwable t) {
+      assert t != null;
+      this.thrown = t instanceof IOException ?
+          (IOException) t : new IOException(t);
+    }
+
+    synchronized void clear() {
+      thrown = null;
+    }
+
+    /** Check if there already is an exception. */
+    synchronized void check(boolean resetToNull) throws IOException {
+      if (thrown != null) {
+        if (LOG.isTraceEnabled()) {
+          // wrap and print the exception to know when the check is called
+          LOG.trace("Got Exception while checking", new Throwable(thrown));
+        }
+        final IOException e = thrown;
+        if (resetToNull) {
+          thrown = null;
+        }
+        throw e;
+      }
+    }
+
+    synchronized void throwException4Close() throws IOException {
+      check(false);
+      throw new ClosedChannelException();
+    }
+  }
+
+  static class ErrorState {
+    private boolean error = false;
+    private int badNodeIndex = -1;
+    private int restartingNodeIndex = -1;
+    private long restartingNodeDeadline = 0;
+    private final long datanodeRestartTimeout;
+
+    ErrorState(long datanodeRestartTimeout) {
+      this.datanodeRestartTimeout = datanodeRestartTimeout;
+    }
+
+    synchronized void reset() {
+      error = false;
+      badNodeIndex = -1;
+      restartingNodeIndex = -1;
+      restartingNodeDeadline = 0;
+    }
+
+    synchronized boolean hasError() {
+      return error;
+    }
+
+    synchronized boolean hasDatanodeError() {
+      return error && isNodeMarked();
+    }
+
+    synchronized void setError(boolean err) {
+      this.error = err;
+    }
+
+    synchronized void setBadNodeIndex(int index) {
+      this.badNodeIndex = index;
+    }
+
+    synchronized int getBadNodeIndex() {
+      return badNodeIndex;
+    }
+
+    synchronized int getRestartingNodeIndex() {
+      return restartingNodeIndex;
+    }
+
+    synchronized void initRestartingNode(int i, String message) {
+      restartingNodeIndex = i;
+      restartingNodeDeadline =  Time.monotonicNow() + datanodeRestartTimeout;
+      // If the data streamer has already set the primary node
+      // bad, clear it. It is likely that the write failed due to
+      // the DN shutdown. Even if it was a real failure, the pipeline
+      // recovery will take care of it.
+      badNodeIndex = -1;
+      LOG.info(message);
+    }
+
+    synchronized boolean isRestartingNode() {
+      return restartingNodeIndex >= 0;
+    }
+
+    synchronized boolean isNodeMarked() {
+      return badNodeIndex >= 0 || isRestartingNode();
+    }
+
+    /**
+     * This method is used when no explicit error report was received, but
+     * something failed. The first node is a suspect or unsure about the cause
+     * so that it is marked as failed.
+     */
+    synchronized void markFirstNodeIfNotMarked() {
+      // There should be no existing error and no ongoing restart.
+      if (!isNodeMarked()) {
+        badNodeIndex = 0;
+      }
+    }
+
+    synchronized void adjustState4RestartingNode() {
+      // Just took care of a node error while waiting for a node restart
+      if (restartingNodeIndex >= 0) {
+        // If the error came from a node further away than the restarting
+        // node, the restart must have been complete.
+        if (badNodeIndex > restartingNodeIndex) {
+          restartingNodeIndex = -1;
+        } else if (badNodeIndex < restartingNodeIndex) {
+          // the node index has shifted.
+          restartingNodeIndex--;
+        } else {
+          throw new IllegalStateException("badNodeIndex = " + badNodeIndex
+              + " = restartingNodeIndex = " + restartingNodeIndex);
+        }
+      }
+
+      if (!isRestartingNode()) {
+        error = false;
+      }
+      badNodeIndex = -1;
+    }
+
+    synchronized void checkRestartingNodeDeadline(DatanodeInfo[] nodes) {
+      if (restartingNodeIndex >= 0) {
+        if (!error) {
+          throw new IllegalStateException("error=false while checking" +
+              " restarting node deadline");
+        }
+
+        // check badNodeIndex
+        if (badNodeIndex == restartingNodeIndex) {
+          // ignore, if came from the restarting node
+          badNodeIndex = -1;
+        }
+        // not within the deadline
+        if (Time.monotonicNow() >= restartingNodeDeadline) {
+          // expired. declare the restarting node dead
+          restartingNodeDeadline = 0;
+          final int i = restartingNodeIndex;
+          restartingNodeIndex = -1;
+          LOG.warn("Datanode " + i + " did not restart within "
+              + datanodeRestartTimeout + "ms: " + nodes[i]);
+          // Mark the restarting node as failed. If there is any other failed
+          // node during the last pipeline construction attempt, it will not be
+          // overwritten/dropped. In this case, the restarting node will get
+          // excluded in the following attempt, if it still does not come up.
+          if (badNodeIndex == -1) {
+            badNodeIndex = i;
+          }
+        }
+      }
+    }
+  }
 
   private volatile boolean streamerClosed = false;
   private ExtendedBlock block; // its length is number of bytes acked
@@ -171,12 +343,8 @@ class DataStreamer extends Daemon {
   private volatile DatanodeInfo[] nodes = null; // list of targets for current block
   private volatile StorageType[] storageTypes = null;
   private volatile String[] storageIDs = null;
-  private String[] favoredNodes;
-  volatile boolean hasError = false;
-  volatile int errorIndex = -1;
-  // Restarting node index
-  AtomicInteger restartingNodeIndex = new AtomicInteger(-1);
-  private long restartDeadline = 0; // Deadline of DN restart
+  private final ErrorState errorState;
+
   private BlockConstructionStage stage;  // block construction stage
   private long bytesSent = 0; // number of bytes that've been sent
   private final boolean isLazyPersistFile;
@@ -189,13 +357,13 @@ class DataStreamer extends Daemon {
   /** Has the current block been hflushed? */
   private boolean isHflushed = false;
   /** Append on an existing block? */
-  private boolean isAppend;
+  private final boolean isAppend;
 
   private long currentSeqno = 0;
   private long lastQueuedSeqno = -1;
   private long lastAckedSeqno = -1;
   private long bytesCurBlock = 0; // bytes written in current block
-  private final AtomicReference<IOException> lastException = new AtomicReference<>();
+  private final LastExceptionInStreamer lastException = new LastExceptionInStreamer();
   private Socket s;
 
   private final DFSClient dfsClient;
@@ -220,18 +388,20 @@ class DataStreamer extends Daemon {
   private long artificialSlowdown = 0;
   // List of congested data nodes. The stream will back off if the DataNodes
   // are congested
-  private final ArrayList<DatanodeInfo> congestedNodes = new ArrayList<>();
+  private final List<DatanodeInfo> congestedNodes = new ArrayList<>();
   private static final int CONGESTION_BACKOFF_MEAN_TIME_IN_MS = 5000;
   private static final int CONGESTION_BACK_OFF_MAX_TIME_IN_MS =
       CONGESTION_BACKOFF_MEAN_TIME_IN_MS * 10;
   private int lastCongestionBackoffTime;
 
   private final LoadingCache<DatanodeInfo, DatanodeInfo> excludedNodes;
+  private final String[] favoredNodes;
 
   private DataStreamer(HdfsFileStatus stat, DFSClient dfsClient, String src,
                        Progressable progress, DataChecksum checksum,
                        AtomicReference<CachingStrategy> cachingStrategy,
-                       ByteArrayManager byteArrayManage){
+                       ByteArrayManager byteArrayManage,
+                       boolean isAppend, String[] favoredNodes) {
     this.dfsClient = dfsClient;
     this.src = src;
     this.progress = progress;
@@ -239,10 +409,14 @@ class DataStreamer extends Daemon {
     this.checksum4WriteBlock = checksum;
     this.cachingStrategy = cachingStrategy;
     this.byteArrayManager = byteArrayManage;
-    isLazyPersistFile = isLazyPersist(stat);
-    this.dfsclientSlowLogThresholdMs =
-        dfsClient.getConf().dfsclientSlowIoWarningThresholdMs;
-    excludedNodes = initExcludedNodes();
+    this.isLazyPersistFile = isLazyPersist(stat);
+    this.isAppend = isAppend;
+    this.favoredNodes = favoredNodes;
+
+    final DfsClientConf conf = dfsClient.getConf();
+    this.dfsclientSlowLogThresholdMs = conf.getSlowIoWarningThresholdMs();
+    this.excludedNodes = initExcludedNodes(conf.getExcludedNodesCacheExpiry());
+    this.errorState = new ErrorState(conf.getDatanodeRestartTimeout());
   }
 
   /**
@@ -251,10 +425,9 @@ class DataStreamer extends Daemon {
   DataStreamer(HdfsFileStatus stat, ExtendedBlock block, DFSClient dfsClient,
                String src, Progressable progress, DataChecksum checksum,
                AtomicReference<CachingStrategy> cachingStrategy,
-               ByteArrayManager byteArrayManage) {
+               ByteArrayManager byteArrayManage, String[] favoredNodes) {
     this(stat, dfsClient, src, progress, checksum, cachingStrategy,
-        byteArrayManage);
-    isAppend = false;
+        byteArrayManage, false, favoredNodes);
     this.block = block;
     stage = BlockConstructionStage.PIPELINE_SETUP_CREATE;
   }
@@ -270,8 +443,7 @@ class DataStreamer extends Daemon {
                AtomicReference<CachingStrategy> cachingStrategy,
                ByteArrayManager byteArrayManage) throws IOException {
     this(stat, dfsClient, src, progress, checksum, cachingStrategy,
-        byteArrayManage);
-    isAppend = true;
+        byteArrayManage, true, null);
     stage = BlockConstructionStage.PIPELINE_SETUP_APPEND;
     block = lastBlock.getBlock();
     bytesSent = block.getNumBytes();
@@ -287,7 +459,6 @@ class DataStreamer extends Daemon {
   void setPipelineInConstruction(LocatedBlock lastBlock) throws IOException{
     // setup pipeline to append to the last block XXX retries??
     setPipeline(lastBlock);
-    errorIndex = -1;   // no errors yet.
     if (nodes.length < 1) {
       throw new IOException("Unable to retrieve blocks locations " +
           " for last block " + block +
@@ -307,15 +478,6 @@ class DataStreamer extends Daemon {
   }
 
   /**
-   * Set favored nodes
-   *
-   * @param favoredNodes favored nodes
-   */
-  void setFavoredNodes(String[] favoredNodes) {
-    this.favoredNodes = favoredNodes;
-  }
-
-  /**
    * Initialize for data streaming
    */
   private void initDataStreaming() {
@@ -327,14 +489,18 @@ class DataStreamer extends Daemon {
   }
 
   private void endBlock() {
-    if(DFSClient.LOG.isDebugEnabled()) {
-      DFSClient.LOG.debug("Closing old block " + block);
+    if(LOG.isDebugEnabled()) {
+      LOG.debug("Closing old block " + block);
     }
     this.setName("DataStreamer for file " + src);
     closeResponder();
     closeStream();
     setPipeline(null, null, null);
     stage = BlockConstructionStage.PIPELINE_SETUP_CREATE;
+  }
+
+  private boolean shouldStop() {
+    return streamerClosed || errorState.hasError() || !dfsClient.clientRunning;
   }
 
   /*
@@ -347,56 +513,52 @@ class DataStreamer extends Daemon {
     TraceScope scope = NullScope.INSTANCE;
     while (!streamerClosed && dfsClient.clientRunning) {
       // if the Responder encountered an error, shutdown Responder
-      if (hasError && response != null) {
+      if (errorState.hasError() && response != null) {
         try {
           response.close();
           response.join();
           response = null;
         } catch (InterruptedException  e) {
-          DFSClient.LOG.warn("Caught exception ", e);
+          LOG.warn("Caught exception", e);
         }
       }
 
       DFSPacket one;
       try {
         // process datanode IO errors if any
-        boolean doSleep = false;
-        if (hasError && (errorIndex >= 0 || restartingNodeIndex.get() >= 0)) {
-          doSleep = processDatanodeError();
-        }
+        boolean doSleep = processDatanodeError();
 
+        final int halfSocketTimeout = dfsClient.getConf().getSocketTimeout()/2; 
         synchronized (dataQueue) {
           // wait for a packet to be sent.
           long now = Time.monotonicNow();
-          while ((!streamerClosed && !hasError && dfsClient.clientRunning
-              && dataQueue.size() == 0 &&
+          while ((!shouldStop() && dataQueue.size() == 0 &&
               (stage != BlockConstructionStage.DATA_STREAMING ||
                   stage == BlockConstructionStage.DATA_STREAMING &&
-                      now - lastPacket < dfsClient.getConf().socketTimeout/2)) || doSleep ) {
-            long timeout = dfsClient.getConf().socketTimeout/2 - (now-lastPacket);
+                      now - lastPacket < halfSocketTimeout)) || doSleep ) {
+            long timeout = halfSocketTimeout - (now-lastPacket);
             timeout = timeout <= 0 ? 1000 : timeout;
             timeout = (stage == BlockConstructionStage.DATA_STREAMING)?
                 timeout : 1000;
             try {
               dataQueue.wait(timeout);
             } catch (InterruptedException  e) {
-              DFSClient.LOG.warn("Caught exception ", e);
+              LOG.warn("Caught exception", e);
             }
             doSleep = false;
             now = Time.monotonicNow();
           }
-          if (streamerClosed || hasError || !dfsClient.clientRunning) {
+          if (shouldStop()) {
             continue;
           }
           // get packet to be sent.
           if (dataQueue.isEmpty()) {
             one = createHeartbeatPacket();
-            assert one != null;
           } else {
             try {
               backOffIfNecessary();
             } catch (InterruptedException e) {
-              DFSClient.LOG.warn("Caught exception ", e);
+              LOG.warn("Caught exception", e);
             }
             one = dataQueue.getFirst(); // regular data packet
             long parents[] = one.getTraceParents();
@@ -411,16 +573,19 @@ class DataStreamer extends Daemon {
 
         // get new block from namenode.
         if (stage == BlockConstructionStage.PIPELINE_SETUP_CREATE) {
-          if(DFSClient.LOG.isDebugEnabled()) {
-            DFSClient.LOG.debug("Allocating new block");
+          if(LOG.isDebugEnabled()) {
+            LOG.debug("Allocating new block");
           }
           setPipeline(nextBlockOutputStream());
           initDataStreaming();
         } else if (stage == BlockConstructionStage.PIPELINE_SETUP_APPEND) {
-          if(DFSClient.LOG.isDebugEnabled()) {
-            DFSClient.LOG.debug("Append to block " + block);
+          if(LOG.isDebugEnabled()) {
+            LOG.debug("Append to block " + block);
           }
           setupPipelineForAppendOrRecovery();
+          if (streamerClosed) {
+            continue;
+          }
           initDataStreaming();
         }
 
@@ -436,17 +601,16 @@ class DataStreamer extends Daemon {
         if (one.isLastPacketInBlock()) {
           // wait for all data packets have been successfully acked
           synchronized (dataQueue) {
-            while (!streamerClosed && !hasError &&
-                ackQueue.size() != 0 && dfsClient.clientRunning) {
+            while (!shouldStop() && ackQueue.size() != 0) {
               try {
                 // wait for acks to arrive from datanodes
                 dataQueue.wait(1000);
               } catch (InterruptedException  e) {
-                DFSClient.LOG.warn("Caught exception ", e);
+                LOG.warn("Caught exception", e);
               }
             }
           }
-          if (streamerClosed || hasError || !dfsClient.clientRunning) {
+          if (shouldStop()) {
             continue;
           }
           stage = BlockConstructionStage.PIPELINE_CLOSE;
@@ -465,8 +629,8 @@ class DataStreamer extends Daemon {
           }
         }
 
-        if (DFSClient.LOG.isDebugEnabled()) {
-          DFSClient.LOG.debug("DataStreamer block " + block +
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("DataStreamer block " + block +
               " sending packet " + one);
         }
 
@@ -482,7 +646,7 @@ class DataStreamer extends Daemon {
           // effect. Pipeline recovery can handle only one node error at a
           // time. If the primary node fails again during the recovery, it
           // will be taken out then.
-          tryMarkPrimaryDatanodeFailed();
+          errorState.markFirstNodeIfNotMarked();
           throw e;
         } finally {
           writeScope.close();
@@ -495,7 +659,7 @@ class DataStreamer extends Daemon {
           bytesSent = tmpBytesSent;
         }
 
-        if (streamerClosed || hasError || !dfsClient.clientRunning) {
+        if (shouldStop()) {
           continue;
         }
 
@@ -503,12 +667,11 @@ class DataStreamer extends Daemon {
         if (one.isLastPacketInBlock()) {
           // wait for the close packet has been acked
           synchronized (dataQueue) {
-            while (!streamerClosed && !hasError &&
-                ackQueue.size() != 0 && dfsClient.clientRunning) {
+            while (!shouldStop() && ackQueue.size() != 0) {
               dataQueue.wait(1000);// wait for acks to arrive from datanodes
             }
           }
-          if (streamerClosed || hasError || !dfsClient.clientRunning) {
+          if (shouldStop()) {
             continue;
           }
 
@@ -522,22 +685,19 @@ class DataStreamer extends Daemon {
         }
       } catch (Throwable e) {
         // Log warning if there was a real error.
-        if (restartingNodeIndex.get() == -1) {
+        if (!errorState.isRestartingNode()) {
           // Since their messages are descriptive enough, do not always
           // log a verbose stack-trace WARN for quota exceptions.
           if (e instanceof QuotaExceededException) {
-            DFSClient.LOG.debug("DataStreamer Quota Exception", e);
+            LOG.debug("DataStreamer Quota Exception", e);
           } else {
-            DFSClient.LOG.warn("DataStreamer Exception", e);
+            LOG.warn("DataStreamer Exception", e);
           }
         }
-        if (e instanceof IOException) {
-          setLastException((IOException)e);
-        } else {
-          setLastException(new IOException("DataStreamer Exception: ",e));
-        }
-        hasError = true;
-        if (errorIndex == -1 && restartingNodeIndex.get() == -1) {
+        lastException.set(e);
+        assert !(e instanceof NullPointerException);
+        errorState.setError(true);
+        if (!errorState.isNodeMarked()) {
           // Not a datanode issue
           streamerClosed = true;
         }
@@ -578,8 +738,8 @@ class DataStreamer extends Daemon {
   void waitForAckedSeqno(long seqno) throws IOException {
     TraceScope scope = Trace.startSpan("waitForAckedSeqno", Sampler.NEVER);
     try {
-      if (DFSClient.LOG.isDebugEnabled()) {
-        DFSClient.LOG.debug("Waiting for ack for: " + seqno);
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Waiting for ack for: " + seqno);
       }
       long begin = Time.monotonicNow();
       try {
@@ -603,7 +763,7 @@ class DataStreamer extends Daemon {
       }
       long duration = Time.monotonicNow() - begin;
       if (duration > dfsclientSlowLogThresholdMs) {
-        DFSClient.LOG.warn("Slow waitForAckedSeqno took " + duration
+        LOG.warn("Slow waitForAckedSeqno took " + duration
             + "ms (threshold=" + dfsclientSlowLogThresholdMs + "ms)");
       }
     } finally {
@@ -624,7 +784,7 @@ class DataStreamer extends Daemon {
         boolean firstWait = true;
         try {
           while (!streamerClosed && dataQueue.size() + ackQueue.size() >
-              dfsClient.getConf().writeMaxPackets) {
+              dfsClient.getConf().getWriteMaxPackets()) {
             if (firstWait) {
               Span span = Trace.currentSpan();
               if (span != null) {
@@ -680,8 +840,7 @@ class DataStreamer extends Daemon {
 
   private void checkClosed() throws IOException {
     if (streamerClosed) {
-      IOException e = lastException.get();
-      throw e != null ? e : new ClosedChannelException();
+      lastException.throwException4Close();
     }
   }
 
@@ -691,7 +850,7 @@ class DataStreamer extends Daemon {
         response.close();
         response.join();
       } catch (InterruptedException  e) {
-        DFSClient.LOG.warn("Caught exception ", e);
+        LOG.warn("Caught exception", e);
       } finally {
         response = null;
       }
@@ -699,11 +858,13 @@ class DataStreamer extends Daemon {
   }
 
   private void closeStream() {
+    final MultipleIOException.Builder b = new MultipleIOException.Builder();
+
     if (blockStream != null) {
       try {
         blockStream.close();
       } catch (IOException e) {
-        setLastException(e);
+        b.add(e);
       } finally {
         blockStream = null;
       }
@@ -712,7 +873,7 @@ class DataStreamer extends Daemon {
       try {
         blockReplyStream.close();
       } catch (IOException e) {
-        setLastException(e);
+        b.add(e);
       } finally {
         blockReplyStream = null;
       }
@@ -721,44 +882,15 @@ class DataStreamer extends Daemon {
       try {
         s.close();
       } catch (IOException e) {
-        setLastException(e);
+        b.add(e);
       } finally {
         s = null;
       }
     }
-  }
 
-  // The following synchronized methods are used whenever
-  // errorIndex or restartingNodeIndex is set. This is because
-  // check & set needs to be atomic. Simply reading variables
-  // does not require a synchronization. When responder is
-  // not running (e.g. during pipeline recovery), there is no
-  // need to use these methods.
-
-  /** Set the error node index. Called by responder */
-  synchronized void setErrorIndex(int idx) {
-    errorIndex = idx;
-  }
-
-  /** Set the restarting node index. Called by responder */
-  synchronized void setRestartingNodeIndex(int idx) {
-    restartingNodeIndex.set(idx);
-    // If the data streamer has already set the primary node
-    // bad, clear it. It is likely that the write failed due to
-    // the DN shutdown. Even if it was a real failure, the pipeline
-    // recovery will take care of it.
-    errorIndex = -1;
-  }
-
-  /**
-   * This method is used when no explicit error report was received,
-   * but something failed. When the primary node is a suspect or
-   * unsure about the cause, the primary node is marked as failed.
-   */
-  synchronized void tryMarkPrimaryDatanodeFailed() {
-    // There should be no existing error and no ongoing restart.
-    if ((errorIndex == -1) && (restartingNodeIndex.get() == -1)) {
-      errorIndex = 0;
+    final IOException ioe = b.build();
+    if (ioe != null) {
+      lastException.set(ioe);
     }
   }
 
@@ -817,12 +949,11 @@ class DataStreamer extends Daemon {
           long duration = Time.monotonicNow() - begin;
           if (duration > dfsclientSlowLogThresholdMs
               && ack.getSeqno() != DFSPacket.HEART_BEAT_SEQNO) {
-            DFSClient.LOG
-                .warn("Slow ReadProcessor read fields took " + duration
-                    + "ms (threshold=" + dfsclientSlowLogThresholdMs + "ms); ack: "
-                    + ack + ", targets: " + Arrays.asList(targets));
-          } else if (DFSClient.LOG.isDebugEnabled()) {
-            DFSClient.LOG.debug("DFSClient " + ack);
+            LOG.warn("Slow ReadProcessor read fields took " + duration
+                + "ms (threshold=" + dfsclientSlowLogThresholdMs + "ms); ack: "
+                + ack + ", targets: " + Arrays.asList(targets));
+          } else if (LOG.isDebugEnabled()) {
+            LOG.debug("DFSClient " + ack);
           }
 
           long seqno = ack.getSeqno();
@@ -839,20 +970,16 @@ class DataStreamer extends Daemon {
             // the local node or the only one in the pipeline.
             if (PipelineAck.isRestartOOBStatus(reply) &&
                 shouldWaitForRestart(i)) {
-              restartDeadline = dfsClient.getConf().datanodeRestartTimeout
-                  + Time.monotonicNow();
-              setRestartingNodeIndex(i);
-              String message = "A datanode is restarting: " + targets[i];
-              DFSClient.LOG.info(message);
+              final String message = "Datanode " + i + " is restarting: "
+                  + targets[i];
+              errorState.initRestartingNode(i, message);
               throw new IOException(message);
             }
             // node error
             if (reply != SUCCESS) {
-              setErrorIndex(i); // first bad datanode
+              errorState.setBadNodeIndex(i); // mark bad datanode
               throw new IOException("Bad response " + reply +
-                  " for block " + block +
-                  " from datanode " +
-                  targets[i]);
+                  " for " + block + " from datanode " + targets[i]);
             }
           }
 
@@ -909,19 +1036,14 @@ class DataStreamer extends Daemon {
           }
         } catch (Exception e) {
           if (!responderClosed) {
-            if (e instanceof IOException) {
-              setLastException((IOException)e);
-            }
-            hasError = true;
-            // If no explicit error report was received, mark the primary
-            // node as failed.
-            tryMarkPrimaryDatanodeFailed();
+            lastException.set(e);
+            errorState.setError(true);
+            errorState.markFirstNodeIfNotMarked();
             synchronized (dataQueue) {
               dataQueue.notifyAll();
             }
-            if (restartingNodeIndex.get() == -1) {
-              DFSClient.LOG.warn("DataStreamer ResponseProcessor exception "
-                  + " for block " + block, e);
+            if (!errorState.isRestartingNode()) {
+              LOG.warn("Exception for " + block, e);
             }
             responderClosed = true;
           }
@@ -937,13 +1059,18 @@ class DataStreamer extends Daemon {
     }
   }
 
-  // If this stream has encountered any errors so far, shutdown
-  // threads and mark stream as closed. Returns true if we should
-  // sleep for a while after returning from this call.
-  //
+  /**
+   * If this stream has encountered any errors, shutdown threads
+   * and mark the stream as closed.
+   *
+   * @return true if it should sleep for a while after returning.
+   */
   private boolean processDatanodeError() throws IOException {
+    if (!errorState.hasDatanodeError()) {
+      return false;
+    }
     if (response != null) {
-      DFSClient.LOG.info("Error Recovery for " + block +
+      LOG.info("Error Recovery for " + block +
           " waiting for responder to exit. ");
       return true;
     }
@@ -964,7 +1091,7 @@ class DataStreamer extends Daemon {
       // same packet, this client likely has corrupt data or corrupting
       // during transmission.
       if (++pipelineRecoveryCount > 5) {
-        DFSClient.LOG.warn("Error recovering pipeline for writing " +
+        LOG.warn("Error recovering pipeline for writing " +
             block + ". Already retried 5 times for the same packet.");
         lastException.set(new IOException("Failing write. Tried pipeline " +
             "recovery 5 times without success."));
@@ -1023,7 +1150,7 @@ class DataStreamer extends Daemon {
               .append("The current failed datanode replacement policy is ")
               .append(dfsClient.dtpReplaceDatanodeOnFailure).append(", and ")
               .append("a client may configure this via '")
-              .append(DFSConfigKeys.DFS_CLIENT_WRITE_REPLACE_DATANODE_ON_FAILURE_POLICY_KEY)
+              .append(BlockWrite.ReplaceDatanodeOnFailure.POLICY_KEY)
               .append("' in its configuration.")
               .toString());
     }
@@ -1099,15 +1226,16 @@ class DataStreamer extends Daemon {
     try {
       sock = createSocketForPipeline(src, 2, dfsClient);
       final long writeTimeout = dfsClient.getDatanodeWriteTimeout(2);
+      final long readTimeout = dfsClient.getDatanodeReadTimeout(2);
 
       OutputStream unbufOut = NetUtils.getOutputStream(sock, writeTimeout);
-      InputStream unbufIn = NetUtils.getInputStream(sock);
+      InputStream unbufIn = NetUtils.getInputStream(sock, readTimeout);
       IOStreamPair saslStreams = dfsClient.saslClient.socketSend(sock,
           unbufOut, unbufIn, dfsClient, blockToken, src);
       unbufOut = saslStreams.out;
       unbufIn = saslStreams.in;
       out = new DataOutputStream(new BufferedOutputStream(unbufOut,
-          HdfsConstants.SMALL_BUFFER_SIZE));
+          DFSUtil.getSmallBufferSize(dfsClient.getConfiguration())));
       in = new DataInputStream(unbufIn);
 
       //send the TRANSFER_BLOCK request
@@ -1139,8 +1267,8 @@ class DataStreamer extends Daemon {
     if (nodes == null || nodes.length == 0) {
       String msg = "Could not get block locations. " + "Source file \""
           + src + "\" - Aborting...";
-      DFSClient.LOG.warn(msg);
-      setLastException(new IOException(msg));
+      LOG.warn(msg);
+      lastException.set(new IOException(msg));
       streamerClosed = true;
       return false;
     }
@@ -1148,154 +1276,138 @@ class DataStreamer extends Daemon {
     boolean success = false;
     long newGS = 0L;
     while (!success && !streamerClosed && dfsClient.clientRunning) {
-      // Sleep before reconnect if a dn is restarting.
-      // This process will be repeated until the deadline or the datanode
-      // starts back up.
-      if (restartingNodeIndex.get() >= 0) {
-        // 4 seconds or the configured deadline period, whichever is shorter.
-        // This is the retry interval and recovery will be retried in this
-        // interval until timeout or success.
-        long delay = Math.min(dfsClient.getConf().datanodeRestartTimeout,
-            4000L);
-        try {
-          Thread.sleep(delay);
-        } catch (InterruptedException ie) {
-          lastException.set(new IOException("Interrupted while waiting for " +
-              "datanode to restart. " + nodes[restartingNodeIndex.get()]));
-          streamerClosed = true;
-          return false;
-        }
-      }
-      boolean isRecovery = hasError;
-      // remove bad datanode from list of datanodes.
-      // If errorIndex was not set (i.e. appends), then do not remove
-      // any datanodes
-      //
-      if (errorIndex >= 0) {
-        StringBuilder pipelineMsg = new StringBuilder();
-        for (int j = 0; j < nodes.length; j++) {
-          pipelineMsg.append(nodes[j]);
-          if (j < nodes.length - 1) {
-            pipelineMsg.append(", ");
-          }
-        }
-        if (nodes.length <= 1) {
-          lastException.set(new IOException("All datanodes " + pipelineMsg
-              + " are bad. Aborting..."));
-          streamerClosed = true;
-          return false;
-        }
-        DFSClient.LOG.warn("Error Recovery for block " + block +
-            " in pipeline " + pipelineMsg +
-            ": bad datanode " + nodes[errorIndex]);
-        failed.add(nodes[errorIndex]);
-
-        DatanodeInfo[] newnodes = new DatanodeInfo[nodes.length-1];
-        arraycopy(nodes, newnodes, errorIndex);
-
-        final StorageType[] newStorageTypes = new StorageType[newnodes.length];
-        arraycopy(storageTypes, newStorageTypes, errorIndex);
-
-        final String[] newStorageIDs = new String[newnodes.length];
-        arraycopy(storageIDs, newStorageIDs, errorIndex);
-
-        setPipeline(newnodes, newStorageTypes, newStorageIDs);
-
-        // Just took care of a node error while waiting for a node restart
-        if (restartingNodeIndex.get() >= 0) {
-          // If the error came from a node further away than the restarting
-          // node, the restart must have been complete.
-          if (errorIndex > restartingNodeIndex.get()) {
-            restartingNodeIndex.set(-1);
-          } else if (errorIndex < restartingNodeIndex.get()) {
-            // the node index has shifted.
-            restartingNodeIndex.decrementAndGet();
-          } else {
-            // this shouldn't happen...
-            assert false;
-          }
-        }
-
-        if (restartingNodeIndex.get() == -1) {
-          hasError = false;
-        }
-        lastException.set(null);
-        errorIndex = -1;
+      if (!handleRestartingDatanode()) {
+        return false;
       }
 
-      // Check if replace-datanode policy is satisfied.
-      if (dfsClient.dtpReplaceDatanodeOnFailure.satisfy(stat.getReplication(),
-          nodes, isAppend, isHflushed)) {
-        try {
-          addDatanode2ExistingPipeline();
-        } catch(IOException ioe) {
-          if (!dfsClient.dtpReplaceDatanodeOnFailure.isBestEffort()) {
-            throw ioe;
-          }
-          DFSClient.LOG.warn("Failed to replace datanode."
-              + " Continue with the remaining datanodes since "
-              + DFSConfigKeys.DFS_CLIENT_WRITE_REPLACE_DATANODE_ON_FAILURE_BEST_EFFORT_KEY
-              + " is set to true.", ioe);
-        }
+      final boolean isRecovery = errorState.hasError();
+      if (!handleBadDatanode()) {
+        return false;
       }
+
+      handleDatanodeReplacement();
 
       // get a new generation stamp and an access token
-      LocatedBlock lb = dfsClient.namenode.updateBlockForPipeline(block, dfsClient.clientName);
+      final LocatedBlock lb = updateBlockForPipeline();
       newGS = lb.getBlock().getGenerationStamp();
       accessToken = lb.getBlockToken();
 
       // set up the pipeline again with the remaining nodes
-      if (failPacket) { // for testing
-        success = createBlockOutputStream(nodes, storageTypes, newGS, isRecovery);
-        failPacket = false;
-        try {
-          // Give DNs time to send in bad reports. In real situations,
-          // good reports should follow bad ones, if client committed
-          // with those nodes.
-          Thread.sleep(2000);
-        } catch (InterruptedException ie) {}
-      } else {
-        success = createBlockOutputStream(nodes, storageTypes, newGS, isRecovery);
-      }
+      success = createBlockOutputStream(nodes, storageTypes, newGS, isRecovery);
 
-      if (restartingNodeIndex.get() >= 0) {
-        assert hasError == true;
-        // check errorIndex set above
-        if (errorIndex == restartingNodeIndex.get()) {
-          // ignore, if came from the restarting node
-          errorIndex = -1;
-        }
-        // still within the deadline
-        if (Time.monotonicNow() < restartDeadline) {
-          continue; // with in the deadline
-        }
-        // expired. declare the restarting node dead
-        restartDeadline = 0;
-        int expiredNodeIndex = restartingNodeIndex.get();
-        restartingNodeIndex.set(-1);
-        DFSClient.LOG.warn("Datanode did not restart in time: " +
-            nodes[expiredNodeIndex]);
-        // Mark the restarting node as failed. If there is any other failed
-        // node during the last pipeline construction attempt, it will not be
-        // overwritten/dropped. In this case, the restarting node will get
-        // excluded in the following attempt, if it still does not come up.
-        if (errorIndex == -1) {
-          errorIndex = expiredNodeIndex;
-        }
-        // From this point on, normal pipeline recovery applies.
-      }
+      failPacket4Testing();
+
+      errorState.checkRestartingNodeDeadline(nodes);
     } // while
 
     if (success) {
-      // update pipeline at the namenode
-      ExtendedBlock newBlock = new ExtendedBlock(
-          block.getBlockPoolId(), block.getBlockId(), block.getNumBytes(), newGS);
-      dfsClient.namenode.updatePipeline(dfsClient.clientName, block, newBlock,
-          nodes, storageIDs);
-      // update client side generation stamp
-      block = newBlock;
+      block = updatePipeline(newGS);
     }
     return false; // do not sleep, continue processing
+  }
+
+  /**
+   * Sleep if a node is restarting.
+   * This process is repeated until the deadline or the node starts back up.
+   * @return true if it should continue.
+   */
+  private boolean handleRestartingDatanode() {
+    if (errorState.isRestartingNode()) {
+      // 4 seconds or the configured deadline period, whichever is shorter.
+      // This is the retry interval and recovery will be retried in this
+      // interval until timeout or success.
+      final long delay = Math.min(errorState.datanodeRestartTimeout, 4000L);
+      try {
+        Thread.sleep(delay);
+      } catch (InterruptedException ie) {
+        lastException.set(new IOException(
+            "Interrupted while waiting for restarting "
+            + nodes[errorState.getRestartingNodeIndex()]));
+        streamerClosed = true;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Remove bad node from list of nodes if badNodeIndex was set.
+   * @return true if it should continue.
+   */
+  private boolean handleBadDatanode() {
+    final int badNodeIndex = errorState.getBadNodeIndex();
+    if (badNodeIndex >= 0) {
+      if (nodes.length <= 1) {
+        lastException.set(new IOException("All datanodes "
+            + Arrays.toString(nodes) + " are bad. Aborting..."));
+        streamerClosed = true;
+        return false;
+      }
+
+      LOG.warn("Error Recovery for " + block + " in pipeline "
+          + Arrays.toString(nodes) + ": datanode " + badNodeIndex
+          + "("+ nodes[badNodeIndex] + ") is bad.");
+      failed.add(nodes[badNodeIndex]);
+
+      DatanodeInfo[] newnodes = new DatanodeInfo[nodes.length-1];
+      arraycopy(nodes, newnodes, badNodeIndex);
+
+      final StorageType[] newStorageTypes = new StorageType[newnodes.length];
+      arraycopy(storageTypes, newStorageTypes, badNodeIndex);
+
+      final String[] newStorageIDs = new String[newnodes.length];
+      arraycopy(storageIDs, newStorageIDs, badNodeIndex);
+
+      setPipeline(newnodes, newStorageTypes, newStorageIDs);
+
+      errorState.adjustState4RestartingNode();
+      lastException.clear();
+    }
+    return true;
+  }
+
+  /** Add a datanode if replace-datanode policy is satisfied. */
+  private void handleDatanodeReplacement() throws IOException {
+    if (dfsClient.dtpReplaceDatanodeOnFailure.satisfy(stat.getReplication(),
+        nodes, isAppend, isHflushed)) {
+      try {
+        addDatanode2ExistingPipeline();
+      } catch(IOException ioe) {
+        if (!dfsClient.dtpReplaceDatanodeOnFailure.isBestEffort()) {
+          throw ioe;
+        }
+        LOG.warn("Failed to replace datanode."
+            + " Continue with the remaining datanodes since "
+            + BlockWrite.ReplaceDatanodeOnFailure.BEST_EFFORT_KEY
+            + " is set to true.", ioe);
+      }
+    }
+  }
+
+  private void failPacket4Testing() {
+    if (failPacket) { // for testing
+      failPacket = false;
+      try {
+        // Give DNs time to send in bad reports. In real situations,
+        // good reports should follow bad ones, if client committed
+        // with those nodes.
+        Thread.sleep(2000);
+      } catch (InterruptedException ie) {}
+    }
+  }
+
+  LocatedBlock updateBlockForPipeline() throws IOException {
+    return dfsClient.namenode.updateBlockForPipeline(
+        block, dfsClient.clientName);
+  }
+
+  /** update pipeline at the namenode */
+  ExtendedBlock updatePipeline(long newGS) throws IOException {
+    final ExtendedBlock newBlock = new ExtendedBlock(
+        block.getBlockPoolId(), block.getBlockId(), block.getNumBytes(), newGS);
+    dfsClient.namenode.updatePipeline(dfsClient.clientName, block, newBlock,
+        nodes, storageIDs);
+    return newBlock;
   }
 
   /**
@@ -1308,13 +1420,12 @@ class DataStreamer extends Daemon {
     LocatedBlock lb = null;
     DatanodeInfo[] nodes = null;
     StorageType[] storageTypes = null;
-    int count = dfsClient.getConf().nBlockWriteRetry;
+    int count = dfsClient.getConf().getNumBlockWriteRetry();
     boolean success = false;
     ExtendedBlock oldBlock = block;
     do {
-      hasError = false;
-      lastException.set(null);
-      errorIndex = -1;
+      errorState.reset();
+      lastException.clear();
       success = false;
 
       DatanodeInfo[] excluded =
@@ -1336,12 +1447,13 @@ class DataStreamer extends Daemon {
       success = createBlockOutputStream(nodes, storageTypes, 0L, false);
 
       if (!success) {
-        DFSClient.LOG.info("Abandoning " + block);
+        LOG.info("Abandoning " + block);
         dfsClient.namenode.abandonBlock(block, stat.getFileId(), src,
             dfsClient.clientName);
         block = null;
-        DFSClient.LOG.info("Excluding datanode " + nodes[errorIndex]);
-        excludedNodes.put(nodes[errorIndex], nodes[errorIndex]);
+        final DatanodeInfo badNode = nodes[errorState.getBadNodeIndex()];
+        LOG.info("Excluding datanode " + badNode);
+        excludedNodes.put(badNode, badNode);
       }
     } while (!success && --count >= 0);
 
@@ -1357,17 +1469,14 @@ class DataStreamer extends Daemon {
   private boolean createBlockOutputStream(DatanodeInfo[] nodes,
       StorageType[] nodeStorageTypes, long newGS, boolean recoveryFlag) {
     if (nodes.length == 0) {
-      DFSClient.LOG.info("nodes are empty for write pipeline of block "
-          + block);
+      LOG.info("nodes are empty for write pipeline of " + block);
       return false;
     }
     Status pipelineStatus = SUCCESS;
     String firstBadLink = "";
     boolean checkRestart = false;
-    if (DFSClient.LOG.isDebugEnabled()) {
-      for (int i = 0; i < nodes.length; i++) {
-        DFSClient.LOG.debug("pipeline = " + nodes[i]);
-      }
+    if (LOG.isDebugEnabled()) {
+      LOG.debug("pipeline = " + Arrays.asList(nodes));
     }
 
     // persist blocks on namenode on next flush
@@ -1382,15 +1491,16 @@ class DataStreamer extends Daemon {
         assert null == blockReplyStream : "Previous blockReplyStream unclosed";
         s = createSocketForPipeline(nodes[0], nodes.length, dfsClient);
         long writeTimeout = dfsClient.getDatanodeWriteTimeout(nodes.length);
+        long readTimeout = dfsClient.getDatanodeReadTimeout(nodes.length);
 
         OutputStream unbufOut = NetUtils.getOutputStream(s, writeTimeout);
-        InputStream unbufIn = NetUtils.getInputStream(s);
+        InputStream unbufIn = NetUtils.getInputStream(s, readTimeout);
         IOStreamPair saslStreams = dfsClient.saslClient.socketSend(s,
             unbufOut, unbufIn, dfsClient, accessToken, nodes[0]);
         unbufOut = saslStreams.out;
         unbufIn = saslStreams.in;
         out = new DataOutputStream(new BufferedOutputStream(unbufOut,
-            HdfsConstants.SMALL_BUFFER_SIZE));
+            DFSUtil.getSmallBufferSize(dfsClient.getConfiguration())));
         blockReplyStream = new DataInputStream(unbufIn);
 
         //
@@ -1424,7 +1534,7 @@ class DataStreamer extends Daemon {
         // from the local datanode. Thus it is safe to treat this as a
         // regular node error.
         if (PipelineAck.isRestartOOBStatus(pipelineStatus) &&
-            restartingNodeIndex.get() == -1) {
+            !errorState.isRestartingNode()) {
           checkRestart = true;
           throw new IOException("A datanode is restarting.");
         }
@@ -1435,14 +1545,13 @@ class DataStreamer extends Daemon {
         assert null == blockStream : "Previous blockStream unclosed";
         blockStream = out;
         result =  true; // success
-        restartingNodeIndex.set(-1);
-        hasError = false;
+        errorState.reset();
       } catch (IOException ie) {
-        if (restartingNodeIndex.get() == -1) {
-          DFSClient.LOG.info("Exception in createBlockOutputStream", ie);
+        if (!errorState.isRestartingNode()) {
+          LOG.info("Exception in createBlockOutputStream", ie);
         }
         if (ie instanceof InvalidEncryptionKeyException && refetchEncryptionKey > 0) {
-          DFSClient.LOG.info("Will fetch a new encryption key and retry, "
+          LOG.info("Will fetch a new encryption key and retry, "
               + "encryption key was invalid when connecting to "
               + nodes[0] + " : " + ie);
           // The encryption key used is invalid.
@@ -1458,25 +1567,22 @@ class DataStreamer extends Daemon {
           for (int i = 0; i < nodes.length; i++) {
             // NB: Unconditionally using the xfer addr w/o hostname
             if (firstBadLink.equals(nodes[i].getXferAddr())) {
-              errorIndex = i;
+              errorState.setBadNodeIndex(i);
               break;
             }
           }
         } else {
           assert checkRestart == false;
-          errorIndex = 0;
+          errorState.setBadNodeIndex(0);
         }
+
+        final int i = errorState.getBadNodeIndex();
         // Check whether there is a restart worth waiting for.
-        if (checkRestart && shouldWaitForRestart(errorIndex)) {
-          restartDeadline = dfsClient.getConf().datanodeRestartTimeout
-              + Time.monotonicNow();
-          restartingNodeIndex.set(errorIndex);
-          errorIndex = -1;
-          DFSClient.LOG.info("Waiting for the datanode to be restarted: " +
-              nodes[restartingNodeIndex.get()]);
+        if (checkRestart && shouldWaitForRestart(i)) {
+          errorState.initRestartingNode(i, "Datanode " + i + " is restarting: " + nodes[i]);
         }
-        hasError = true;
-        setLastException(ie);
+        errorState.setError(true);
+        lastException.set(ie);
         result =  false;  // error
       } finally {
         if (!result) {
@@ -1501,18 +1607,16 @@ class DataStreamer extends Daemon {
           new HashSet<String>(Arrays.asList(favoredNodes));
       for (int i = 0; i < nodes.length; i++) {
         pinnings[i] = favoredSet.remove(nodes[i].getXferAddrWithHostname());
-        if (DFSClient.LOG.isDebugEnabled()) {
-          DFSClient.LOG.debug(nodes[i].getXferAddrWithHostname() +
-              " was chosen by name node (favored=" + pinnings[i] +
-              ").");
+        if (LOG.isDebugEnabled()) {
+          LOG.debug(nodes[i].getXferAddrWithHostname() +
+              " was chosen by name node (favored=" + pinnings[i] + ").");
         }
       }
       if (shouldLog && !favoredSet.isEmpty()) {
         // There is one or more favored nodes that were not allocated.
-        DFSClient.LOG.warn(
-            "These favored nodes were specified but not chosen: " +
-                favoredSet +
-                " Specified favored nodes: " + Arrays.toString(favoredNodes));
+        LOG.warn("These favored nodes were specified but not chosen: "
+            + favoredSet + " Specified favored nodes: "
+            + Arrays.toString(favoredNodes));
 
       }
       return pinnings;
@@ -1521,9 +1625,9 @@ class DataStreamer extends Daemon {
 
   protected LocatedBlock locateFollowingBlock(DatanodeInfo[] excludedNodes)
       throws IOException {
-    int retries = dfsClient.getConf().nBlockWriteLocateFollowingRetry;
-    long sleeptime = dfsClient.getConf().
-        blockWriteLocateFollowingInitialDelayMs;
+    final DfsClientConf conf = dfsClient.getConf(); 
+    int retries = conf.getNumBlockWriteLocateFollowingRetry();
+    long sleeptime = conf.getBlockWriteLocateFollowingInitialDelayMs();
     while (true) {
       long localstart = Time.monotonicNow();
       while (true) {
@@ -1536,6 +1640,7 @@ class DataStreamer extends Daemon {
                   AccessControlException.class,
                   NSQuotaExceededException.class,
                   DSQuotaExceededException.class,
+                  QuotaByStorageTypeExceededException.class,
                   UnresolvedPathException.class);
           if (ue != e) {
             throw ue; // no need to retry these exceptions
@@ -1548,19 +1653,19 @@ class DataStreamer extends Daemon {
               throw e;
             } else {
               --retries;
-              DFSClient.LOG.info("Exception while adding a block", e);
+              LOG.info("Exception while adding a block", e);
               long elapsed = Time.monotonicNow() - localstart;
               if (elapsed > 5000) {
-                DFSClient.LOG.info("Waiting for replication for "
+                LOG.info("Waiting for replication for "
                     + (elapsed / 1000) + " seconds");
               }
               try {
-                DFSClient.LOG.warn("NotReplicatedYetException sleeping " + src
+                LOG.warn("NotReplicatedYetException sleeping " + src
                     + " retries left " + retries);
                 Thread.sleep(sleeptime);
                 sleeptime *= 2;
               } catch (InterruptedException ie) {
-                DFSClient.LOG.warn("Caught exception ", ie);
+                LOG.warn("Caught exception", ie);
               }
             }
           } else {
@@ -1597,7 +1702,7 @@ class DataStreamer extends Daemon {
                      (int)(base + Math.random() * range));
         lastCongestionBackoffTime = t;
         sb.append(" are congested. Backing off for ").append(t).append(" ms");
-        DFSClient.LOG.info(sb.toString());
+        LOG.info(sb.toString());
         congestedNodes.clear();
       }
     }
@@ -1634,15 +1739,6 @@ class DataStreamer extends Daemon {
   }
 
   /**
-   * set last exception
-   *
-   * @param e an exception
-   */
-  void setLastException(IOException e) {
-    lastException.compareAndSet(null, e);
-  }
-
-  /**
    * Put a packet to the data queue
    *
    * @param packet the packet to be put into the data queued
@@ -1653,8 +1749,8 @@ class DataStreamer extends Daemon {
       packet.addTraceParent(Trace.currentSpan());
       dataQueue.addLast(packet);
       lastQueuedSeqno = packet.getSeqno();
-      if (DFSClient.LOG.isDebugEnabled()) {
-        DFSClient.LOG.debug("Queued packet " + packet.getSeqno());
+      if (LOG.isDebugEnabled()) {
+        LOG.debug("Queued packet " + packet.getSeqno());
       }
       dataQueue.notifyAll();
     }
@@ -1669,14 +1765,15 @@ class DataStreamer extends Daemon {
     return new DFSPacket(buf, 0, 0, DFSPacket.HEART_BEAT_SEQNO, 0, false);
   }
 
-  private LoadingCache<DatanodeInfo, DatanodeInfo> initExcludedNodes() {
-    return CacheBuilder.newBuilder().expireAfterWrite(
-        dfsClient.getConf().excludedNodesCacheExpiry, TimeUnit.MILLISECONDS)
+  private static LoadingCache<DatanodeInfo, DatanodeInfo> initExcludedNodes(
+      long excludedNodesCacheExpiry) {
+    return CacheBuilder.newBuilder()
+        .expireAfterWrite(excludedNodesCacheExpiry, TimeUnit.MILLISECONDS)
         .removalListener(new RemovalListener<DatanodeInfo, DatanodeInfo>() {
           @Override
           public void onRemoval(
               RemovalNotification<DatanodeInfo, DatanodeInfo> notification) {
-            DFSClient.LOG.info("Removing node " + notification.getKey()
+            LOG.info("Removing node " + notification.getKey()
                 + " from the excluded nodes list");
           }
         }).build(new CacheLoader<DatanodeInfo, DatanodeInfo>() {
@@ -1720,11 +1817,9 @@ class DataStreamer extends Daemon {
   }
 
   /**
-   * get the last exception
-   *
    * @return the last exception
    */
-  AtomicReference<IOException> getLastException(){
+  LastExceptionInStreamer getLastException(){
     return lastException;
   }
 
@@ -1804,5 +1899,11 @@ class DataStreamer extends Daemon {
     if (s != null) {
       s.close();
     }
+  }
+
+  @Override
+  public String toString() {
+    return  (block == null? null: block.getLocalBlock())
+        + "@" + Arrays.toString(getNodes());
   }
 }

@@ -78,6 +78,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.policies.Dom
 import org.apache.hadoop.yarn.server.resourcemanager.scheduler.fifo.FifoScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.security.DelegationTokenRenewer;
 import org.apache.hadoop.yarn.util.ControlledClock;
+import org.apache.hadoop.yarn.util.Records;
 import org.apache.hadoop.yarn.util.SystemClock;
 import org.apache.hadoop.yarn.util.resource.DominantResourceCalculator;
 import org.apache.hadoop.yarn.util.resource.ResourceCalculator;
@@ -1011,4 +1012,93 @@ public class TestWorkPreservingRMRestart extends ParameterizedSchedulerTestBase 
     rm2.waitForState(am1.getApplicationAttemptId(), RMAppAttemptState.FAILED);
     rm2.waitForState(app1.getApplicationId(), RMAppState.FAILED);
   }
+
+  /**
+   * Test validateAndCreateResourceRequest fails on recovery, app should ignore
+   * this Exception and continue
+   */
+  @Test (timeout = 30000)
+  public void testAppFailToValidateResourceRequestOnRecovery() throws Exception{
+    MemoryRMStateStore memStore = new MemoryRMStateStore();
+    memStore.init(conf);
+    rm1 = new MockRM(conf, memStore);
+    rm1.start();
+    MockNM nm1 =
+        new MockNM("127.0.0.1:1234", 8192, rm1.getResourceTrackerService());
+    nm1.registerNode();
+    RMApp app1 = rm1.submitApp(200);
+    MockAM am1 = MockRM.launchAndRegisterAM(app1, rm1, nm1);
+
+    // Change the config so that validateAndCreateResourceRequest throws
+    // exception on recovery
+    conf.setInt(YarnConfiguration.RM_SCHEDULER_MINIMUM_ALLOCATION_MB, 50);
+    conf.setInt(YarnConfiguration.RM_SCHEDULER_MAXIMUM_ALLOCATION_MB, 100);
+
+    rm2 = new MockRM(conf, memStore);
+    nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+    rm2.start();
+  }
+
+  @Test(timeout = 20000)
+  public void testContainerCompleteMsgNotLostAfterAMFailedAndRMRestart() throws Exception {
+    MemoryRMStateStore memStore = new MemoryRMStateStore();
+    memStore.init(conf);
+    rm1 = new MockRM(conf, memStore);
+    rm1.start();
+
+    MockNM nm1 =
+        new MockNM("127.0.0.1:1234", 8192, rm1.getResourceTrackerService());
+    nm1.registerNode();
+
+    // submit app with keepContainersAcrossApplicationAttempts true
+    Resource resource = Records.newRecord(Resource.class);
+    resource.setMemory(200);
+    RMApp app0 = rm1.submitApp(resource, "", UserGroupInformation
+        .getCurrentUser().getShortUserName(), null, false, null,
+        YarnConfiguration.DEFAULT_RM_AM_MAX_ATTEMPTS, null, null, true, true,
+        false, null, 0, null, true, null);
+    MockAM am0 = MockRM.launchAndRegisterAM(app0, rm1, nm1);
+
+    am0.allocate("127.0.0.1", 1000, 2, new ArrayList<ContainerId>());
+    nm1.nodeHeartbeat(true);
+    List<Container> conts = am0.allocate(new ArrayList<ResourceRequest>(),
+        new ArrayList<ContainerId>()).getAllocatedContainers();
+    while (conts.size() == 0) {
+      nm1.nodeHeartbeat(true);
+      conts.addAll(am0.allocate(new ArrayList<ResourceRequest>(),
+          new ArrayList<ContainerId>()).getAllocatedContainers());
+      Thread.sleep(500);
+    }
+
+    // am failed,and relaunch it
+    nm1.nodeHeartbeat(am0.getApplicationAttemptId(), 1, ContainerState.COMPLETE);
+    rm1.waitForState(app0.getApplicationId(), RMAppState.ACCEPTED);
+    MockAM am1 = MockRM.launchAndRegisterAM(app0, rm1, nm1);
+
+    // rm failover
+    rm2 = new MockRM(conf, memStore);
+    rm2.start();
+    nm1.setResourceTrackerService(rm2.getResourceTrackerService());
+
+    // container launched by first am completed
+    NMContainerStatus amContainer =
+        TestRMRestart.createNMContainerStatus(am0.getApplicationAttemptId(), 1,
+          ContainerState.RUNNING);
+    NMContainerStatus completedContainer=
+        TestRMRestart.createNMContainerStatus(am0.getApplicationAttemptId(), 2,
+          ContainerState.COMPLETE);
+    NMContainerStatus runningContainer =
+        TestRMRestart.createNMContainerStatus(am0.getApplicationAttemptId(), 3,
+          ContainerState.RUNNING);
+    nm1.registerNode(Arrays.asList(amContainer, runningContainer,
+        completedContainer), null);
+    Thread.sleep(200);
+
+    // check whether current am could get containerCompleteMsg
+    RMApp recoveredApp0 =
+        rm2.getRMContext().getRMApps().get(app0.getApplicationId());
+    RMAppAttempt loadedAttempt1 = recoveredApp0.getCurrentAppAttempt();
+    assertEquals(1,loadedAttempt1.getJustFinishedContainers().size());
+  }
+
 }

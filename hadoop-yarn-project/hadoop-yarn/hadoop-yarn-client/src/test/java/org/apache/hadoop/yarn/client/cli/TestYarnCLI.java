@@ -52,6 +52,7 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerReport;
 import org.apache.hadoop.yarn.api.records.ContainerState;
 import org.apache.hadoop.yarn.api.records.FinalApplicationStatus;
+import org.apache.hadoop.yarn.api.records.LogAggregationStatus;
 import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.NodeState;
@@ -103,7 +104,8 @@ public class TestYarnCLI {
           "user", "queue", "appname", "host", 124, null,
           YarnApplicationState.FINISHED, "diagnostics", "url", 0, 0,
           FinalApplicationStatus.SUCCEEDED, usageReport, "N/A", 0.53789f, "YARN",
-          null);
+          null, null, false);
+      newApplicationReport.setLogAggregationStatus(LogAggregationStatus.SUCCEEDED);
       when(client.getApplicationReport(any(ApplicationId.class))).thenReturn(
           newApplicationReport);
       int result = cli.run(new String[] { "application", "-status", applicationId.toString() });
@@ -127,7 +129,9 @@ public class TestYarnCLI {
       pw.println("\tAM Host : host");
       pw.println("\tAggregate Resource Allocation : " +
           (i == 0 ? "N/A" : "123456 MB-seconds, 4567 vcore-seconds"));
+      pw.println("\tLog Aggregation Status : SUCCEEDED");
       pw.println("\tDiagnostics : diagnostics");
+      pw.println("\tUnmanaged Application : false");
       pw.close();
       String appReportStr = baos.toString("UTF-8");
       Assert.assertEquals(appReportStr, sysOutStream.toString());
@@ -142,10 +146,10 @@ public class TestYarnCLI {
     ApplicationId applicationId = ApplicationId.newInstance(1234, 5);
     ApplicationAttemptId attemptId = ApplicationAttemptId.newInstance(
         applicationId, 1);
-    ApplicationAttemptReport attemptReport = ApplicationAttemptReport
-        .newInstance(attemptId, "host", 124, "url", "oUrl", "diagnostics",
-            YarnApplicationAttemptState.FINISHED, ContainerId.newContainerId(
-                attemptId, 1));
+    ApplicationAttemptReport attemptReport =
+        ApplicationAttemptReport.newInstance(attemptId, "host", 124, "url",
+            "oUrl", "diagnostics", YarnApplicationAttemptState.FINISHED,
+            ContainerId.newContainerId(attemptId, 1), 1000l, 2000l);
     when(
         client
             .getApplicationAttemptReport(any(ApplicationAttemptId.class)))
@@ -1268,7 +1272,7 @@ public class TestYarnCLI {
     nodeLabels.add("GPU");
     nodeLabels.add("JDK_7");
     QueueInfo queueInfo = QueueInfo.newInstance("queueA", 0.4f, 0.8f, 0.5f,
-        null, null, QueueState.RUNNING, nodeLabels, "GPU");
+        null, null, QueueState.RUNNING, nodeLabels, "GPU", null);
     when(client.getQueueInfo(any(String.class))).thenReturn(queueInfo);
     int result = cli.run(new String[] { "-status", "queueA" });
     assertEquals(0, result);
@@ -1292,7 +1296,7 @@ public class TestYarnCLI {
   public void testGetQueueInfoWithEmptyNodeLabel() throws Exception {
     QueueCLI cli = createAndGetQueueCLI();
     QueueInfo queueInfo = QueueInfo.newInstance("queueA", 0.4f, 0.8f, 0.5f,
-        null, null, QueueState.RUNNING, null, null);
+        null, null, QueueState.RUNNING, null, null, null);
     when(client.getQueueInfo(any(String.class))).thenReturn(queueInfo);
     int result = cli.run(new String[] { "-status", "queueA" });
     assertEquals(0, result);

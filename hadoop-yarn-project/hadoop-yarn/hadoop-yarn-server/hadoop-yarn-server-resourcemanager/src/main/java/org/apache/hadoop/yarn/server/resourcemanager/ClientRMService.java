@@ -660,6 +660,13 @@ public class ClientRMService extends AbstractService implements
     YarnClusterMetrics ymetrics = recordFactory
         .newRecordInstance(YarnClusterMetrics.class);
     ymetrics.setNumNodeManagers(this.rmContext.getRMNodes().size());
+    ClusterMetrics clusterMetrics = ClusterMetrics.getMetrics();
+    ymetrics.setNumDecommissionedNodeManagers(clusterMetrics
+      .getNumDecommisionedNMs());
+    ymetrics.setNumActiveNodeManagers(clusterMetrics.getNumActiveNMs());
+    ymetrics.setNumLostNodeManagers(clusterMetrics.getNumLostNMs());
+    ymetrics.setNumUnhealthyNodeManagers(clusterMetrics.getUnhealthyNMs());
+    ymetrics.setNumRebootedNodeManagers(clusterMetrics.getNumRebootedNMs());
     response.setClusterMetrics(ymetrics);
     return response;
   }
@@ -1220,7 +1227,7 @@ public class ClientRMService extends AbstractService implements
       GetNodesToLabelsRequest request) throws YarnException, IOException {
     RMNodeLabelsManager labelsMgr = rmContext.getNodeLabelManager();
     GetNodesToLabelsResponse response =
-        GetNodesToLabelsResponse.newInstance(labelsMgr.getNodeLabels());
+        GetNodesToLabelsResponse.newInstance(labelsMgr.getNodeLabelsInfo());
     return response;
   }
 
@@ -1230,10 +1237,10 @@ public class ClientRMService extends AbstractService implements
     RMNodeLabelsManager labelsMgr = rmContext.getNodeLabelManager();
     if (request.getNodeLabels() == null || request.getNodeLabels().isEmpty()) {
       return GetLabelsToNodesResponse.newInstance(
-          labelsMgr.getLabelsToNodes());
+          labelsMgr.getLabelsInfoToNodes());
     } else {
       return GetLabelsToNodesResponse.newInstance(
-          labelsMgr.getLabelsToNodes(request.getNodeLabels()));
+          labelsMgr.getLabelsInfoToNodes(request.getNodeLabels()));
     }
   }
 

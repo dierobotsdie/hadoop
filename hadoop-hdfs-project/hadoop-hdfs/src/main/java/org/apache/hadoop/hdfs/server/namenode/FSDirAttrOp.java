@@ -25,12 +25,12 @@ import org.apache.hadoop.fs.XAttr;
 import org.apache.hadoop.fs.XAttrSetFlag;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
-import org.apache.hadoop.hdfs.protocol.Block;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
 import org.apache.hadoop.hdfs.protocol.QuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.SnapshotAccessControlException;
+import org.apache.hadoop.hdfs.server.blockmanagement.BlockInfo;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockManager;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.util.EnumCounters;
@@ -148,8 +148,8 @@ public class FSDirAttrOp {
       }
 
       final short[] blockRepls = new short[2]; // 0: old, 1: new
-      final Block[] blocks = unprotectedSetReplication(fsd, src, replication,
-                                                       blockRepls);
+      final BlockInfo[] blocks = unprotectedSetReplication(fsd, src,
+          replication, blockRepls);
       isFile = blocks != null;
       if (isFile) {
         fsd.getEditLog().logSetReplication(src, replication);
@@ -375,7 +375,7 @@ public class FSDirAttrOp {
     }
   }
 
-  static Block[] unprotectedSetReplication(
+  static BlockInfo[] unprotectedSetReplication(
       FSDirectory fsd, String src, short replication, short[] blockRepls)
       throws QuotaExceededException, UnresolvedLinkException,
              SnapshotAccessControlException {
@@ -387,22 +387,22 @@ public class FSDirAttrOp {
       return null;
     }
     INodeFile file = inode.asFile();
-    final short oldBR = file.getBlockReplication();
+    final short oldBR = file.getPreferredBlockReplication();
 
     // before setFileReplication, check for increasing block replication.
     // if replication > oldBR, then newBR == replication.
     // if replication < oldBR, we don't know newBR yet.
     if (replication > oldBR) {
-      long dsDelta = file.storagespaceConsumed()/oldBR;
+      long dsDelta = file.storagespaceConsumed(null).getStorageSpace() / oldBR;
       fsd.updateCount(iip, 0L, dsDelta, oldBR, replication, true);
     }
 
     file.setFileReplication(replication, iip.getLatestSnapshotId());
 
-    final short newBR = file.getBlockReplication();
+    final short newBR = file.getPreferredBlockReplication();
     // check newBR < oldBR case.
     if (newBR < oldBR) {
-      long dsDelta = file.storagespaceConsumed()/newBR;
+      long dsDelta = file.storagespaceConsumed(null).getStorageSpace() / newBR;
       fsd.updateCount(iip, 0L, dsDelta, oldBR, newBR, true);
     }
 
@@ -474,8 +474,7 @@ public class FSDirAttrOp {
 
       // if the last access time update was within the last precision interval, then
       // no need to store access time
-      if (atime <= inodeTime + fsd.getFSNamesystem().getAccessTimePrecision()
-          && !force) {
+      if (atime <= inodeTime + fsd.getAccessTimePrecision() && !force) {
         status =  false;
       } else {
         inode.setAccessTime(atime, latest);

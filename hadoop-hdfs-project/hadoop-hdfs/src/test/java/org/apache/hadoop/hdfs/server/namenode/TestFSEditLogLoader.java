@@ -43,7 +43,7 @@ import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.DFSTestUtil;
 import org.apache.hadoop.hdfs.HdfsConfiguration;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.hadoop.hdfs.protocol.HdfsConstants;
+import org.apache.hadoop.hdfs.server.common.HdfsServerConstants;
 import org.apache.hadoop.hdfs.server.common.Storage.StorageDirectory;
 import org.apache.hadoop.hdfs.server.namenode.FSEditLogLoader.EditLogValidation;
 import org.apache.hadoop.hdfs.server.namenode.NNStorage.NameNodeDirType;
@@ -285,7 +285,7 @@ public class TestFSEditLogLoader {
       // FSEditLog#endCurrentLogSegment.  For testing purposes, we
       // disable that here.
       doNothing().when(spyLog).endCurrentLogSegment(true);
-      spyLog.openForWrite();
+      spyLog.openForWrite(NameNodeLayoutVersion.CURRENT_LAYOUT_VERSION);
       assertTrue("should exist: " + inProgressFile, inProgressFile.exists());
       
       for (int i = 0; i < numTx; i++) {
@@ -365,7 +365,7 @@ public class TestFSEditLogLoader {
       truncateFile(logFile, txOffset);
       validation = EditLogFileInputStream.validateEditLog(logFile);
       long expectedEndTxId = (txId == 0) ?
-          HdfsConstants.INVALID_TXID : (txId - 1);
+          HdfsServerConstants.INVALID_TXID : (txId - 1);
       assertEquals("Failed when corrupting txid " + txId + " txn opcode " +
         "at " + txOffset, expectedEndTxId, validation.getEndTxId());
       assertTrue(!validation.hasCorruptHeader());
@@ -383,7 +383,7 @@ public class TestFSEditLogLoader {
     EditLogValidation validation =
         EditLogFileInputStream.validateEditLog(logFile);
     assertTrue(!validation.hasCorruptHeader());
-    assertEquals(HdfsConstants.INVALID_TXID, validation.getEndTxId());
+    assertEquals(HdfsServerConstants.INVALID_TXID, validation.getEndTxId());
   }
 
   private static final Map<Byte, FSEditLogOpCodes> byteToEnum =

@@ -40,6 +40,7 @@ import org.apache.hadoop.hdfs.server.datanode.FinalizedReplica;
 import org.apache.hadoop.hdfs.server.datanode.ReplicaHandler;
 import org.apache.hadoop.hdfs.server.datanode.ReplicaInfo;
 import org.apache.hadoop.hdfs.server.datanode.StorageLocation;
+import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsDatasetSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeReference;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.RoundRobinVolumeChoosingPolicy;
 import org.apache.hadoop.hdfs.server.protocol.NamespaceInfo;
@@ -50,13 +51,13 @@ import org.apache.hadoop.util.StringUtils;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Matchers;
+import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -66,9 +67,10 @@ import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOUR
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyList;
 import static org.mockito.Matchers.anyListOf;
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Matchers.eq;
@@ -124,6 +126,15 @@ public class TestFsDatasetImpl {
     when(storage.getNumStorageDirs()).thenReturn(numDirs);
   }
 
+  private int getNumVolumes() {
+    try (FsDatasetSpi.FsVolumeReferences volumes =
+        dataset.getFsVolumeReferences()) {
+      return volumes.size();
+    } catch (IOException e) {
+      return 0;
+    }
+  }
+
   @Before
   public void setUp() throws IOException {
     datanode = mock(DataNode.class);
@@ -143,14 +154,14 @@ public class TestFsDatasetImpl {
       dataset.addBlockPool(bpid, conf);
     }
 
-    assertEquals(NUM_INIT_VOLUMES, dataset.getVolumes().size());
+    assertEquals(NUM_INIT_VOLUMES, getNumVolumes());
     assertEquals(0, dataset.getNumFailedVolumes());
   }
 
   @Test
   public void testAddVolumes() throws IOException {
     final int numNewVolumes = 3;
-    final int numExistingVolumes = dataset.getVolumes().size();
+    final int numExistingVolumes = getNumVolumes();
     final int totalVolumes = numNewVolumes + numExistingVolumes;
     Set<String> expectedVolumes = new HashSet<String>();
     List<NamespaceInfo> nsInfos = Lists.newArrayList();
@@ -172,13 +183,15 @@ public class TestFsDatasetImpl {
       dataset.addVolume(loc, nsInfos);
     }
 
-    assertEquals(totalVolumes, dataset.getVolumes().size());
+    assertEquals(totalVolumes, getNumVolumes());
     assertEquals(totalVolumes, dataset.storageMap.size());
 
     Set<String> actualVolumes = new HashSet<String>();
-    for (int i = 0; i < numNewVolumes; i++) {
-      actualVolumes.add(
-          dataset.getVolumes().get(numExistingVolumes + i).getBasePath());
+    try (FsDatasetSpi.FsVolumeReferences volumes =
+        dataset.getFsVolumeReferences()) {
+      for (int i = 0; i < numNewVolumes; i++) {
+        actualVolumes.add(volumes.get(numExistingVolumes + i).getBasePath());
+      }
     }
     assertEquals(actualVolumes.size(), expectedVolumes.size());
     assertTrue(actualVolumes.containsAll(expectedVolumes));
@@ -204,7 +217,7 @@ public class TestFsDatasetImpl {
     dataset.removeVolumes(volumesToRemove, true);
     int expectedNumVolumes = dataDirs.length - 1;
     assertEquals("The volume has been removed from the volumeList.",
-        expectedNumVolumes, dataset.getVolumes().size());
+        expectedNumVolumes, getNumVolumes());
     assertEquals("The volume has been removed from the storageMap.",
         expectedNumVolumes, dataset.storageMap.size());
 
@@ -231,7 +244,7 @@ public class TestFsDatasetImpl {
 
   @Test(timeout = 5000)
   public void testRemoveNewlyAddedVolume() throws IOException {
-    final int numExistingVolumes = dataset.getVolumes().size();
+    final int numExistingVolumes = getNumVolumes();
     List<NamespaceInfo> nsInfos = new ArrayList<>();
     for (String bpid : BLOCK_POOL_IDS) {
       nsInfos.add(new NamespaceInfo(0, CLUSTER_ID, bpid, 1));
@@ -247,20 +260,21 @@ public class TestFsDatasetImpl {
         .thenReturn(builder);
 
     dataset.addVolume(loc, nsInfos);
-    assertEquals(numExistingVolumes + 1, dataset.getVolumes().size());
+    assertEquals(numExistingVolumes + 1, getNumVolumes());
 
     when(storage.getNumStorageDirs()).thenReturn(numExistingVolumes + 1);
     when(storage.getStorageDir(numExistingVolumes)).thenReturn(sd);
     Set<File> volumesToRemove = new HashSet<>();
     volumesToRemove.add(loc.getFile());
     dataset.removeVolumes(volumesToRemove, true);
-    assertEquals(numExistingVolumes, dataset.getVolumes().size());
+    assertEquals(numExistingVolumes, getNumVolumes());
   }
 
   @Test(timeout = 5000)
   public void testChangeVolumeWithRunningCheckDirs() throws IOException {
     RoundRobinVolumeChoosingPolicy<FsVolumeImpl> blockChooser =
         new RoundRobinVolumeChoosingPolicy<>();
+    conf.setLong(DFSConfigKeys.DFS_DATANODE_SCAN_PERIOD_HOURS_KEY, -1);
     final BlockScanner blockScanner = new BlockScanner(datanode, conf);
     final FsVolumeList volumeList = new FsVolumeList(
         Collections.<VolumeFailureInfo>emptyList(), blockScanner, blockChooser);
@@ -357,7 +371,10 @@ public class TestFsDatasetImpl {
       DataNode dn = cluster.getDataNodes().get(0);
       
       FsDatasetImpl ds = (FsDatasetImpl) DataNodeTestUtils.getFSDataset(dn);
-      FsVolumeImpl vol = ds.getVolumes().get(0);
+      FsVolumeImpl vol;
+      try (FsDatasetSpi.FsVolumeReferences volumes = ds.getFsVolumeReferences()) {
+        vol = (FsVolumeImpl)volumes.get(0);
+      }
 
       ExtendedBlock eb;
       ReplicaInfo info;
@@ -397,5 +414,36 @@ public class TestFsDatasetImpl {
     } finally {
       cluster.shutdown();
     }
+  }
+
+  @Test
+  public void testDuplicateReplicaResolution() throws IOException {
+    FsVolumeImpl fsv1 = Mockito.mock(FsVolumeImpl.class);
+    FsVolumeImpl fsv2 = Mockito.mock(FsVolumeImpl.class);
+
+    File f1 = new File("d1/block");
+    File f2 = new File("d2/block");
+
+    ReplicaInfo replicaOlder = new FinalizedReplica(1,1,1,fsv1,f1);
+    ReplicaInfo replica = new FinalizedReplica(1,2,2,fsv1,f1);
+    ReplicaInfo replicaSame = new FinalizedReplica(1,2,2,fsv1,f1);
+    ReplicaInfo replicaNewer = new FinalizedReplica(1,3,3,fsv1,f1);
+
+    ReplicaInfo replicaOtherOlder = new FinalizedReplica(1,1,1,fsv2,f2);
+    ReplicaInfo replicaOtherSame = new FinalizedReplica(1,2,2,fsv2,f2);
+    ReplicaInfo replicaOtherNewer = new FinalizedReplica(1,3,3,fsv2,f2);
+
+    // equivalent path so don't remove either
+    assertNull(BlockPoolSlice.selectReplicaToDelete(replicaSame, replica));
+    assertNull(BlockPoolSlice.selectReplicaToDelete(replicaOlder, replica));
+    assertNull(BlockPoolSlice.selectReplicaToDelete(replicaNewer, replica));
+
+    // keep latest found replica
+    assertSame(replica,
+        BlockPoolSlice.selectReplicaToDelete(replicaOtherSame, replica));
+    assertSame(replicaOtherOlder,
+        BlockPoolSlice.selectReplicaToDelete(replicaOtherOlder, replica));
+    assertSame(replica,
+        BlockPoolSlice.selectReplicaToDelete(replicaOtherNewer, replica));
   }
 }

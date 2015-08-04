@@ -24,16 +24,17 @@ import java.util.EnumSet;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.fs.ReadOption;
 import org.apache.hadoop.fs.StorageType;
-import org.apache.hadoop.hdfs.DFSClient.Conf;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf.ShortCircuitConf;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.server.datanode.BlockMetadataHeader;
 import org.apache.hadoop.hdfs.server.datanode.CachingStrategy;
 import org.apache.hadoop.hdfs.shortcircuit.ClientMmap;
 import org.apache.hadoop.hdfs.shortcircuit.ShortCircuitReplica;
-import org.apache.hadoop.util.DirectBufferPool;
 import org.apache.hadoop.util.DataChecksum;
+import org.apache.hadoop.util.DirectBufferPool;
 import org.apache.htrace.Sampler;
 import org.apache.htrace.Trace;
 import org.apache.htrace.TraceScope;
@@ -57,6 +58,7 @@ import com.google.common.base.Preconditions;
  * <li>The client reads the file descriptors.</li>
  * </ul>
  */
+@InterfaceAudience.Private
 class BlockReaderLocal implements BlockReader {
   static final Log LOG = LogFactory.getLog(BlockReaderLocal.class);
 
@@ -72,10 +74,10 @@ class BlockReaderLocal implements BlockReader {
     private ExtendedBlock block;
     private StorageType storageType;
 
-    public Builder(Conf conf) {
+    public Builder(ShortCircuitConf conf) {
       this.maxReadahead = Integer.MAX_VALUE;
-      this.verifyChecksum = !conf.skipShortCircuitChecksums;
-      this.bufferSize = conf.shortCircuitBufferSize;
+      this.verifyChecksum = !conf.isSkipShortCircuitChecksums();
+      this.bufferSize = conf.getShortCircuitBufferSize();
     }
 
     public Builder setVerifyChecksum(boolean verifyChecksum) {

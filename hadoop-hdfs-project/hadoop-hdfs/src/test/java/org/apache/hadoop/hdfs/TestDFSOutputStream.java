@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.DataStreamer.LastExceptionInStreamer;
+import org.apache.hadoop.hdfs.client.impl.DfsClientConf;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.HdfsFileStatus;
@@ -61,13 +63,13 @@ public class TestDFSOutputStream {
     FSDataOutputStream os = fs.create(new Path("/test"));
     DFSOutputStream dos = (DFSOutputStream) Whitebox.getInternalState(os,
         "wrappedStream");
-    @SuppressWarnings("unchecked")
     DataStreamer streamer = (DataStreamer) Whitebox
         .getInternalState(dos, "streamer");
     @SuppressWarnings("unchecked")
-    AtomicReference<IOException> ex = (AtomicReference<IOException>) Whitebox
+    LastExceptionInStreamer ex = (LastExceptionInStreamer) Whitebox
         .getInternalState(streamer, "lastException");
-    Assert.assertEquals(null, ex.get());
+    Throwable thrown = (Throwable) Whitebox.getInternalState(ex, "thrown");
+    Assert.assertNull(thrown);
 
     dos.close();
 
@@ -78,7 +80,8 @@ public class TestDFSOutputStream {
     } catch (IOException e) {
       Assert.assertEquals(e, dummy);
     }
-    Assert.assertEquals(null, ex.get());
+    thrown = (Throwable) Whitebox.getInternalState(ex, "thrown");
+    Assert.assertNull(thrown);
     dos.close();
   }
 
@@ -113,7 +116,7 @@ public class TestDFSOutputStream {
 
   @Test
   public void testCongestionBackoff() throws IOException {
-    DFSClient.Conf dfsClientConf = mock(DFSClient.Conf.class);
+    DfsClientConf dfsClientConf = mock(DfsClientConf.class);
     DFSClient client = mock(DFSClient.class);
     when(client.getConf()).thenReturn(dfsClientConf);
     client.clientRunning = true;
@@ -121,7 +124,7 @@ public class TestDFSOutputStream {
         mock(HdfsFileStatus.class),
         mock(ExtendedBlock.class),
         client,
-        "foo", null, null, null, null);
+        "foo", null, null, null, null, null);
 
     DataOutputStream blockStream = mock(DataOutputStream.class);
     doThrow(new IOException()).when(blockStream).flush();

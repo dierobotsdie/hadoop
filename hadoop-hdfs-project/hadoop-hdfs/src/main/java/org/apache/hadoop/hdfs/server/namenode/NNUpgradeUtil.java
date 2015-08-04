@@ -20,6 +20,7 @@ package org.apache.hadoop.hdfs.server.namenode;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 
 import org.apache.commons.logging.Log;
@@ -32,7 +33,7 @@ import org.apache.hadoop.hdfs.server.common.StorageInfo;
 import com.google.common.base.Preconditions;
 import org.apache.hadoop.io.IOUtils;
 
-abstract class NNUpgradeUtil {
+public abstract class NNUpgradeUtil {
   
   private static final Log LOG = LogFactory.getLog(NNUpgradeUtil.class);
   
@@ -111,6 +112,32 @@ abstract class NNUpgradeUtil {
   static void doPreUpgrade(Configuration conf, StorageDirectory sd)
       throws IOException {
     LOG.info("Starting upgrade of storage directory " + sd.getRoot());
+
+    // rename current to tmp
+    renameCurToTmp(sd);
+
+    final File curDir = sd.getCurrentDir();
+    final File tmpDir = sd.getPreviousTmp();
+    List<String> fileNameList = IOUtils.listDirectory(tmpDir, new FilenameFilter() {
+      @Override
+      public boolean accept(File dir, String name) {
+        return dir.equals(tmpDir)
+            && name.startsWith(NNStorage.NameNodeFile.EDITS.getName());
+      }
+    });
+
+    for (String s : fileNameList) {
+      File prevFile = new File(tmpDir, s);
+      File newFile = new File(curDir, prevFile.getName());
+      Files.createLink(newFile.toPath(), prevFile.toPath());
+    }
+  }
+
+  /**
+   * Rename the existing current dir to previous.tmp, and create a new empty
+   * current dir.
+   */
+  public static void renameCurToTmp(StorageDirectory sd) throws IOException {
     File curDir = sd.getCurrentDir();
     File prevDir = sd.getPreviousDir();
     final File tmpDir = sd.getPreviousTmp();
@@ -125,38 +152,9 @@ abstract class NNUpgradeUtil {
 
     // rename current to tmp
     NNStorage.rename(curDir, tmpDir);
-    
+
     if (!curDir.mkdir()) {
       throw new IOException("Cannot create directory " + curDir);
-    }
-
-    List<String> fileNameList = IOUtils.listDirectory(tmpDir, new FilenameFilter() {
-      @Override
-      public boolean accept(File dir, String name) {
-        return dir.equals(tmpDir)
-            && name.startsWith(NNStorage.NameNodeFile.EDITS.getName());
-      }
-    });
-
-    for (String s : fileNameList) {
-      File prevFile = new File(tmpDir, s);
-      Preconditions.checkState(prevFile.canRead(),
-          "Edits log file " + s + " is not readable.");
-      File newFile = new File(curDir, prevFile.getName());
-      Preconditions.checkState(newFile.createNewFile(),
-          "Cannot create new edits log file in " + curDir);
-      EditLogFileInputStream in = new EditLogFileInputStream(prevFile);
-      EditLogFileOutputStream out =
-          new EditLogFileOutputStream(conf, newFile, 512*1024);
-      FSEditLogOp logOp = in.nextValidOp();
-      while (logOp != null) {
-        out.write(logOp);
-        logOp = in.nextOp();
-      }
-      out.setReadyToFlush();
-      out.flushAndSync(true);
-      out.close();
-      in.close();
     }
   }
   
@@ -169,14 +167,14 @@ abstract class NNUpgradeUtil {
    * @param storage info about the new upgraded versions.
    * @throws IOException in the event of error
    */
-  static void doUpgrade(StorageDirectory sd, Storage storage) throws
-      IOException {
+  public static void doUpgrade(StorageDirectory sd, Storage storage)
+      throws IOException {
     LOG.info("Performing upgrade of storage directory " + sd.getRoot());
     try {
       // Write the version file, since saveFsImage only makes the
       // fsimage_<txid>, and the directory is otherwise empty.
       storage.writeProperties(sd);
-      
+
       File prevDir = sd.getPreviousDir();
       File tmpDir = sd.getPreviousTmp();
       Preconditions.checkState(!prevDir.exists(),

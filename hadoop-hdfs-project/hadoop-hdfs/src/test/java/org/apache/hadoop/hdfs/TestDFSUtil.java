@@ -19,7 +19,6 @@
 package org.apache.hadoop.hdfs;
 
 import static org.apache.hadoop.fs.CommonConfigurationKeysPublic.FS_DEFAULT_NAME_KEY;
-import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_HA_NAMENODES_KEY_PREFIX;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_INTERNAL_NAMESERVICES_KEY;
 import static org.apache.hadoop.hdfs.DFSConfigKeys.DFS_NAMENODE_BACKUP_ADDRESS_KEY;
@@ -60,6 +59,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
 import org.apache.hadoop.fs.CommonConfigurationKeys;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hdfs.client.HdfsClientConfigKeys;
 import org.apache.hadoop.hdfs.protocol.DatanodeInfo;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.hdfs.protocol.LocatedBlock;
@@ -112,7 +112,7 @@ public class TestDFSUtil {
     List<LocatedBlock> ls = Arrays.asList(l1, l2);
     LocatedBlocks lbs = new LocatedBlocks(10, false, ls, l2, true, null);
 
-    BlockLocation[] bs = DFSUtil.locatedBlocks2Locations(lbs);
+    BlockLocation[] bs = DFSUtilClient.locatedBlocks2Locations(lbs);
 
     assertTrue("expected 2 blocks but got " + bs.length,
                bs.length == 2);
@@ -128,7 +128,7 @@ public class TestDFSUtil {
         corruptCount == 1);
 
     // test an empty location
-    bs = DFSUtil.locatedBlocks2Locations(new LocatedBlocks());
+    bs = DFSUtilClient.locatedBlocks2Locations(new LocatedBlocks());
     assertEquals(0, bs.length);
   }
 
@@ -216,13 +216,13 @@ public class TestDFSUtil {
   }
 
   /**
-   * Test {@link DFSUtil#getNameServiceIds(Configuration)}
+   * Test {@link DFSUtilClient#getNameServiceIds(Configuration)}
    */
   @Test
   public void testGetNameServiceIds() {
     HdfsConfiguration conf = new HdfsConfiguration();
     conf.set(DFS_NAMESERVICES, "nn1,nn2");
-    Collection<String> nameserviceIds = DFSUtil.getNameServiceIds(conf);
+    Collection<String> nameserviceIds = DFSUtilClient.getNameServiceIds(conf);
     Iterator<String> it = nameserviceIds.iterator();
     assertEquals(2, nameserviceIds.size());
     assertEquals("nn1", it.next().toString());
@@ -587,7 +587,7 @@ public class TestDFSUtil {
     Configuration conf = createWebHDFSHAConfiguration(LOGICAL_HOST_NAME, NS1_NN1_ADDR, NS1_NN2_ADDR);
 
     Map<String, Map<String, InetSocketAddress>> map =
-        DFSUtil.getHaNnWebHdfsAddresses(conf, "webhdfs");
+        DFSUtilClient.getHaNnWebHdfsAddresses(conf, "webhdfs");
 
     assertEquals(NS1_NN1_ADDR, map.get("ns1").get("nn1").toString());
     assertEquals(NS1_NN2_ADDR, map.get("ns1").get("nn2").toString());
@@ -603,7 +603,7 @@ public class TestDFSUtil {
     conf.set(DFSUtil.addKeySuffixes(
         DFS_NAMENODE_HTTP_ADDRESS_KEY, "ns1", "nn2"), nnaddr2);
 
-    conf.set(DFS_CLIENT_FAILOVER_PROXY_PROVIDER_KEY_PREFIX + "." + logicalHostName,
+    conf.set(HdfsClientConfigKeys.Failover.PROXY_PROVIDER_KEY_PREFIX + "." + logicalHostName,
         ConfiguredFailoverProxyProvider.class.getName());
     return conf;
   }
@@ -896,5 +896,23 @@ public class TestDFSUtil {
       fail("Should fail for misconfiguration");
     } catch (IOException ignored) {
     }
+  }
+
+  @Test
+  public void testEncryptionProbe() throws Throwable {
+    Configuration conf = new Configuration(false);
+    conf.unset(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI);
+    assertFalse("encryption enabled on no provider key",
+        DFSUtil.isHDFSEncryptionEnabled(conf));
+    conf.set(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI, "");
+    assertFalse("encryption enabled on empty provider key",
+        DFSUtil.isHDFSEncryptionEnabled(conf));
+    conf.set(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI, "\n\t\n");
+    assertFalse("encryption enabled on whitespace provider key",
+        DFSUtil.isHDFSEncryptionEnabled(conf));
+    conf.set(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI, "http://hadoop.apache.org");
+    assertTrue("encryption disabled on valid provider key",
+        DFSUtil.isHDFSEncryptionEnabled(conf));
+
   }
 }

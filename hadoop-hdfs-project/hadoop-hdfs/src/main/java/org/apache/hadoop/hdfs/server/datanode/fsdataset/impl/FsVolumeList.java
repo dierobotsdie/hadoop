@@ -41,6 +41,7 @@ import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.VolumeChoosingPolicy;
 import org.apache.hadoop.hdfs.server.datanode.BlockScanner;
 import org.apache.hadoop.hdfs.server.protocol.DatanodeStorage;
+import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.util.DiskChecker.DiskErrorException;
 import org.apache.hadoop.util.Time;
 
@@ -275,10 +276,11 @@ class FsVolumeList {
    * @param ref       a reference to the new FsVolumeImpl instance.
    */
   void addVolume(FsVolumeReference ref) {
+    FsVolumeImpl volume = (FsVolumeImpl) ref.getVolume();
     while (true) {
       final FsVolumeImpl[] curVolumes = volumes.get();
       final List<FsVolumeImpl> volumeList = Lists.newArrayList(curVolumes);
-      volumeList.add((FsVolumeImpl)ref.getVolume());
+      volumeList.add(volume);
       if (volumes.compareAndSet(curVolumes,
           volumeList.toArray(new FsVolumeImpl[volumeList.size()]))) {
         break;
@@ -292,12 +294,16 @@ class FsVolumeList {
     }
     if (blockScanner != null) {
       blockScanner.addVolumeScanner(ref);
+    } else {
+      // If the volume is not put into a volume scanner, it does not need to
+      // hold the reference.
+      IOUtils.cleanup(FsDatasetImpl.LOG, ref);
     }
     // If the volume is used to replace a failed volume, it needs to reset the
     // volume failure info for this volume.
-    removeVolumeFailureInfo(new File(ref.getVolume().getBasePath()));
+    removeVolumeFailureInfo(new File(volume.getBasePath()));
     FsDatasetImpl.LOG.info("Added new volume: " +
-        ref.getVolume().getStorageID());
+        volume.getStorageID());
   }
 
   /**

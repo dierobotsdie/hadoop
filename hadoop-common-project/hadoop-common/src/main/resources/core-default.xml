@@ -39,15 +39,6 @@
 </property>
 
 <property>
-  <name>io.native.lib.available</name>
-  <value>true</value>
-  <description>Controls whether to use native libraries for bz2 and zlib
-    compression codecs or not. The property does not control any other native
-    libraries.
-  </description>
-</property>
-
-<property>
   <name>hadoop.http.filter.initializers</name>
   <value>org.apache.hadoop.http.lib.StaticUserWebFilter</value>
   <description>A comma separated list of class names. Each class in the list 
@@ -331,6 +322,24 @@ for ldap providers in the same way as above does.
 </property>
 
 <property>
+  <name>hadoop.security.group.mapping.ldap.posix.attr.uid.name</name>
+  <value>uidNumber</value>
+  <description>
+    The attribute of posixAccount to use when groups for membership.
+    Mostly useful for schemas wherein groups have memberUids that use an
+    attribute other than uidNumber.
+  </description>
+</property>
+
+<property>
+  <name>hadoop.security.group.mapping.ldap.posix.attr.gid.name</name>
+  <value>gidNumber</value>
+  <description>
+    The attribute of posixAccount indicating the group id.
+  </description>
+</property>
+
+<property>
   <name>hadoop.security.group.mapping.ldap.directory.search.timeout</name>
   <value>10000</value>
   <description>
@@ -475,7 +484,7 @@ for ldap providers in the same way as above does.
 
 <property>
   <name>io.serializations</name>
-  <value>org.apache.hadoop.io.serializer.WritableSerialization,org.apache.hadoop.io.serializer.avro.AvroSpecificSerialization,org.apache.hadoop.io.serializer.avro.AvroReflectSerialization</value>
+  <value>org.apache.hadoop.io.serializer.WritableSerialization, org.apache.hadoop.io.serializer.avro.AvroSpecificSerialization, org.apache.hadoop.io.serializer.avro.AvroReflectSerialization</value>
   <description>A list of serialization classes that can be used for
   obtaining serializers and deserializers.</description>
 </property>
@@ -584,6 +593,18 @@ for ldap providers in the same way as above does.
   <name>fs.AbstractFileSystem.ftp.impl</name>
   <value>org.apache.hadoop.fs.ftp.FtpFs</value>
   <description>The FileSystem for Ftp: uris.</description>
+</property>
+
+<property>
+  <name>fs.AbstractFileSystem.webhdfs.impl</name>
+  <value>org.apache.hadoop.fs.WebHdfs</value>
+  <description>The FileSystem for webhdfs: uris.</description>
+</property>
+
+<property>
+  <name>fs.AbstractFileSystem.swebhdfs.impl</name>
+  <value>org.apache.hadoop.fs.SWebHdfs</value>
+  <description>The FileSystem for swebhdfs: uris.</description>
 </property>
 
 <property>
@@ -1664,7 +1685,7 @@ for ldap providers in the same way as above does.
 
 <property>
   <name>hadoop.security.crypto.codec.classes.aes.ctr.nopadding</name>
-  <value>org.apache.hadoop.crypto.OpensslAesCtrCryptoCodec,org.apache.hadoop.crypto.JceAesCtrCryptoCodec</value>
+  <value>org.apache.hadoop.crypto.OpensslAesCtrCryptoCodec, org.apache.hadoop.crypto.JceAesCtrCryptoCodec</value>
   <description>
     Comma-separated list of crypto codec implementations for AES/CTR/NoPadding. 
     The first implementation will be used if available, others are fallbacks.
@@ -1762,18 +1783,6 @@ for ldap providers in the same way as above does.
   <description>
     Cache expiry time for a Key, after which the cache Queue for this
     key will be dropped. Default = 12hrs
-  </description>
-</property>
-
-<property>
-  <name>hadoop.htrace.spanreceiver.classes</name>
-  <value></value>
-  <description>
-    A comma separated list of the fully-qualified class name of classes 
-    implementing SpanReceiver. The tracing system works by collecting 
-    information in structs called 'Spans'. It is up to you to choose 
-    how you want to receive this information by implementing the 
-    SpanReceiver interface.
   </description>
 </property>
 
@@ -1920,4 +1929,12 @@ for ldap providers in the same way as above does.
     <value>Client</value>
   </property>
 
+  <property>
+    <description>
+      Enable hdfs shell commands to display warnings if (fs.defaultFS) property
+      is not set.
+    </description>
+    <name>hadoop.shell.missing.defaultFs.warning</name>
+    <value>false</value>
+  </property>
 </configuration>

@@ -139,9 +139,11 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
       blockNewEvents = true;
       LOG.info("AsyncDispatcher is draining to stop, igonring any new events.");
       synchronized (waitForDrained) {
-        while (!drained && eventHandlingThread.isAlive()) {
+        while (!drained && eventHandlingThread != null
+            && eventHandlingThread.isAlive()) {
           waitForDrained.wait(1000);
-          LOG.info("Waiting for AsyncDispatcher to drain.");
+          LOG.info("Waiting for AsyncDispatcher to drain. Thread state is :" +
+              eventHandlingThread.getState());
         }
       }
     }
@@ -245,6 +247,9 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
         if (!stopped) {
           LOG.warn("AsyncDispatcher thread interrupted", e);
         }
+        // Need to reset drained flag to true if event queue is empty,
+        // otherwise dispatcher will hang on stop.
+        drained = eventQueue.isEmpty();
         throw new YarnRuntimeException(e);
       }
     };
@@ -283,6 +288,11 @@ public class AsyncDispatcher extends AbstractService implements Dispatcher {
         System.exit(-1);
       }
     };
+  }
+
+  @VisibleForTesting
+  protected boolean isEventThreadWaiting() {
+    return eventHandlingThread.getState() == Thread.State.WAITING;
   }
 
   @VisibleForTesting

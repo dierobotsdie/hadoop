@@ -84,6 +84,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.RMApp;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.AMLivelinessMonitor;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptImpl;
+import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.event.RMAppAttemptRegistrationEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.event.RMAppAttemptStatusupdateEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.event.RMAppAttemptUnregistrationEvent;
@@ -95,6 +96,7 @@ import org.apache.hadoop.yarn.server.resourcemanager.scheduler.YarnScheduler;
 import org.apache.hadoop.yarn.server.resourcemanager.security.authorize.RMPolicyProvider;
 import org.apache.hadoop.yarn.server.security.MasterKeyData;
 import org.apache.hadoop.yarn.server.utils.BuilderUtils;
+import org.apache.hadoop.yarn.util.resource.Resources;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -105,7 +107,7 @@ public class ApplicationMasterService extends AbstractService implements
   private static final Log LOG = LogFactory.getLog(ApplicationMasterService.class);
   private final AMLivelinessMonitor amLivelinessMonitor;
   private YarnScheduler rScheduler;
-  private InetSocketAddress bindAddress;
+  private InetSocketAddress masterServiceAddress;
   private Server server;
   private final RecordFactory recordFactory =
       RecordFactoryProvider.getRecordFactory(null);
@@ -121,15 +123,18 @@ public class ApplicationMasterService extends AbstractService implements
   }
 
   @Override
-  protected void serviceStart() throws Exception {
-    Configuration conf = getConfig();
-    YarnRPC rpc = YarnRPC.create(conf);
-
-    InetSocketAddress masterServiceAddress = conf.getSocketAddr(
+  protected void serviceInit(Configuration conf) throws Exception {
+    masterServiceAddress = conf.getSocketAddr(
         YarnConfiguration.RM_BIND_HOST,
         YarnConfiguration.RM_SCHEDULER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,
         YarnConfiguration.DEFAULT_RM_SCHEDULER_PORT);
+  }
+
+  @Override
+  protected void serviceStart() throws Exception {
+    Configuration conf = getConfig();
+    YarnRPC rpc = YarnRPC.create(conf);
 
     Configuration serverConf = conf;
     // If the auth is not-simple, enforce it to be token-based.
@@ -158,7 +163,7 @@ public class ApplicationMasterService extends AbstractService implements
     }
     
     this.server.start();
-    this.bindAddress =
+    this.masterServiceAddress =
         conf.updateConnectAddr(YarnConfiguration.RM_BIND_HOST,
                                YarnConfiguration.RM_SCHEDULER_ADDRESS,
                                YarnConfiguration.DEFAULT_RM_SCHEDULER_ADDRESS,
@@ -168,7 +173,7 @@ public class ApplicationMasterService extends AbstractService implements
 
   @Private
   public InetSocketAddress getBindAddress() {
-    return this.bindAddress;
+    return this.masterServiceAddress;
   }
 
   // Obtain the needed AMRMTokenIdentifier from the remote-UGI. RPC layer
@@ -298,32 +303,35 @@ public class ApplicationMasterService extends AbstractService implements
 
       // For work-preserving AM restart, retrieve previous attempts' containers
       // and corresponding NM tokens.
-      List<Container> transferredContainers =
-          ((AbstractYarnScheduler) rScheduler)
+      if (app.getApplicationSubmissionContext()
+          .getKeepContainersAcrossApplicationAttempts()) {
+        List<Container> transferredContainers = ((AbstractYarnScheduler) rScheduler)
             .getTransferredContainers(applicationAttemptId);
-      if (!transferredContainers.isEmpty()) {
-        response.setContainersFromPreviousAttempts(transferredContainers);
-        List<NMToken> nmTokens = new ArrayList<NMToken>();
-        for (Container container : transferredContainers) {
-          try {
-            NMToken token = rmContext.getNMTokenSecretManager()
-                .createAndGetNMToken(app.getUser(), applicationAttemptId,
-                    container);
-            if (null != token) {
-              nmTokens.add(token);
-            }
-          } catch (IllegalArgumentException e) {
-            // if it's a DNS issue, throw UnknowHostException directly and that
-            // will be automatically retried by RMProxy in RPC layer.
-            if (e.getCause() instanceof UnknownHostException) {
-              throw (UnknownHostException) e.getCause();
+        if (!transferredContainers.isEmpty()) {
+          response.setContainersFromPreviousAttempts(transferredContainers);
+          List<NMToken> nmTokens = new ArrayList<NMToken>();
+          for (Container container : transferredContainers) {
+            try {
+              NMToken token = rmContext.getNMTokenSecretManager()
+                  .createAndGetNMToken(app.getUser(), applicationAttemptId,
+                      container);
+              if (null != token) {
+                nmTokens.add(token);
+              }
+            } catch (IllegalArgumentException e) {
+              // if it's a DNS issue, throw UnknowHostException directly and
+              // that
+              // will be automatically retried by RMProxy in RPC layer.
+              if (e.getCause() instanceof UnknownHostException) {
+                throw (UnknownHostException) e.getCause();
+              }
             }
           }
+          response.setNMTokensFromPreviousAttempts(nmTokens);
+          LOG.info("Application " + appID + " retrieved "
+              + transferredContainers.size() + " containers from previous"
+              + " attempts and " + nmTokens.size() + " NM tokens.");
         }
-        response.setNMTokensFromPreviousAttempts(nmTokens);
-        LOG.info("Application " + appID + " retrieved "
-            + transferredContainers.size() + " containers from previous"
-            + " attempts and " + nmTokens.size() + " NM tokens.");
       }
 
       response.setSchedulerResourceTypes(rScheduler
@@ -414,6 +422,11 @@ public class ApplicationMasterService extends AbstractService implements
     return hasApplicationMasterRegistered;
   }
 
+  protected final static List<Container> EMPTY_CONTAINER_LIST =
+      new ArrayList<Container>();
+  protected static final Allocation EMPTY_ALLOCATION = new Allocation(
+      EMPTY_CONTAINER_LIST, Resources.createResource(0), null, null, null);
+
   @Override
   public AllocateResponse allocate(AllocateRequest request)
       throws YarnException, IOException {
@@ -499,9 +512,9 @@ public class ApplicationMasterService extends AbstractService implements
               
       // sanity check
       try {
-        RMServerUtils.validateResourceRequests(ask,
+        RMServerUtils.normalizeAndValidateRequests(ask,
             rScheduler.getMaximumResourceCapability(), app.getQueue(),
-            rScheduler);
+            rScheduler, rmContext);
       } catch (InvalidResourceRequestException e) {
         LOG.warn("Invalid resource ask by application " + appAttemptId, e);
         throw e;
@@ -527,9 +540,20 @@ public class ApplicationMasterService extends AbstractService implements
       }
 
       // Send new requests to appAttempt.
-      Allocation allocation =
-          this.rScheduler.allocate(appAttemptId, ask, release, 
+      Allocation allocation;
+      RMAppAttemptState state =
+          app.getRMAppAttempt(appAttemptId).getAppAttemptState();
+      if (state.equals(RMAppAttemptState.FINAL_SAVING) ||
+          state.equals(RMAppAttemptState.FINISHING) ||
+          app.isAppFinalStateStored()) {
+        LOG.warn(appAttemptId + " is in " + state +
+                 " state, ignore container allocate request.");
+        allocation = EMPTY_ALLOCATION;
+      } else {
+        allocation =
+          this.rScheduler.allocate(appAttemptId, ask, release,
               blacklistAdditions, blacklistRemovals);
+      }
 
       if (!blacklistAdditions.isEmpty() || !blacklistRemovals.isEmpty()) {
         LOG.info("blacklist are updated in Scheduler." +

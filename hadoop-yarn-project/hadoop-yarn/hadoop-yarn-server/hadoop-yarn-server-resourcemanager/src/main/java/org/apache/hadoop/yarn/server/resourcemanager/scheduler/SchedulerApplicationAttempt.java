@@ -45,6 +45,7 @@ import org.apache.hadoop.yarn.api.records.NodeId;
 import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
+import org.apache.hadoop.yarn.server.api.ContainerType;
 import org.apache.hadoop.yarn.server.resourcemanager.RMContext;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.AggregateAppResourceUsage;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
@@ -56,8 +57,12 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerImpl
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerReservedEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainerState;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeCleanContainerEvent;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.capacity.SchedulingMode;
+import org.apache.hadoop.yarn.util.resource.ResourceCalculator;
 import org.apache.hadoop.yarn.util.resource.Resources;
+import org.apache.hadoop.yarn.server.resourcemanager.scheduler.policy.SchedulableEntity;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Multiset;
@@ -69,7 +74,7 @@ import com.google.common.collect.Multiset;
  */
 @Private
 @Unstable
-public class SchedulerApplicationAttempt {
+public class SchedulerApplicationAttempt implements SchedulableEntity {
   
   private static final Log LOG = LogFactory
     .getLog(SchedulerApplicationAttempt.class);
@@ -92,7 +97,9 @@ public class SchedulerApplicationAttempt {
   private boolean unmanagedAM = true;
   private boolean amRunning = false;
   private LogAggregationContext logAggregationContext;
-  
+
+  private Priority appPriority = null;
+
   protected ResourceUsage attemptResourceUsage = new ResourceUsage();
   private AtomicLong firstAllocationRequestSentTime = new AtomicLong(0);
   private AtomicLong firstContainerAllocatedTime = new AtomicLong(0);
@@ -108,13 +115,23 @@ public class SchedulerApplicationAttempt {
   private Set<ContainerId> pendingRelease = null;
 
   /**
-   * Count how many times the application has been given an opportunity
-   * to schedule a task at each priority. Each time the scheduler
-   * asks the application for a task at this priority, it is incremented,
-   * and each time the application successfully schedules a task, it
+   * Count how many times the application has been given an opportunity to
+   * schedule a task at each priority. Each time the scheduler asks the
+   * application for a task at this priority, it is incremented, and each time
+   * the application successfully schedules a task (at rack or node local), it
    * is reset to 0.
    */
   Multiset<Priority> schedulingOpportunities = HashMultiset.create();
+  
+  /**
+   * Count how many times the application has been given an opportunity to
+   * schedule a non-partitioned resource request at each priority. Each time the
+   * scheduler asks the application for a task at this priority, it is
+   * incremented, and each time the application successfully schedules a task,
+   * it is reset to 0 when schedule any task at corresponding priority.
+   */
+  Multiset<Priority> missedNonPartitionedRequestSchedulingOpportunity =
+      HashMultiset.create();
   
   // Time of the last container scheduled at the current allowed level
   protected Map<Priority, Long> lastScheduledContainer =
@@ -132,7 +149,7 @@ public class SchedulerApplicationAttempt {
     this.rmContext = rmContext;
     this.appSchedulingInfo = 
         new AppSchedulingInfo(applicationAttemptId, user, queue,  
-            activeUsersManager, rmContext.getEpoch());
+            activeUsersManager, rmContext.getEpoch(), attemptResourceUsage);
     this.queue = queue;
     this.pendingRelease = new HashSet<ContainerId>();
     this.attemptId = applicationAttemptId;
@@ -269,11 +286,12 @@ public class SchedulerApplicationAttempt {
     return queue;
   }
   
-  public synchronized void updateResourceRequests(
+  public synchronized boolean updateResourceRequests(
       List<ResourceRequest> requests) {
     if (!isStopped) {
-      appSchedulingInfo.updateResourceRequests(requests, false);
+      return appSchedulingInfo.updateResourceRequests(requests, false);
     }
+    return false;
   }
   
   public synchronized void recoverResourceRequests(
@@ -451,12 +469,26 @@ public class SchedulerApplicationAttempt {
       .hasNext();) {
       RMContainer rmContainer = i.next();
       Container container = rmContainer.getContainer();
+      ContainerType containerType = ContainerType.TASK;
+      // The working knowledge is that masterContainer for AM is null as it
+      // itself is the master container.
+      RMAppAttempt appAttempt =
+          rmContext
+              .getRMApps()
+              .get(
+                  container.getId().getApplicationAttemptId()
+                      .getApplicationId()).getCurrentAppAttempt();
+      if (appAttempt.getMasterContainer() == null
+          && appAttempt.getSubmissionContext().getUnmanagedAM() == false) {
+        containerType = ContainerType.APPLICATION_MASTER;
+      }
       try {
         // create container token and NMToken altogether.
         container.setContainerToken(rmContext.getContainerTokenSecretManager()
-          .createContainerToken(container.getId(), container.getNodeId(),
-            getUser(), container.getResource(), container.getPriority(),
-            rmContainer.getCreationTime(), this.logAggregationContext));
+            .createContainerToken(container.getId(), container.getNodeId(),
+                getUser(), container.getResource(), container.getPriority(),
+                rmContainer.getCreationTime(), this.logAggregationContext,
+                rmContainer.getNodeLabelExpression(), containerType));
         NMToken nmToken =
             rmContext.getNMTokenSecretManager().createAndGetNMToken(getUser(),
               getApplicationAttemptId(), container);
@@ -489,6 +521,18 @@ public class SchedulerApplicationAttempt {
     return this.appSchedulingInfo.isBlacklisted(resourceName);
   }
 
+  public synchronized int addMissedNonPartitionedRequestSchedulingOpportunity(
+      Priority priority) {
+    missedNonPartitionedRequestSchedulingOpportunity.add(priority);
+    return missedNonPartitionedRequestSchedulingOpportunity.count(priority);
+  }
+
+  public synchronized void
+      resetMissedNonPartitionedRequestSchedulingOpportunity(Priority priority) {
+    missedNonPartitionedRequestSchedulingOpportunity.setCount(priority, 0);
+  }
+
+  
   public synchronized void addSchedulingOpportunity(Priority priority) {
     schedulingOpportunities.setCount(priority,
         schedulingOpportunities.count(priority) + 1);
@@ -518,6 +562,7 @@ public class SchedulerApplicationAttempt {
   public synchronized void resetSchedulingOpportunities(Priority priority) {
     resetSchedulingOpportunities(priority, System.currentTimeMillis());
   }
+
   // used for continuous scheduling
   public synchronized void resetSchedulingOpportunities(Priority priority,
       long currentTimeMs) {
@@ -553,7 +598,7 @@ public class SchedulerApplicationAttempt {
     AggregateAppResourceUsage runningResourceUsage =
         getRunningAggregateAppResourceUsage();
     Resource usedResourceClone =
-        Resources.clone(attemptResourceUsage.getUsed());
+        Resources.clone(attemptResourceUsage.getAllUsed());
     Resource reservedResourceClone =
         Resources.clone(attemptResourceUsage.getReserved());
     return ApplicationResourceUsageReport.newInstance(liveContainers.size(),
@@ -669,4 +714,47 @@ public class SchedulerApplicationAttempt {
   public Set<String> getBlacklistedNodes() {
     return this.appSchedulingInfo.getBlackListCopy();
   }
+  
+  @Private
+  public boolean hasPendingResourceRequest(ResourceCalculator rc,
+      String nodePartition, Resource cluster,
+      SchedulingMode schedulingMode) {
+    return SchedulerUtils.hasPendingResourceRequest(rc,
+        this.attemptResourceUsage, nodePartition, cluster,
+        schedulingMode);
+  }
+  
+  @VisibleForTesting
+  public ResourceUsage getAppAttemptResourceUsage() {
+    return this.attemptResourceUsage;
+  }
+
+  @Override
+  public Priority getPriority() {
+    return appPriority;
+  }
+
+  public void setPriority(Priority appPriority) {
+    this.appPriority = appPriority;
+  }
+
+  @Override
+  public String getId() {
+    return getApplicationId().toString();
+  }
+  
+  @Override
+  public int compareInputOrderTo(SchedulableEntity other) {
+    if (other instanceof SchedulerApplicationAttempt) {
+      return getApplicationId().compareTo(
+        ((SchedulerApplicationAttempt)other).getApplicationId());
+    }
+    return 1;//let other types go before this, if any
+  }
+  
+  @Override
+  public synchronized ResourceUsage getSchedulingResourceUsage() {
+    return attemptResourceUsage;
+  }
+  
 }

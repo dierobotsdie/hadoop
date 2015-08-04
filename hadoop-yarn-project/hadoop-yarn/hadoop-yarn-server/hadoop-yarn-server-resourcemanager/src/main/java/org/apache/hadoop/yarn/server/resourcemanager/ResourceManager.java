@@ -76,7 +76,6 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttempt;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmapp.attempt.RMAppAttemptEventType;
 import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.ContainerAllocationExpirer;
-import org.apache.hadoop.yarn.server.resourcemanager.rmcontainer.RMContainer;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEvent;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeEventType;
@@ -93,6 +92,7 @@ import org.apache.hadoop.yarn.server.webproxy.AppReportFetcher;
 import org.apache.hadoop.yarn.server.webproxy.ProxyUriUtils;
 import org.apache.hadoop.yarn.server.webproxy.WebAppProxy;
 import org.apache.hadoop.yarn.server.webproxy.WebAppProxyServlet;
+import org.apache.hadoop.yarn.util.ConverterUtils;
 import org.apache.hadoop.yarn.webapp.WebApp;
 import org.apache.hadoop.yarn.webapp.WebApps;
 import org.apache.hadoop.yarn.webapp.WebApps.Builder;
@@ -100,6 +100,7 @@ import org.apache.hadoop.yarn.webapp.util.WebAppUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
@@ -198,7 +199,8 @@ public class ResourceManager extends CompositeService implements Recoverable {
         this.configurationProvider.getConfigurationInputStream(this.conf,
             YarnConfiguration.CORE_SITE_CONFIGURATION_FILE);
     if (coreSiteXMLInputStream != null) {
-      this.conf.addResource(coreSiteXMLInputStream);
+      this.conf.addResource(coreSiteXMLInputStream,
+          YarnConfiguration.CORE_SITE_CONFIGURATION_FILE);
     }
 
     // Do refreshUserToGroupsMappings with loaded core-site.xml
@@ -216,7 +218,8 @@ public class ResourceManager extends CompositeService implements Recoverable {
         this.configurationProvider.getConfigurationInputStream(this.conf,
             YarnConfiguration.YARN_SITE_CONFIGURATION_FILE);
     if (yarnSiteXMLInputStream != null) {
-      this.conf.addResource(yarnSiteXMLInputStream);
+      this.conf.addResource(yarnSiteXMLInputStream,
+          YarnConfiguration.YARN_SITE_CONFIGURATION_FILE);
     }
 
     validateConfigs(this.conf);
@@ -610,9 +613,6 @@ public class ResourceManager extends CompositeService implements Recoverable {
             YarnConfiguration.RM_SCHEDULER_MONITOR_POLICIES,
             SchedulingEditPolicy.class);
         if (policies.size() > 0) {
-          rmDispatcher.register(ContainerPreemptEventType.class,
-              new RMContainerPreemptEventDispatcher(
-                  (PreemptableResourceScheduler) scheduler));
           for (SchedulingEditPolicy policy : policies) {
             LOG.info("LOADING SchedulingEditPolicy:" + policy.getPolicyName());
             // periodically check whether we need to take action to guarantee
@@ -778,36 +778,6 @@ public class ResourceManager extends CompositeService implements Recoverable {
           LOG.error("Error in handling event type " + event.getType()
               + " for application " + appID, t);
         }
-      }
-    }
-  }
-
-  @Private
-  public static final class
-    RMContainerPreemptEventDispatcher
-      implements EventHandler<ContainerPreemptEvent> {
-
-    private final PreemptableResourceScheduler scheduler;
-
-    public RMContainerPreemptEventDispatcher(
-        PreemptableResourceScheduler scheduler) {
-      this.scheduler = scheduler;
-    }
-
-    @Override
-    public void handle(ContainerPreemptEvent event) {
-      ApplicationAttemptId aid = event.getAppId();
-      RMContainer container = event.getContainer();
-      switch (event.getType()) {
-      case DROP_RESERVATION:
-        scheduler.dropContainerReservation(container);
-        break;
-      case PREEMPT_CONTAINER:
-        scheduler.preemptContainer(aid, container);
-        break;
-      case KILL_CONTAINER:
-        scheduler.killContainer(container);
-        break;
       }
     }
   }
@@ -1197,8 +1167,15 @@ public class ResourceManager extends CompositeService implements Recoverable {
       GenericOptionsParser hParser = new GenericOptionsParser(conf, argv);
       argv = hParser.getRemainingArgs();
       // If -format-state-store, then delete RMStateStore; else startup normally
-      if (argv.length == 1 && argv[0].equals("-format-state-store")) {
-        deleteRMStateStore(conf);
+      if (argv.length >= 1) {
+        if (argv[0].equals("-format-state-store")) {
+          deleteRMStateStore(conf);
+        } else if (argv[0].equals("-remove-application-from-state-store")
+            && argv.length == 2) {
+          removeApplication(conf, argv[1]);
+        } else {
+          printUsage(System.err);
+        }
       } else {
         ResourceManager resourceManager = new ResourceManager();
         ShutdownHookManager.get().addShutdownHook(
@@ -1274,5 +1251,26 @@ public class ResourceManager extends CompositeService implements Recoverable {
     } finally {
       rmStore.stop();
     }
+  }
+
+  private static void removeApplication(Configuration conf, String applicationId)
+      throws Exception {
+    RMStateStore rmStore = RMStateStoreFactory.getStore(conf);
+    rmStore.init(conf);
+    rmStore.start();
+    try {
+      ApplicationId removeAppId = ConverterUtils.toApplicationId(applicationId);
+      LOG.info("Deleting application " + removeAppId + " from state store");
+      rmStore.removeApplication(removeAppId);
+      LOG.info("Application is deleted from state store");
+    } finally {
+      rmStore.stop();
+    }
+  }
+
+  private static void printUsage(PrintStream out) {
+    out.println("Usage: yarn resourcemanager [-format-state-store]");
+    out.println("                            "
+        + "[-remove-application-from-state-store <appId>]" + "\n");
   }
 }

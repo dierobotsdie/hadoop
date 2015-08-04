@@ -18,6 +18,7 @@
 package org.apache.hadoop.tracing;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hdfs.DFSConfigKeys;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.net.unix.TemporarySocketDirectory;
 import org.junit.Assert;
@@ -57,7 +58,8 @@ public class TestTraceAdmin {
   public void testCreateAndDestroySpanReceiver() throws Exception {
     Configuration conf = new Configuration();
     conf = new Configuration();
-    conf.set(SpanReceiverHost.SPAN_RECEIVERS_CONF_KEY, "");
+    conf.set(DFSConfigKeys.DFS_SERVER_HTRACE_PREFIX  +
+        SpanReceiverHost.SPAN_RECEIVERS_CONF_SUFFIX, "");
     MiniDFSCluster cluster =
         new MiniDFSCluster.Builder(conf).numDataNodes(3).build();
     cluster.waitActive();
@@ -70,10 +72,10 @@ public class TestTraceAdmin {
       Assert.assertEquals("ret:0, [no span receivers found]" + NEWLINE,
           runTraceCommand(trace, "-list", "-host", getHostPortForNN(cluster)));
       Assert.assertEquals("ret:0, Added trace span receiver 1 with " +
-          "configuration local-file-span-receiver.path = " + tracePath + NEWLINE,
+          "configuration dfs.htrace.local-file-span-receiver.path = " + tracePath + NEWLINE,
           runTraceCommand(trace, "-add", "-host", getHostPortForNN(cluster),
               "-class", "org.apache.htrace.impl.LocalFileSpanReceiver",
-              "-Clocal-file-span-receiver.path=" + tracePath));
+              "-Cdfs.htrace.local-file-span-receiver.path=" + tracePath));
       String list =
           runTraceCommand(trace, "-list", "-host", getHostPortForNN(cluster));
       Assert.assertTrue(list.startsWith("ret:0"));
@@ -84,10 +86,10 @@ public class TestTraceAdmin {
       Assert.assertEquals("ret:0, [no span receivers found]" + NEWLINE,
           runTraceCommand(trace, "-list", "-host", getHostPortForNN(cluster)));
       Assert.assertEquals("ret:0, Added trace span receiver 2 with " +
-          "configuration local-file-span-receiver.path = " + tracePath + NEWLINE,
+          "configuration dfs.htrace.local-file-span-receiver.path = " + tracePath + NEWLINE,
           runTraceCommand(trace, "-add", "-host", getHostPortForNN(cluster),
               "-class", "LocalFileSpanReceiver",
-              "-Clocal-file-span-receiver.path=" + tracePath));
+              "-Cdfs.htrace.local-file-span-receiver.path=" + tracePath));
       Assert.assertEquals("ret:0, Removed trace span receiver 2" + NEWLINE,
           runTraceCommand(trace, "-remove", "2", "-host",
               getHostPortForNN(cluster)));

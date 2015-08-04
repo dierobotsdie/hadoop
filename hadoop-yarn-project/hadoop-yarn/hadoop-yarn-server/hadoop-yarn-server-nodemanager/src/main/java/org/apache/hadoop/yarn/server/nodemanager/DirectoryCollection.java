@@ -42,9 +42,12 @@ import org.apache.hadoop.util.DiskChecker;
 /**
  * Manages a list of local storage directories.
  */
-class DirectoryCollection {
+public class DirectoryCollection {
   private static final Log LOG = LogFactory.getLog(DirectoryCollection.class);
 
+  /**
+   * The enum defines disk failure type.
+   */
   public enum DiskErrorCause {
     DISK_FULL, OTHER
   }
@@ -57,6 +60,13 @@ class DirectoryCollection {
       this.cause = cause;
       this.message = message;
     }
+  }
+
+  /**
+   * The interface provides a callback when localDirs is changed.
+   */
+  public interface DirsChangeListener {
+    void onDirsChanged();
   }
 
   /**
@@ -81,6 +91,10 @@ class DirectoryCollection {
   
   private float diskUtilizationPercentageCutoff;
   private long diskUtilizationSpaceCutoff;
+
+  private int goodDirsDiskUtilizationPercentage;
+
+  private Set<DirsChangeListener> dirsChangeListeners;
 
   /**
    * Create collection for the directories specified. No check for free space.
@@ -152,6 +166,20 @@ class DirectoryCollection {
                 : utilizationPercentageCutOff);
     diskUtilizationSpaceCutoff =
         utilizationSpaceCutOff < 0 ? 0 : utilizationSpaceCutOff;
+
+    dirsChangeListeners = new HashSet<DirsChangeListener>();
+  }
+
+  synchronized void registerDirsChangeListener(
+      DirsChangeListener listener) {
+    if (dirsChangeListeners.add(listener)) {
+      listener.onDirsChanged();
+    }
+  }
+
+  synchronized void deregisterDirsChangeListener(
+      DirsChangeListener listener) {
+    dirsChangeListeners.remove(listener);
   }
 
   /**
@@ -277,6 +305,12 @@ class DirectoryCollection {
             + dirsFailedCheck.get(dir).message);
       }
     }
+    setGoodDirsDiskUtilizationPercentage();
+    if (setChanged) {
+      for (DirsChangeListener listener : dirsChangeListeners) {
+        listener.onDirsChanged();
+      }
+    }
     return setChanged;
   }
 
@@ -389,5 +423,33 @@ class DirectoryCollection {
     diskUtilizationSpaceCutoff =
         diskUtilizationSpaceCutoff < 0 ? 0 : diskUtilizationSpaceCutoff;
     this.diskUtilizationSpaceCutoff = diskUtilizationSpaceCutoff;
+  }
+
+  private void setGoodDirsDiskUtilizationPercentage() {
+
+    long totalSpace = 0;
+    long usableSpace = 0;
+
+    for (String dir : localDirs) {
+      File f = new File(dir);
+      if (!f.isDirectory()) {
+        continue;
+      }
+      totalSpace += f.getTotalSpace();
+      usableSpace += f.getUsableSpace();
+    }
+    if (totalSpace != 0) {
+      long tmp = ((totalSpace - usableSpace) * 100) / totalSpace;
+      if (Integer.MIN_VALUE < tmp && Integer.MAX_VALUE > tmp) {
+        goodDirsDiskUtilizationPercentage = (int) tmp;
+      }
+    } else {
+      // got no good dirs
+      goodDirsDiskUtilizationPercentage = 0;
+    }
+  }
+
+  public int getGoodDirsDiskUtilizationPercentage() {
+    return goodDirsDiskUtilizationPercentage;
   }
 }

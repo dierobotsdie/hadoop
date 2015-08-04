@@ -56,6 +56,7 @@ import org.apache.hadoop.hdfs.server.blockmanagement.BlockPlacementPolicy;
 import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.server.datanode.DataNode;
 import org.apache.hadoop.hdfs.server.datanode.DataNodeTestUtils;
+import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsDatasetSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.FsVolumeSpi;
 import org.apache.hadoop.hdfs.server.datanode.fsdataset.impl.FsVolumeImpl;
 import org.apache.hadoop.hdfs.server.namenode.snapshot.SnapshotTestHelper;
@@ -218,7 +219,7 @@ public class TestStorageMover {
         verify(true);
 
         setStoragePolicy();
-        migrate();
+        migrate(ExitStatus.SUCCESS);
         verify(true);
       } finally {
         if (shutdown) {
@@ -249,8 +250,8 @@ public class TestStorageMover {
     /**
      * Run the migration tool.
      */
-    void migrate() throws Exception {
-      runMover();
+    void migrate(ExitStatus expectedExitCode) throws Exception {
+      runMover(expectedExitCode);
       Thread.sleep(5000); // let the NN finish deletion
     }
 
@@ -266,14 +267,14 @@ public class TestStorageMover {
       }
     }
 
-    private void runMover() throws Exception {
+    private void runMover(ExitStatus expectedExitCode) throws Exception {
       Collection<URI> namenodes = DFSUtil.getNsServiceRpcUris(conf);
       Map<URI, List<Path>> nnMap = Maps.newHashMap();
       for (URI nn : namenodes) {
         nnMap.put(nn, null);
       }
       int result = Mover.run(nnMap, conf);
-      Assert.assertEquals(ExitStatus.SUCCESS.getExitCode(), result);
+      Assert.assertEquals(expectedExitCode.getExitCode(), result);
     }
 
     private void verifyNamespace() throws Exception {
@@ -554,7 +555,7 @@ public class TestStorageMover {
     try {
       banner("start data migration");
       test.setStoragePolicy(); // set /foo to COLD
-      test.migrate();
+      test.migrate(ExitStatus.SUCCESS);
 
       // make sure the under construction block has not been migrated
       LocatedBlocks lbs = test.dfs.getClient().getLocatedBlocks(
@@ -604,7 +605,7 @@ public class TestStorageMover {
     try {
       test.runBasicTest(false);
       pathPolicyMap.moveAround(test.dfs);
-      test.migrate();
+      test.migrate(ExitStatus.SUCCESS);
 
       test.verify(true);
     } finally {
@@ -627,14 +628,18 @@ public class TestStorageMover {
   }
 
   private void setVolumeFull(DataNode dn, StorageType type) {
-    List<? extends FsVolumeSpi> volumes = dn.getFSDataset().getVolumes();
-    for (FsVolumeSpi v : volumes) {
-      FsVolumeImpl volume = (FsVolumeImpl) v;
-      if (volume.getStorageType() == type) {
-        LOG.info("setCapacity to 0 for [" + volume.getStorageType() + "]"
-            + volume.getStorageID());
-        volume.setCapacityForTesting(0);
+    try (FsDatasetSpi.FsVolumeReferences refs = dn.getFSDataset()
+        .getFsVolumeReferences()) {
+      for (FsVolumeSpi fvs : refs) {
+        FsVolumeImpl volume = (FsVolumeImpl) fvs;
+        if (volume.getStorageType() == type) {
+          LOG.info("setCapacity to 0 for [" + volume.getStorageType() + "]"
+              + volume.getStorageID());
+          volume.setCapacityForTesting(0);
+        }
       }
+    } catch (IOException e) {
+      LOG.error("Unexpected exception by closing FsVolumeReference", e);
     }
   }
 
@@ -690,7 +695,7 @@ public class TestStorageMover {
       //test move a hot file to warm
       final Path file1 = new Path(pathPolicyMap.hot, "file1");
       test.dfs.rename(file1, pathPolicyMap.warm);
-      test.migrate();
+      test.migrate(ExitStatus.NO_MOVE_BLOCK);
       test.verifyFile(new Path(pathPolicyMap.warm, "file1"), WARM.getId());
     } finally {
       test.shutdownCluster();
@@ -748,7 +753,7 @@ public class TestStorageMover {
       { //test move a cold file to warm
         final Path file1 = new Path(pathPolicyMap.cold, "file1");
         test.dfs.rename(file1, pathPolicyMap.warm);
-        test.migrate();
+        test.migrate(ExitStatus.SUCCESS);
         test.verify(true);
       }
     } finally {

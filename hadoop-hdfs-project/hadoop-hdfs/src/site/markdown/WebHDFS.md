@@ -194,7 +194,6 @@ Below are the HDFS configuration options for WebHDFS.
 
 | Property Name | Description |
 |:---- |:---- |
-| `dfs.webhdfs.enabled ` | Enable/disable WebHDFS in Namenodes and Datanodes |
 | `dfs.web.authentication.kerberos.principal` | The HTTP Kerberos principal used by Hadoop-Auth in the HTTP endpoint. The HTTP Kerberos principal MUST start with 'HTTP/' per Kerberos HTTP SPNEGO specification. A value of "\*" will use all HTTP principals found in the keytab. |
 | `dfs.web.authentication.kerberos.keytab ` | The Kerberos keytab file with the credentials for the HTTP Kerberos principal used by Hadoop-Auth in the HTTP endpoint. |
 
@@ -426,8 +425,6 @@ See also: [`newlength`](#New_Length), [FileSystem](../../api/org/apache/hadoop/f
           {
             "accessTime"      : 0,
             "blockSize"       : 0,
-            "childrenNum"     : 1,
-            "fileId"          : 16386,
             "group"           : "supergroup",
             "length"          : 0,             //in bytes, zero for directories
             "modificationTime": 1320173277227,
@@ -461,8 +458,6 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getFileSt
               {
                 "accessTime"      : 1320171722771,
                 "blockSize"       : 33554432,
-                "childrenNum"     : 0,
-                "fileId"          : 16387,
                 "group"           : "supergroup",
                 "length"          : 24930,
                 "modificationTime": 1320171722771,
@@ -475,8 +470,6 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getFileSt
               {
                 "accessTime"      : 0,
                 "blockSize"       : 0,
-                "childrenNum"     : 2,
-                "fileId"          : 16388,
                 "group"           : "supergroup",
                 "length"          : 0,
                 "modificationTime": 1320895981256,
@@ -698,7 +691,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).setAcl
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETACLSTATUS"
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETACLSTATUS"
 
     The client receives a response with a [`AclStatus` JSON object](#ACL_Status_JSON_Schema):
 
@@ -725,7 +718,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getAclSta
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=CHECKACCESS
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=CHECKACCESS
                                       &fsaction=<FSACTION>
 
     The client receives a response with zero content length:
@@ -771,7 +764,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).removeXAt
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
                                       &xattr.name=<XATTRNAME>&encoding=<ENCODING>"
 
     The client receives a response with a [`XAttrs` JSON object](#XAttrs_JSON_Schema):
@@ -795,7 +788,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getXAttr
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
                                       &xattr.name=<XATTRNAME1>&xattr.name=<XATTRNAME2>
                                       &encoding=<ENCODING>"
 
@@ -824,7 +817,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getXAttrs
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=GETXATTRS
                                       &encoding=<ENCODING>"
 
     The client receives a response with a [`XAttrs` JSON object](#XAttrs_JSON_Schema):
@@ -856,7 +849,7 @@ See also: [FileSystem](../../api/org/apache/hadoop/fs/FileSystem.html).getXAttrs
 
 * Submit a HTTP GET request.
 
-        curl -i -X PUT "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=LISTXATTRS"
+        curl -i "http://<HOST>:<PORT>/webhdfs/v1/<PATH>?op=LISTXATTRS"
 
     The client receives a response with a [`XAttrNames` JSON object](#XAttrNames_JSON_Schema):
 
@@ -1323,18 +1316,6 @@ var fileStatusProperties =
       "type"       : "integer",
       "required"   : true
     },
-    "childrenNum":
-    {
-      "description": "The number of children.",
-      "type"       : "integer",
-      "required"   : true
-    },
-    "fileId":
-    {
-      "description": "The inode ID.",
-      "type"       : "integer",
-      "required"   : true
-    },
     "group":
     {
       "description": "The group owner.",
@@ -1708,8 +1689,8 @@ See also: [Proxy Users](#Proxy_Users)
 | Description | File system operation read/write/execute |
 | Type | String |
 | Default Value | null (an invalid value) |
-| Valid Values | Strings matching regex pattern  "[rwx-]{3} " |
-| Syntax |  "[rwx-]{3} " |
+| Valid Values | Strings matching regex pattern  "[r-][w-][x-] " |
+| Syntax |  "[r-][w-][x-] " |
 
 See also: [`CHECKACCESS`](#Check_access),
 

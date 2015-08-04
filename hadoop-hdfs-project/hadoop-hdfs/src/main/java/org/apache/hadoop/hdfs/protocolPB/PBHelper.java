@@ -47,9 +47,9 @@ import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.ha.HAServiceProtocol.HAServiceState;
 import org.apache.hadoop.ha.proto.HAServiceProtocolProtos;
+import org.apache.hadoop.hdfs.DFSUtilClient;
 import org.apache.hadoop.hdfs.inotify.EventBatch;
 import org.apache.hadoop.hdfs.protocol.BlockStoragePolicy;
-import org.apache.hadoop.hdfs.DFSUtil;
 import org.apache.hadoop.hdfs.inotify.Event;
 import org.apache.hadoop.hdfs.inotify.EventBatchList;
 import org.apache.hadoop.hdfs.protocol.Block;
@@ -73,6 +73,7 @@ import org.apache.hadoop.hdfs.protocol.EncryptionZone;
 import org.apache.hadoop.hdfs.protocol.ExtendedBlock;
 import org.apache.hadoop.fs.FileEncryptionInfo;
 import org.apache.hadoop.hdfs.protocol.FsPermissionExtension;
+import org.apache.hadoop.hdfs.protocol.HdfsConstants;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.DatanodeReportType;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.RollingUpgradeAction;
 import org.apache.hadoop.hdfs.protocol.HdfsConstants.SafeModeAction;
@@ -111,7 +112,6 @@ import org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.Rollin
 import org.apache.hadoop.hdfs.protocol.proto.ClientNamenodeProtocolProtos.SafeModeActionProto;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmIdProto;
 import org.apache.hadoop.hdfs.protocol.proto.DataTransferProtos.ShortCircuitShmSlotProto;
-import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BalancerBandwidthCommandProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockCommandProto;
 import org.apache.hadoop.hdfs.protocol.proto.DatanodeProtocolProtos.BlockIdCommandProto;
@@ -184,13 +184,11 @@ import org.apache.hadoop.hdfs.security.token.block.BlockTokenIdentifier;
 import org.apache.hadoop.hdfs.security.token.block.DataEncryptionKey;
 import org.apache.hadoop.hdfs.security.token.block.ExportedBlockKeys;
 import org.apache.hadoop.hdfs.security.token.delegation.DelegationTokenIdentifier;
-import org.apache.hadoop.hdfs.server.blockmanagement.BlockStoragePolicySuite;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.NamenodeRole;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.NodeType;
 import org.apache.hadoop.hdfs.server.common.HdfsServerConstants.ReplicaState;
 import org.apache.hadoop.hdfs.server.common.StorageInfo;
 import org.apache.hadoop.hdfs.server.namenode.CheckpointSignature;
-import org.apache.hadoop.hdfs.server.namenode.INodeId;
 import org.apache.hadoop.hdfs.server.protocol.BalancerBandwidthCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockCommand;
 import org.apache.hadoop.hdfs.server.protocol.BlockIdCommand;
@@ -471,7 +469,7 @@ public class PBHelper {
   public static BlockKeyProto convert(BlockKey key) {
     byte[] encodedKey = key.getEncodedKey();
     ByteString keyBytes = ByteString.copyFrom(encodedKey == null ? 
-        DFSUtil.EMPTY_BYTES : encodedKey);
+        DFSUtilClient.EMPTY_BYTES : encodedKey);
     return BlockKeyProto.newBuilder().setKeyId(key.getKeyId())
         .setKeyBytes(keyBytes).setExpiryDate(key.getExpiryDate()).build();
   }
@@ -1438,12 +1436,12 @@ public class PBHelper {
         fs.getFileType().equals(FileType.IS_SYMLINK) ? 
             fs.getSymlink().toByteArray() : null,
         fs.getPath().toByteArray(),
-        fs.hasFileId()? fs.getFileId(): INodeId.GRANDFATHER_INODE_ID,
+        fs.hasFileId()? fs.getFileId(): HdfsConstants.GRANDFATHER_INODE_ID,
         fs.hasLocations() ? PBHelper.convert(fs.getLocations()) : null,
         fs.hasChildrenNum() ? fs.getChildrenNum() : -1,
         fs.hasFileEncryptionInfo() ? convert(fs.getFileEncryptionInfo()) : null,
         fs.hasStoragePolicy() ? (byte) fs.getStoragePolicy()
-            : BlockStoragePolicySuite.ID_UNSPECIFIED);
+            : HdfsConstants.BLOCK_STORAGE_POLICY_ID_UNSPECIFIED);
   }
 
   public static SnapshottableDirectoryStatus convert(
@@ -1516,7 +1514,7 @@ public class PBHelper {
     int snapshotQuota = status.getSnapshotQuota();
     byte[] parentFullPath = status.getParentFullPath();
     ByteString parentFullPathBytes = ByteString.copyFrom(
-        parentFullPath == null ? DFSUtil.EMPTY_BYTES : parentFullPath);
+        parentFullPath == null ? DFSUtilClient.EMPTY_BYTES : parentFullPath);
     HdfsFileStatusProto fs = convert(status.getDirStatus());
     SnapshottableDirectoryStatusProto.Builder builder = 
         SnapshottableDirectoryStatusProto
@@ -2026,7 +2024,7 @@ public class PBHelper {
       return null;
     }
     ByteString sourcePath = ByteString
-        .copyFrom(entry.getSourcePath() == null ? DFSUtil.EMPTY_BYTES : entry
+        .copyFrom(entry.getSourcePath() == null ? DFSUtilClient.EMPTY_BYTES : entry
             .getSourcePath());
     String modification = entry.getType().getLabel();
     SnapshotDiffReportEntryProto.Builder builder = SnapshotDiffReportEntryProto
@@ -2034,7 +2032,7 @@ public class PBHelper {
         .setModificationLabel(modification);
     if (entry.getType() == DiffType.RENAME) {
       ByteString targetPath = ByteString
-          .copyFrom(entry.getTargetPath() == null ? DFSUtil.EMPTY_BYTES : entry
+          .copyFrom(entry.getTargetPath() == null ? DFSUtilClient.EMPTY_BYTES : entry
               .getTargetPath());
       builder.setTargetPath(targetPath);
     }
@@ -2687,6 +2685,12 @@ public class PBHelper {
                   .timestamp(unlink.getTimestamp())
                   .build());
             break;
+          case EVENT_TRUNCATE:
+            InotifyProtos.TruncateEventProto truncate =
+                InotifyProtos.TruncateEventProto.parseFrom(p.getContents());
+            events.add(new Event.TruncateEvent(truncate.getPath(),
+                truncate.getFileSize(), truncate.getTimestamp()));
+            break;
           default:
             throw new RuntimeException("Unexpected inotify event type: " +
                 p.getType());
@@ -2791,6 +2795,17 @@ public class PBHelper {
                     InotifyProtos.UnlinkEventProto.newBuilder()
                         .setPath(ue.getPath())
                         .setTimestamp(ue.getTimestamp()).build().toByteString()
+                ).build());
+            break;
+          case TRUNCATE:
+            Event.TruncateEvent te = (Event.TruncateEvent) e;
+            events.add(InotifyProtos.EventProto.newBuilder()
+                .setType(InotifyProtos.EventType.EVENT_TRUNCATE)
+                .setContents(
+                    InotifyProtos.TruncateEventProto.newBuilder()
+                        .setPath(te.getPath())
+                        .setFileSize(te.getFileSize())
+                        .setTimestamp(te.getTimestamp()).build().toByteString()
                 ).build());
             break;
           default:
@@ -3044,7 +3059,7 @@ public class PBHelper {
 
   public static BlockReportContext convert(BlockReportContextProto proto) {
     return new BlockReportContext(proto.getTotalRpcs(),
-        proto.getCurRpc(), proto.getId());
+        proto.getCurRpc(), proto.getId(), proto.getLeaseId());
   }
 
   public static BlockReportContextProto convert(BlockReportContext context) {
@@ -3052,6 +3067,7 @@ public class PBHelper {
         setTotalRpcs(context.getTotalRpcs()).
         setCurRpc(context.getCurRpc()).
         setId(context.getReportId()).
+        setLeaseId(context.getLeaseId()).
         build();
   }
 }

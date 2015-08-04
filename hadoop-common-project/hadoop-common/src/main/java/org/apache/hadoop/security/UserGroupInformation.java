@@ -369,7 +369,8 @@ public class UserGroupInformation {
   private static final boolean windows =
       System.getProperty("os.name").startsWith("Windows");
   private static final boolean is64Bit =
-      System.getProperty("os.arch").contains("64");
+      System.getProperty("os.arch").contains("64") ||
+      System.getProperty("os.arch").contains("s390x");
   private static final boolean aix = System.getProperty("os.name").equals("AIX");
 
   /* Return the OS login module class name */
@@ -865,9 +866,6 @@ public class UserGroupInformation {
         .getPrivateCredentials(KerberosTicket.class);
     for (KerberosTicket ticket : tickets) {
       if (SecurityUtil.isOriginalTGT(ticket)) {
-        if (LOG.isDebugEnabled()) {
-          LOG.debug("Found tgt " + ticket);
-        }
         return ticket;
       }
     }

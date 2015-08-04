@@ -21,12 +21,15 @@ package org.apache.hadoop.yarn.server.resourcemanager.scheduler;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience.Private;
+import org.apache.hadoop.classification.InterfaceStability.Unstable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.service.AbstractService;
 import org.apache.hadoop.yarn.api.records.ApplicationAttemptId;
@@ -37,6 +40,7 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerState;
 import org.apache.hadoop.yarn.api.records.ContainerStatus;
 import org.apache.hadoop.yarn.api.records.NodeId;
+import org.apache.hadoop.yarn.api.records.Priority;
 import org.apache.hadoop.yarn.api.records.Resource;
 import org.apache.hadoop.yarn.api.records.ResourceOption;
 import org.apache.hadoop.yarn.api.records.ResourceRequest;
@@ -63,10 +67,13 @@ import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNode;
 import org.apache.hadoop.yarn.server.resourcemanager.rmnode.RMNodeCleanContainerEvent;
 import org.apache.hadoop.yarn.util.resource.Resources;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.util.concurrent.SettableFuture;
 
 
 @SuppressWarnings("unchecked")
+@Private
+@Unstable
 public abstract class AbstractYarnScheduler
     <T extends SchedulerApplicationAttempt, N extends SchedulerNode>
     extends AbstractService implements ResourceScheduler {
@@ -91,7 +98,12 @@ public abstract class AbstractYarnScheduler
   private long configuredMaximumAllocationWaitTime;
 
   protected RMContext rmContext;
-  protected Map<ApplicationId, SchedulerApplication<T>> applications;
+  
+  /*
+   * All schedulers which are inheriting AbstractYarnScheduler should use
+   * concurrent version of 'applications' map.
+   */
+  protected ConcurrentMap<ApplicationId, SchedulerApplication<T>> applications;
   protected int nmExpireInterval;
 
   protected final static List<Container> EMPTY_CONTAINER_LIST =
@@ -123,13 +135,16 @@ public abstract class AbstractYarnScheduler
     super.serviceInit(conf);
   }
 
-  public synchronized List<Container> getTransferredContainers(
+  public List<Container> getTransferredContainers(
       ApplicationAttemptId currentAttempt) {
     ApplicationId appId = currentAttempt.getApplicationId();
     SchedulerApplication<T> app = applications.get(appId);
     List<Container> containerList = new ArrayList<Container>();
     RMApp appImpl = this.rmContext.getRMApps().get(appId);
     if (appImpl.getApplicationSubmissionContext().getUnmanagedAM()) {
+      return containerList;
+    }
+    if (app == null) {
       return containerList;
     }
     Collection<RMContainer> liveContainers =
@@ -408,7 +423,7 @@ public abstract class AbstractYarnScheduler
     RMContainer rmContainer =
         new RMContainerImpl(container, attemptId, node.getNodeID(),
           applications.get(attemptId.getApplicationId()).getUser(), rmContext,
-          status.getCreationTime());
+          status.getCreationTime(), status.getNodeLabelExpression());
     return rmContainer;
   }
 
@@ -438,25 +453,30 @@ public abstract class AbstractYarnScheduler
     new Timer().schedule(new TimerTask() {
       @Override
       public void run() {
-        for (SchedulerApplication<T> app : applications.values()) {
-
-          T attempt = app.getCurrentAppAttempt();
-          synchronized (attempt) {
-            for (ContainerId containerId : attempt.getPendingRelease()) {
-              RMAuditLogger.logFailure(
-                app.getUser(),
-                AuditConstants.RELEASE_CONTAINER,
-                "Unauthorized access or invalid container",
-                "Scheduler",
-                "Trying to release container not owned by app or with invalid id.",
-                attempt.getApplicationId(), containerId);
-            }
-            attempt.getPendingRelease().clear();
-          }
-        }
+        clearPendingContainerCache();
         LOG.info("Release request cache is cleaned up");
       }
     }, nmExpireInterval);
+  }
+
+  @VisibleForTesting
+  public void clearPendingContainerCache() {
+    for (SchedulerApplication<T> app : applications.values()) {
+      T attempt = app.getCurrentAppAttempt();
+      if (attempt != null) {
+        synchronized (attempt) {
+          for (ContainerId containerId : attempt.getPendingRelease()) {
+            RMAuditLogger.logFailure(app.getUser(),
+                AuditConstants.RELEASE_CONTAINER,
+                "Unauthorized access or invalid container", "Scheduler",
+                "Trying to release container not owned by app "
+                    + "or with invalid id.", attempt.getApplicationId(),
+                containerId);
+          }
+          attempt.getPendingRelease().clear();
+        }
+      }
+    }
   }
 
   // clean up a completed container
@@ -548,6 +568,10 @@ public abstract class AbstractYarnScheduler
     Resource newResource = resourceOption.getResource();
     Resource oldResource = node.getTotalResource();
     if(!oldResource.equals(newResource)) {
+      // Notify NodeLabelsManager about this change
+      rmContext.getNodeLabelManager().updateNodeResource(nm.getNodeID(),
+          newResource);
+      
       // Log resource change
       LOG.info("Update resource on node: " + node.getNodeName()
           + " from: " + oldResource + ", to: "
@@ -667,5 +691,14 @@ public abstract class AbstractYarnScheduler
       return attempt.getAppSchedulingInfo().getAllResourceRequests();
     }
     return null;
+  }
+
+  @Override
+  public Priority checkAndGetApplicationPriority(Priority priorityFromContext,
+      String user, String queueName, ApplicationId applicationId)
+      throws YarnException {
+    // Dummy Implementation till Application Priority changes are done in
+    // specific scheduler.
+    return Priority.newInstance(0);
   }
 }

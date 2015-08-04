@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.crypto.key.KeyProvider;
 
@@ -35,6 +36,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 
+@InterfaceAudience.Private
 public class KeyProviderCache {
 
   public static final Log LOG = LogFactory.getLog(KeyProviderCache.class);
@@ -81,9 +83,9 @@ public class KeyProviderCache {
 
   private URI createKeyProviderURI(Configuration conf) {
     final String providerUriStr =
-        conf.get(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI, null);
+        conf.getTrimmed(DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI, "");
     // No provider set in conf
-    if (providerUriStr == null) {
+    if (providerUriStr.isEmpty()) {
       LOG.error("Could not find uri with key ["
           + DFSConfigKeys.DFS_ENCRYPTION_KEY_PROVIDER_URI
           + "] to create a keyProvider !!");

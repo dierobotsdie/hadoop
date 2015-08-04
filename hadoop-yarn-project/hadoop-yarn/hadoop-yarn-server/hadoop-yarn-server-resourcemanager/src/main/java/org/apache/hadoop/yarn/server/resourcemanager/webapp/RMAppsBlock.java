@@ -25,6 +25,7 @@ import static org.apache.hadoop.yarn.webapp.view.JQueryUI.C_PROGRESSBAR_VALUE;
 import java.util.Set;
 
 import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.yarn.api.ApplicationBaseProtocol;
 import org.apache.hadoop.yarn.api.records.ApplicationReport;
 import org.apache.hadoop.yarn.api.records.YarnApplicationState;
@@ -57,7 +58,11 @@ public class RMAppsBlock extends AppsBlock {
           .th(".name", "Name").th(".type", "Application Type")
           .th(".queue", "Queue").th(".starttime", "StartTime")
           .th(".finishtime", "FinishTime").th(".state", "State")
-          .th(".finalstatus", "FinalStatus").th(".progress", "Progress")
+          .th(".finalstatus", "FinalStatus")
+          .th(".runningcontainer", "Running Containers")
+          .th(".allocatedCpu", "Allocated CPU VCores")
+          .th(".allocatedMemory", "Allocated Memory MB")
+          .th(".progress", "Progress")
           .th(".ui", "Tracking UI").th(".blacklisted", "Blacklisted Nodes")._()
           ._().tbody();
 
@@ -80,8 +85,7 @@ public class RMAppsBlock extends AppsBlock {
       if (nodes != null) {
         blacklistedNodesCount = String.valueOf(nodes.size());
       }
-      String percent = String.format("%.1f", app.getProgress());
-      // AppID numerical value parsed by parseHadoopID in yarn.dt.plugins.js
+      String percent = StringUtils.format("%.1f", app.getProgress());
       appsTableData
         .append("[\"<a href='")
         .append(url("app", app.getAppId()))
@@ -109,6 +113,15 @@ public class RMAppsBlock extends AppsBlock {
         .append("\",\"")
         .append(app.getFinalAppStatus())
         .append("\",\"")
+        .append(app.getRunningContainers() == -1 ? "N/A" : String
+            .valueOf(app.getRunningContainers()))
+        .append("\",\"")
+        .append(app.getAllocatedCpuVcores() == -1 ? "N/A" : String
+            .valueOf(app.getAllocatedCpuVcores()))
+        .append("\",\"")
+        .append(app.getAllocatedMemoryMB() == -1 ? "N/A" : String
+            .valueOf(app.getAllocatedMemoryMB()))
+        .append("\",\"")
         // Progress bar
         .append("<br title='").append(percent).append("'> <div class='")
         .append(C_PROGRESSBAR).append("' title='").append(join(percent, '%'))
@@ -118,13 +131,15 @@ public class RMAppsBlock extends AppsBlock {
 
       String trackingURL =
           app.getTrackingUrl() == null
-              || app.getTrackingUrl().equals(UNAVAILABLE) ? null : app
-            .getTrackingUrl();
+              || app.getTrackingUrl().equals(UNAVAILABLE)
+              || app.getAppState() == YarnApplicationState.NEW ? null : app
+              .getTrackingUrl();
 
       String trackingUI =
           app.getTrackingUrl() == null
-              || app.getTrackingUrl().equals(UNAVAILABLE) ? "Unassigned" : app
-            .getAppState() == YarnApplicationState.FINISHED
+              || app.getTrackingUrl().equals(UNAVAILABLE)
+              || app.getAppState() == YarnApplicationState.NEW ? "Unassigned"
+              : app.getAppState() == YarnApplicationState.FINISHED
               || app.getAppState() == YarnApplicationState.FAILED
               || app.getAppState() == YarnApplicationState.KILLED ? "History"
               : "ApplicationMaster";

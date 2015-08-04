@@ -86,6 +86,7 @@ import org.apache.hadoop.yarn.api.records.ContainerId;
 import org.apache.hadoop.yarn.api.records.ContainerLaunchContext;
 import org.apache.hadoop.yarn.api.records.ContainerReport;
 import org.apache.hadoop.yarn.api.records.NodeId;
+import org.apache.hadoop.yarn.api.records.NodeLabel;
 import org.apache.hadoop.yarn.api.records.NodeReport;
 import org.apache.hadoop.yarn.api.records.NodeState;
 import org.apache.hadoop.yarn.api.records.QueueInfo;
@@ -485,6 +486,19 @@ public class YarnClientImpl extends YarnClient {
   }
 
   @Override
+  public List<ApplicationReport> getApplications(Set<String> queues,
+      Set<String> users, Set<String> applicationTypes,
+      EnumSet<YarnApplicationState> applicationStates) throws YarnException,
+      IOException {
+    GetApplicationsRequest request =
+        GetApplicationsRequest.newInstance(applicationTypes, applicationStates);
+    request.setQueues(queues);
+    request.setUsers(users);
+    GetApplicationsResponse response = rmClient.getApplications(request);
+    return response.getApplicationList();
+  }
+
+  @Override
   public YarnClusterMetrics getYarnClusterMetrics() throws YarnException,
       IOException {
     GetClusterMetricsRequest request =
@@ -781,28 +795,28 @@ public class YarnClientImpl extends YarnClient {
   }
   
   @Override
-  public Map<NodeId, Set<String>> getNodeToLabels() throws YarnException,
+  public Map<NodeId, Set<NodeLabel>> getNodeToLabels() throws YarnException,
       IOException {
     return rmClient.getNodeToLabels(GetNodesToLabelsRequest.newInstance())
         .getNodeToLabels();
   }
 
   @Override
-  public Map<String, Set<NodeId>> getLabelsToNodes() throws YarnException,
+  public Map<NodeLabel, Set<NodeId>> getLabelsToNodes() throws YarnException,
       IOException {
     return rmClient.getLabelsToNodes(GetLabelsToNodesRequest.newInstance())
         .getLabelsToNodes();
   }
 
   @Override
-  public Map<String, Set<NodeId>> getLabelsToNodes(Set<String> labels)
+  public Map<NodeLabel, Set<NodeId>> getLabelsToNodes(Set<String> labels)
       throws YarnException, IOException {
     return rmClient.getLabelsToNodes(
         GetLabelsToNodesRequest.newInstance(labels)).getLabelsToNodes();
   }
 
   @Override
-  public Set<String> getClusterNodeLabels() throws YarnException, IOException {
+  public List<NodeLabel> getClusterNodeLabels() throws YarnException, IOException {
     return rmClient.getClusterNodeLabels(
         GetClusterNodeLabelsRequest.newInstance()).getNodeLabels();
   }

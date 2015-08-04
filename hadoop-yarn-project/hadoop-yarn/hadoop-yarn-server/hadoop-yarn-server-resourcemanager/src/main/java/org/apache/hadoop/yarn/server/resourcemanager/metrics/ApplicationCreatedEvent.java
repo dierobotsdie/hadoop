@@ -18,6 +18,8 @@
 
 package org.apache.hadoop.yarn.server.resourcemanager.metrics;
 
+import java.util.Set;
+
 import org.apache.hadoop.yarn.api.records.ApplicationId;
 
 public class ApplicationCreatedEvent extends
@@ -29,6 +31,8 @@ public class ApplicationCreatedEvent extends
   private String user;
   private String queue;
   private long submittedTime;
+  private Set<String> appTags;
+  private boolean unmanagedApplication;
 
   public ApplicationCreatedEvent(ApplicationId appId,
       String name,
@@ -36,7 +40,9 @@ public class ApplicationCreatedEvent extends
       String user,
       String queue,
       long submittedTime,
-      long createdTime) {
+      long createdTime,
+      Set<String> appTags,
+      boolean unmanagedApplication) {
     super(SystemMetricsEventType.APP_CREATED, createdTime);
     this.appId = appId;
     this.name = name;
@@ -44,6 +50,8 @@ public class ApplicationCreatedEvent extends
     this.user = user;
     this.queue = queue;
     this.submittedTime = submittedTime;
+    this.appTags = appTags;
+    this.unmanagedApplication = unmanagedApplication;
   }
 
   @Override
@@ -75,4 +83,11 @@ public class ApplicationCreatedEvent extends
     return submittedTime;
   }
 
+  public Set<String> getAppTags() {
+    return appTags;
+  }
+
+  public boolean isUnmanagedApp() {
+    return unmanagedApplication;
+  }
 }
