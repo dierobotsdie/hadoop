@@ -46,7 +46,7 @@ Corrected arithmetic error that made sleep times less than zero.
 
 * [HADOOP-6231](https://issues.apache.org/jira/browse/HADOOP-6231) | *Major* | **Allow caching of filesystem instances to be disabled on a per-instance basis**
 
-Allow a general mechanism to disable the cache on a per filesystem basis by using property fs.<schemename>.impl.disable.cache. eg. fs.har.impl.disable.cache in core-default.xml
+Allow a general mechanism to disable the cache on a per filesystem basis by using property fs.\<schemename\>.impl.disable.cache. eg. fs.har.impl.disable.cache in core-default.xml
 
 
 ---

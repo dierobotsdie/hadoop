@@ -91,7 +91,7 @@ TestDistributedUpgrade used succeed for wrong reasons.
 
 * [HADOOP-4150](https://issues.apache.org/jira/browse/HADOOP-4150) | *Blocker* | **Include librecordio as part of the release**
 
-Included librecordio in release for use by xerces-c  (ant  -Dlibrecordio=true -Dxercescroot=<path to the xerces-c root>)
+Included librecordio in release for use by xerces-c  (ant  -Dlibrecordio=true -Dxercescroot=\<path to the xerces-c root\>)
 
 
 ---

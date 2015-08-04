@@ -415,7 +415,7 @@ Fix a misleading documentation note about the usage of Reporter objects in Reduc
 
 * [MAPREDUCE-1905](https://issues.apache.org/jira/browse/MAPREDUCE-1905) | *Blocker* | **Context.setStatus() and progress() api are ignored**
 
-Moved the api public Counter getCounter(Enum<?> counterName), public Counter getCounter(String groupName, String counterName) from org.apache.hadoop.mapreduce.TaskInputOutputContext to org.apache.hadoop.mapreduce.TaskAttemptContext
+Moved the api public Counter getCounter(Enum\<?\> counterName), public Counter getCounter(String groupName, String counterName) from org.apache.hadoop.mapreduce.TaskInputOutputContext to org.apache.hadoop.mapreduce.TaskAttemptContext
 
 
 ---

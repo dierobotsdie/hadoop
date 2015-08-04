@@ -32,7 +32,7 @@ Commands chmod, chown and chgrp now returns non zero exit code and an error mess
 
 * [HADOOP-6382](https://issues.apache.org/jira/browse/HADOOP-6382) | *Major* | **publish hadoop jars to apache mvn repo.**
 
-The hadoop jars are renamed  from previous hadoop-<version>-<name>.jar to hadoop-<name>-<version>.jar. Applications and documentation need to be updated to use the new file naming scheme.
+The hadoop jars are renamed  from previous hadoop-\<version\>-\<name\>.jar to hadoop-\<name\>-\<version\>.jar. Applications and documentation need to be updated to use the new file naming scheme.
 
 
 ---

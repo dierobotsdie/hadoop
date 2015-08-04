@@ -95,7 +95,7 @@ The new API described above, which can be used to programmatically obtain histor
        public String getJobName() { ... }
     }
 
-    public class JobHistoryRecordRetriever implements Iterator<JobHistoryJobRecord> {
+    public class JobHistoryRecordRetriever implements Iterator\<JobHistoryJobRecord\> {
        // usual Interface methods -- remove() throws UnsupportedOperationException
        // returns the number of calls to next() that will succeed
        public int numMatches() { ... }
