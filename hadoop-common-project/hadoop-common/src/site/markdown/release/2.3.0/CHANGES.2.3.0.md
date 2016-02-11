@@ -27,6 +27,12 @@
 | [HDFS-4997](https://issues.apache.org/jira/browse/HDFS-4997) | libhdfs doesn't return correct error codes in most cases |  Major | libhdfs | Colin Patrick McCabe | Colin Patrick McCabe |
 
 
+### IMPORTANT ISSUES:
+
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
+|:---- |:---- | :--- |:---- |:---- |:---- |
+
+
 ### NEW FEATURES:
 
 | JIRA | Summary | Priority | Component | Reporter | Contributor |
@@ -428,6 +434,7 @@
 | [YARN-1454](https://issues.apache.org/jira/browse/YARN-1454) | TestRMRestart.testRMDelegationTokenRestoredOnRMRestart is failing intermittently |  Critical | . | Jian He | Karthik Kambatla |
 | [YARN-1451](https://issues.apache.org/jira/browse/YARN-1451) | TestResourceManager relies on the scheduler assigning multiple containers in a single node update |  Minor | . | Sandy Ryza | Sandy Ryza |
 | [YARN-1450](https://issues.apache.org/jira/browse/YARN-1450) | TestUnmanagedAMLauncher#testDSShell fails on trunk |  Major | applications/distributed-shell | Akira AJISAKA | Binglin Chang |
+| [YARN-1438](https://issues.apache.org/jira/browse/YARN-1438) | When a container fails, the text of the exception isn't included in the diagnostics |  Major | nodemanager | Steve Loughran | Steve Loughran |
 | [YARN-1435](https://issues.apache.org/jira/browse/YARN-1435) | Distributed Shell should not run other commands except "sh", and run the custom script at the same time. |  Major | applications/distributed-shell | Tassapol Athiapinya | Xuan Gong |
 | [YARN-1425](https://issues.apache.org/jira/browse/YARN-1425) | TestRMRestart fails because MockRM.waitForState(AttemptId) uses current attempt instead of the attempt passed as argument |  Major | . | Omkar Vinit Joshi | Omkar Vinit Joshi |
 | [YARN-1419](https://issues.apache.org/jira/browse/YARN-1419) | TestFifoScheduler.testAppAttemptMetrics fails intermittently under jdk7 |  Minor | scheduler | Jonathan Eagles | Jonathan Eagles |
@@ -648,8 +655,8 @@
 | [YARN-427](https://issues.apache.org/jira/browse/YARN-427) | Coverage fix for org.apache.hadoop.yarn.server.api.\* |  Major | . | Aleksey Gorshkov | Aleksey Gorshkov |
 | [YARN-425](https://issues.apache.org/jira/browse/YARN-425) | coverage fix for yarn api |  Major | . | Aleksey Gorshkov | Aleksey Gorshkov |
 | [YARN-353](https://issues.apache.org/jira/browse/YARN-353) | Add Zookeeper-based store implementation for RMStateStore |  Major | resourcemanager | Hitesh Shah | Karthik Kambatla |
-| [YARN-312](https://issues.apache.org/jira/browse/YARN-312) | Add updateNodeResource in ResourceManagerAdministrationProtocol |  Major | api | Junping Du | Junping Du |
-| [YARN-311](https://issues.apache.org/jira/browse/YARN-311) | Dynamic node resource configuration: core scheduler changes |  Major | resourcemanager, scheduler | Junping Du | Junping Du |
+| [YARN-312](https://issues.apache.org/jira/browse/YARN-312) | Add updateNodeResource in ResourceManagerAdministrationProtocol |  Major | api, graceful | Junping Du | Junping Du |
+| [YARN-311](https://issues.apache.org/jira/browse/YARN-311) | Dynamic node resource configuration: core scheduler changes |  Major | graceful, resourcemanager, scheduler | Junping Du | Junping Du |
 | [YARN-7](https://issues.apache.org/jira/browse/YARN-7) | Add support for DistributedShell to ask for CPUs along with memory |  Major | . | Arun C Murthy | Junping Du |
 
 

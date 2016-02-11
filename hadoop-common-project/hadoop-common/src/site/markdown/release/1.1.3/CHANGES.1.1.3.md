@@ -18,9 +18,15 @@
 -->
 # Apache Hadoop Changelog
 
-## Release 1.1.3 - Unreleased
+## Release 1.1.3 - Unreleased (as of 2016-02-12)
 
 ### INCOMPATIBLE CHANGES:
+
+| JIRA | Summary | Priority | Component | Reporter | Contributor |
+|:---- |:---- | :--- |:---- |:---- |:---- |
+
+
+### IMPORTANT ISSUES:
 
 | JIRA | Summary | Priority | Component | Reporter | Contributor |
 |:---- |:---- | :--- |:---- |:---- |:---- |
