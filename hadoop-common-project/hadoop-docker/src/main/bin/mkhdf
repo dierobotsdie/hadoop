@@ -1,0 +1,288 @@
+#!/usr/bin/env bash
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+MYNAME="${BASH_SOURCE-$0}"
+HADOOP_SHELL_EXECNAME="${MYNAME##*/}"
+
+## @description  build up the hadoop command's usage text.
+## @audience     public
+## @stability    stable
+## @replaceable  no
+function hadoop_usage
+{
+  hadoop_add_option "--version" "version of Apache Hadoop to build against"
+  hadoop_add_option "--dockerdir" "directory to store Dockerfile and related content"
+  hadoop_add_option "--dockerfile" "name of the Dockerfile to create"
+  hadoop_add_subcommand "create" "create a Dockerfile"
+  hadoop_add_subcommand "list" "list available modules"
+  hadoop_add_subcommand "verify" "verify settings"
+  hadoop_generate_usage "${HADOOP_SHELL_EXECNAME}" true
+}
+
+## @description  verify that the components exist
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+## @returns      0 on success
+## @returns      1 on failure
+function hadoop_mkhdf_loaddefaults
+{
+  HADOOP_VERSION=$("${HADOOP_COMMON_HOME}/bin/hadoop" version | head -1 | awk '{print $2}')
+
+  HADOOP_DOCKERDIR=${HADOOP_DOCKERDIR:-/tmp/mkhdf.${RANDOM}}
+  mkdir -p "${HADOOP_DOCKERDIR}"
+  if [[ $? != 0 ]]; then
+    hadoop_error "ERROR: Cannot create ${HADOOP_DOCKERDIR}."
+    exit 1
+  fi
+  HADOOP_DOCKERDIR=$(hadoop_abs "${HADOOP_DOCKERDIR}")
+  HADOOP_DOCKERFILE=${HADOOP_DOCKERFILE:-Dockerfile}
+  if [[ ! ${HADOOP_DOCKERFILE} =~ ^/ ]]; then
+    HADOOP_DOCKERFILE=${HADOOP_DOCKERDIR}/${HADOOP_DOCKERFILE}
+  fi
+  HADOOP_DOCKERFILE_STUBDIR=${HADOOP_DOCKERFILE_STUBDIR:-"${HADOOP_HOME}/share/hadoop/docker/stubs"}
+  HADOOP_HWPLAT=$(uname -m)
+  HADOOP_DOCKERFILE_OS=${HADOOP_DOCKERFILE_OS:-"ubuntu_${HADOOP_HWPLAT}"}
+  HADOOP_DOCKERFILE_DISTRO=${HADOOP_DOCKERFILE_DISTRO:-"gpgfetch"}
+  HADOOP_DOCKERFILE_CONF=${HADOOP_DOCKERFILE_CONF:-"singlenode"}
+  HADOOP_DOCKERFILE_CUSTOMIZER=${HADOOP_DOCKERFILE_CUSTOMIZER:-"simple"}
+  HADOOP_DOCKERFILE_FINAL="simple"
+}
+
+## @description  verify that the components exist
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+## @returns      0 on success
+## @returns      1 on failure
+function hadoop_mkhdf_resolveglobals
+{
+  declare dir
+  declare dtype
+  declare uctype
+  declare checkvar
+  declare potential
+
+  for dir in "${HADOOP_DOCKERFILE_STUBDIR}"/*; do
+    dtype=$(basename "${dir}" | tr '[:lower:]' '[:upper:]')
+    checkvar="HADOOP_DOCKERFILE_${dtype}"
+    if [[ ! -f "${!checkvar}" ]]; then
+      if [[ ! "${!checkvar}" =~ ^/ ]]; then
+        eval potential="HADOOP_DOCKERFILE_${dtype}"
+        if [[ -f "${dir}/${!potential}.sh" ]]; then
+          # shellcheck disable=SC2086
+          eval HADOOP_DOCKERFILE_${dtype}="${dir}/${!potential}.sh"
+        fi
+      fi
+    fi
+  done
+}
+
+
+## @description  verify that the components exist
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+## @returns      0 on success
+## @returns      1 on failure
+function hadoop_mkhdf_verify
+{
+  declare fn
+  declare dir
+  declare dtype
+  declare ret=0
+
+  hadoop_mkhdf_resolveglobals
+
+  for dir in "${HADOOP_DOCKERFILE_STUBDIR}"/*; do
+    dtype=$(basename "${dir}" | tr '[:lower:]' '[:upper:]')
+    fn=HADOOP_DOCKERFILE_${dtype}
+    if [[ ! -f "${!fn}" ]]; then
+      hadoop_error "${dtype}: ERROR: \"${!fn}\" does not exist or is not a file."
+      ret=1
+    fi
+  done
+  return ${ret}
+}
+
+## @description  install wrappers in the dockerfile if needed
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+function hadoop_install_wrappers
+{
+  declare fn
+
+  for fn in ${HADOOP_HOME}/share/hadoop/docker/wrappers/*; do
+    realfn=$(echo "${fn}" | sed -e s,{HADOOP_HOME}/share/hadoop/docker/wrappers,,g)
+    txt=$(sed -e 's,\\,\\\\,g' \
+        -e 's,$,\\n\\,g' \
+        -e 's,\$,\\$,g'  \
+        -e 's,\",\\",g' \
+        "${fn}")
+    echo RUN printf \"${txt}\" >> \"${realfn}\"
+  done
+
+}
+
+## @description build a dockerfile
+## @audience     public
+## @stability    stable
+## @replaceable  yes
+function hadoop_mkhdf_create
+{
+  hadoop_mkhdf_verify
+  if [[ $? != 0 ]]; then
+    hadoop_error "ERROR: verify failed, aborting create."
+    exit 1
+  fi
+  {
+    # shellcheck disable=SC1090
+    . "${HADOOP_DOCKERFILE_OS}"  "$@"
+
+    # shellcheck disable=SC1090
+    . "${HADOOP_DOCKERFILE_DISTRO}" "$@"
+
+    # shellcheck disable=SC1090
+    . "${HADOOP_DOCKERFILE_CONF}" "$@"
+
+    install_wrappers
+
+    # shellcheck disable=SC1090
+    . "${HADOOP_DOCKERFILE_CUSTOMIZER}" "$@"
+
+    # shellcheck disable=SC1090
+    . "${HADOOP_DOCKERFILE_FINAL}" "$@"
+  } > "${HADOOP_DOCKERFILE}"
+
+  echo "Created ${HADOOP_DOCKERFILE}"
+}
+
+function hadoop_mkhdf_list
+{
+  declare category
+  declare catuc
+  declare found
+  declare potential
+  declare file
+  declare dir
+
+  for dir in "${HADOOP_DOCKERFILE_STUBDIR}"/*; do
+    found=false
+    category=$(basename "${dir}")
+    catuc=$(echo "${category}" | tr '[:lower:]' '[:upper:]')
+    eval potential="HADOOP_DOCKERFILE_${catuc}"
+    printf "\n%s:\n\n" "${category}"
+    for file in "${dir}"/*; do
+      stub=$(basename "${file}" | sed -e 's,\.sh$,,g')
+      printf "\t%s" "${stub}"
+      if [[ "${stub}" = "${!potential}" ]]; then
+        found=true
+        printf " [default]\n"
+      else
+        printf "\n"
+      fi
+    done
+    if [[ ${found} = false ]]; then
+      printf "\n\tDefault: %s\n" "${!potential}"
+    fi
+  done
+}
+
+## @description  Default options handler
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        CLI arguments
+function hadoop_mkhdf_options
+{
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dockerfile)
+        shift
+        # shellcheck disable=SC2034
+        HADOOP_DOCKERFILE=$1
+        shift
+      ;;
+      --version)
+        shift
+        # shellcheck disable=SC2034
+        HADOOP_VERSION=$1
+        shift
+      ;;
+      *)
+        shift
+      ;;
+    esac
+  done
+}
+
+## @description  Default subcommand handler
+## @audience     public
+## @stability    stable
+## @replaceable  no
+## @param        CLI arguments
+function hadoop_mkhdf_sub
+{
+  case "${HADOOP_SUBCMD}" in
+    create)
+      hadoop_mkhdf_create "${HADOOP_SUBCMD_ARGS[@]}"
+    ;;
+    list)
+      hadoop_mkhdf_list
+    ;;
+    verify)
+      hadoop_mkhdf_verify
+    ;;
+    *)
+      hadoop_usage
+      exit 1
+    ;;
+  esac
+}
+
+if [[ -n "${HADOOP_HOME}" ]]; then
+  HADOOP_DEFAULT_LIBEXEC_DIR="${HADOOP_HOME}/libexec"
+else
+  bin=$(cd -P -- "$(dirname -- "${MYNAME}")" >/dev/null && pwd -P)
+  HADOOP_DEFAULT_LIBEXEC_DIR="${bin}/../libexec"
+fi
+
+HADOOP_LIBEXEC_DIR="${HADOOP_LIBEXEC_DIR:-$HADOOP_DEFAULT_LIBEXEC_DIR}"
+# shellcheck disable=SC2034
+HADOOP_NEW_CONFIG=true
+if [[ -f "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh" ]]; then
+  # shellcheck disable=SC1090
+  . "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh"
+else
+  echo "ERROR: Cannot execute ${HADOOP_LIBEXEC_DIR}/hadoop-config.sh." 2>&1
+  exit 1
+fi
+
+if [ $# = 0 ]; then
+  hadoop_exit_with_usage 1
+fi
+
+hadoop_mkhdf_loaddefaults
+
+HADOOP_SUBCMD=$1
+shift
+
+HADOOP_SUBCMD_ARGS=("$@")
+
+hadoop_mkhdf_options "${HADOOP_SUBCMD_ARGS[@]}"
+
+hadoop_mkhdf_sub "${HADOOP_SUBCMD}"
