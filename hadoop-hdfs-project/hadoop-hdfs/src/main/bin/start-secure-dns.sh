@@ -17,11 +17,6 @@
 
 # Run as root to start secure datanodes in a security-enabled cluster.
 
-
-function hadoop_usage {
-  echo "Usage: start-secure-dns.sh"
-}
-
 this="${BASH_SOURCE-$0}"
 bin=$(cd -P -- "$(dirname -- "${this}")" >/dev/null && pwd -P)
 
@@ -42,12 +37,9 @@ else
   exit 1
 fi
 
-if [[ "${EUID}" -eq 0 ]] && [[ -n "${HADOOP_SECURE_DN_USER}" ]]; then
-  exec "${HADOOP_HDFS_HOME}/bin/hdfs" \
-     --config "${HADOOP_CONF_DIR}" \
-     --workers \
-     --daemon start \
-     datanode
-else
-  echo hadoop_usage_and_exit 1
-fi
+echo "Starting datanodes"
+hadoop_uservar_su hdfs datanode "${HADOOP_HDFS_HOME}/bin/hdfs" \
+    --workers \
+    --config "${HADOOP_CONF_DIR}" \
+    --daemon start \
+    datanode
