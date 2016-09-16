@@ -19,3 +19,6 @@
 # Apache Hadoop  2.6.3 Release Notes
 
 These release notes cover new developer and user-facing incompatibilities, important issues, features, and major improvements.
+
+
+

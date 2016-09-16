@@ -23,34 +23,6 @@ These release notes cover new developer and user-facing incompatibilities, impor
 
 ---
 
-* [HADOOP-5647](https://issues.apache.org/jira/browse/HADOOP-5647) | *Major* | **TestJobHistory fails if /tmp/\_logs is not writable to. Testcase should not depend on /tmp**
-
-Removed dependency of testcase on /tmp and made it to use test.build.data directory instead.
-
-
----
-
-* [HDFS-1626](https://issues.apache.org/jira/browse/HDFS-1626) | *Minor* | **Make BLOCK\_INVALIDATE\_LIMIT configurable**
-
-Added a new configuration property dfs.block.invalidate.limit for FSNamesystem.blockInvalidateLimit.
-
-
----
-
-* [HDFS-457](https://issues.apache.org/jira/browse/HDFS-457) | *Major* | **better handling of volume failure in Data Node storage**
-
-Datanode can continue if a volume for replica storage fails. Previously a datanode resigned if any volume failed.
-
-
----
-
-* [MAPREDUCE-1118](https://issues.apache.org/jira/browse/MAPREDUCE-1118) | *Major* | **Capacity Scheduler scheduling information is hard to read / should be tabular format**
-
-Add CapacityScheduler servlet to enhance web UI for queue information.
-
-
----
-
 * [MAPREDUCE-478](https://issues.apache.org/jira/browse/MAPREDUCE-478) | *Minor* | **separate jvm param for mapper and reducer**
 
 Allow map and reduce jvm parameters, environment variables and ulimit to be set separately.
@@ -65,6 +37,27 @@ Configuration changes:
       deprecated mapred.child.java.opts
       deprecated mapred.child.env
       deprecated mapred.child.ulimit
+
+
+---
+
+* [HDFS-457](https://issues.apache.org/jira/browse/HDFS-457) | *Major* | **better handling of volume failure in Data Node storage**
+
+Datanode can continue if a volume for replica storage fails. Previously a datanode resigned if any volume failed.
+
+
+---
+
+* [HDFS-1626](https://issues.apache.org/jira/browse/HDFS-1626) | *Minor* | **Make BLOCK\_INVALIDATE\_LIMIT configurable**
+
+Added a new configuration property dfs.block.invalidate.limit for FSNamesystem.blockInvalidateLimit.
+
+
+---
+
+* [HADOOP-5647](https://issues.apache.org/jira/browse/HADOOP-5647) | *Major* | **TestJobHistory fails if /tmp/\_logs is not writable to. Testcase should not depend on /tmp**
+
+Removed dependency of testcase on /tmp and made it to use test.build.data directory instead.
 
 
 ---
@@ -101,17 +94,24 @@ The new API described above, which can be used to programmatically obtain histor
        public int numMatches() { ... }
     }
 
-    // returns a JobHistoryRecordRetriever that delivers all Path's of job matching job history files,
+    // returns a JobHistoryRecordRetriever that delivers all Path\'s of job matching job history files,
     // in no particular order.  Any criterion that is null or the empty string does not constrain.
-    // All criteria that are specified are applied conjunctively, except that if there's more than
-    // one date you retrieve all Path's matching ANY date.
+    // All criteria that are specified are applied conjunctively, except that if there\'s more than
+    // one date you retrieve all Path\'s matching ANY date.
     // soughtUser and soughtJobid must match exactly.
     // soughtJobName can match the entire job name or any substring.
     // dates must be in the format exactly MM/DD/YYYY .  
-    // Dates' leading digits must be 2's .  We're incubating a Y3K problem.
+    // Dates\' leading digits must be 2\'s .  We\'re incubating a Y3K problem.
     public JobHistoryRecordRetriever getMatchingJob
         (String soughtUser, String soughtJobName, String[] dateStrings, String soughtJobid)
       throws IOException
+
+
+---
+
+* [MAPREDUCE-1118](https://issues.apache.org/jira/browse/MAPREDUCE-1118) | *Major* | **Capacity Scheduler scheduling information is hard to read / should be tabular format**
+
+Add CapacityScheduler servlet to enhance web UI for queue information.
 
 
 
