@@ -83,19 +83,19 @@ hadoop_bootstrap
 # let's find our conf.
 #
 # first, check and process params passed to us
-# we process this in-line so that we can directly modify $@
-# if something downstream is processing that directly,
-# we need to make sure our params have been ripped out
 # note that we do many of them here for various utilities.
 # this provides consistency and forces a more consistent
 # user experience
-
 
 # save these off in case our caller needs them
 # shellcheck disable=SC2034
 HADOOP_USER_PARAMS=("$@")
 
 hadoop_parse_args "$@"
+
+# we need to modify $@ so that
+# if something downstream is processing that directly,
+# we guarantee our params have been ripped out
 shift "${HADOOP_PARSE_COUNTER}"
 
 #

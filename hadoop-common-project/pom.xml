@@ -37,7 +37,6 @@
     <module>hadoop-nfs</module>
     <module>hadoop-minikdc</module>
     <module>hadoop-kms</module>
-    <module>hadoop-docker</module>
   </modules>
 
   <build>

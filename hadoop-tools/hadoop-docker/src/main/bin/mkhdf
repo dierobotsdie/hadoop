@@ -202,33 +202,20 @@ function hadoop_mkhdf_list
   done
 }
 
-## @description  Default options handler
-## @audience     public
-## @stability    stable
-## @replaceable  no
-## @param        CLI arguments
-function hadoop_mkhdf_options
+function hadoop_cmdline_opt_version
 {
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --dockerfile)
-        shift
-        # shellcheck disable=SC2034
-        HADOOP_DOCKERFILE=$1
-        shift
-      ;;
-      --version)
-        shift
-        # shellcheck disable=SC2034
-        HADOOP_VERSION=$1
-        shift
-      ;;
-      *)
-        shift
-      ;;
-    esac
-  done
+  # shellcheck disable=SC2034
+  HADOOP_VERSION=$1
+  ((HADOOP_PARSE_COUNTER=HADOOP_PARSE_COUNTER+1))
 }
+
+function hadoop_cmdline_opt_dockerfile
+{
+  # shellcheck disable=SC2034
+  HADOOP_DOCKERFILE=$1
+  ((HADOOP_PARSE_COUNTER=HADOOP_PARSE_COUNTER+1))
+}
+
 
 ## @description  Default subcommand handler
 ## @audience     public

@@ -2350,6 +2350,15 @@ function hadoop_parse_args
 
   while true; do
     hadoop_debug "hadoop_parse_args: processing $1"
+
+    if declare -f hadoop_cmdline_opt_"$1" >/dev/null 2>&1; then
+      shift
+      ((HADOOP_PARSE_COUNTER=HADOOP_PARSE_COUNTER+1))
+      hadoop_debug "hadoop_parse_args: calling custom hadoop_cmdline_opt_$1 $*"
+      "hadoop_cmdline_opt_$1" "$@"
+      continue
+    fi
+
     case $1 in
       --buildpaths)
         # shellcheck disable=SC2034
