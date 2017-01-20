@@ -27,112 +27,93 @@
 # e) CLOVER_JAR - optional; the location of the Clover code coverage tool's jar.
 #
 
-if [ "x$HADOOP_HOME" == "x" ]; then
+if [[ -z "${HADOOP_HOME}" ]]; then
   echo "HADOOP_HOME is unset!"
   exit 1
 fi
 
-if [ "x$LIBHDFS_BUILD_DIR" == "x" ]; then
-  LIBHDFS_BUILD_DIR=`pwd`/../
+if [[ -z "${LIBHDFS_BUILD_DIR}" ]]; then
+  LIBHDFS_BUILD_DIR=$(pwd)/../
 fi
 
-if [ "x$HDFS_TEST_CONF_DIR" == "x" ]; then
+if [[ -z "${HDFS_TEST_CONF_DIR}" ]]; then
   HDFS_TEST_CONF_DIR=/tmp
 fi
 
 # LIBHDFS_INSTALL_DIR is the directory containing libhdfs.so
-LIBHDFS_INSTALL_DIR=$HADOOP_HOME/lib/native/
+LIBHDFS_INSTALL_DIR="${HADOOP_HOME}/lib/native"
 HDFS_TEST=hdfs_test
+HDFS_TEST_JAR=$(find "${HADOOP_HOME}/share/hadoop/hdfs/" -name "hadoop-hdfs-*-tests.jar" | head -n 1)
 
-HDFS_TEST_JAR=`find $HADOOP_HOME/share/hadoop/hdfs/ \
--name "hadoop-hdfs-*-tests.jar" | head -n 1`
-
-if [ "x$HDFS_TEST_JAR" == "x" ]; then
-  echo "HDFS test jar not found! Tried looking in all subdirectories \
-of $HADOOP_HOME/share/hadoop/hdfs/"
+if [[ -z "${HDFS_TEST_JAR}" ]]; then
+  echo "HDFS test jar not found! Tried looking in all subdirectories of ${HADOOP_HOME}/share/hadoop/hdfs/"
   exit 1
 fi
 
-echo "Found HDFS test jar at $HDFS_TEST_JAR"
+echo "Found HDFS test jar at ${HDFS_TEST_JAR}"
 
 # CLASSPATH initially contains $HDFS_TEST_CONF_DIR
-CLASSPATH="${HDFS_TEST_CONF_DIR}"
-CLASSPATH=${CLASSPATH}:$JAVA_HOME/lib/tools.jar
+CLASSPATH=${HDFS_TEST_CONF_DIR}:${JAVA_HOME}/lib/tools.jar
 
 # add Clover jar file needed for code coverage runs
-CLASSPATH=${CLASSPATH}:${CLOVER_JAR};
+CLASSPATH=${CLASSPATH}:"${CLOVER_JAR}"
 
-# so that filenames w/ spaces are handled correctly in loops below
-IFS=$'\n'
 
-JAR_DIRS="$HADOOP_HOME/share/hadoop/common/lib/
-$HADOOP_HOME/share/hadoop/common/
-$HADOOP_HOME/share/hadoop/hdfs
-$HADOOP_HOME/share/hadoop/hdfs/lib/"
+JAR_DIRS=("$HADOOP_HOME/share/hadoop/common/lib" "$HADOOP_HOME}/share/hadoop/common"
+"${HADOOP_HOME}/share/hadoop/hdfs" "${HADOOP_HOME}/share/hadoop/hdfs/lib")
 
-for d in $JAR_DIRS; do 
-  for j in $d/*.jar; do
-    CLASSPATH=${CLASSPATH}:$j
+for d in "${JAR_DIRS[@]}"; do
+  for j in ${d}/*.jar; do
+    CLASSPATH=${CLASSPATH}:"$j"
   done;
 done;
 
-# restore ordinary behaviour
-unset IFS
-
 findlibjvm () {
-javabasedir=$JAVA_HOME
-case $OS_NAME in
-    mingw* | pw23* )
-    lib_jvm_dir=`find $javabasedir -follow \( \
-        \( -name client -type d -prune \) -o \
-        \( -name "jvm.dll" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " "`
+javabasedir=${JAVA_HOME}
+
+  case "${OS_NAME}" in
+    mingw*|pw23*)
+      lib_jvm_dir=$(find "${javabasedir}" -follow \( \
+          \( -name client -type d -prune \) -o \
+          \( -name "jvm.dll" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " ")
     ;;
     aix*)
-    lib_jvm_dir=`find $javabasedir \( \
-        \( -name client -type d -prune \) -o \
-        \( -name "libjvm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " "`
-    if test -z "$lib_jvm_dir"; then
-       lib_jvm_dir=`find $javabasedir \( \
-       \( -name client -type d -prune \) -o \
-       \( -name "libkaffevm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " "`
-    fi
+      lib_jvm_dir=$(find "${javabasedir}" \( \
+          \( -name client -type d -prune \) -o \
+          \( -name "libjvm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " ")
     ;;
     *)
-    lib_jvm_dir=`find $javabasedir -follow \( \
+    lib_jvm_dir=$(find "${javabasedir}" -follow \( \
        \( -name client -type d -prune \) -o \
-       \( -name "libjvm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " "`
-    if test -z "$lib_jvm_dir"; then
-       lib_jvm_dir=`find $javabasedir -follow \( \
-       \( -name client -type d -prune \) -o \
-       \( -name "libkaffevm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " "`
-    fi
+       \( -name "libjvm.*" -exec dirname {} \; \) \) 2> /dev/null | tr "\n" " ")
     ;;
   esac
-  echo $lib_jvm_dir
+  echo "${lib_jvm_dir}"
 }
-LIB_JVM_DIR=`findlibjvm`
-echo  "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-echo  LIB_JVM_DIR = $LIB_JVM_DIR
-echo  "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
-# Put delays to ensure hdfs is up and running and also shuts down 
-# after the tests are complete
-rm $HDFS_TEST_CONF_DIR/core-site.xml
 
-$HADOOP_HOME/bin/hadoop jar $HDFS_TEST_JAR \
+LIB_JVM_DIR=$(findlibjvm)
+echo  "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+echo  "LIB_JVM_DIR = ${LIB_JVM_DIR}"
+echo  "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+# Put delays to ensure hdfs is up and running and also shuts down
+# after the tests are complete
+rm "${HDFS_TEST_CONF_DIR}/core-site.xml"
+
+"${HADOOP_HOME}/bin/hadoop" jar "${HDFS_TEST_JAR}" \
     org.apache.hadoop.test.MiniDFSClusterManager \
-    -format -nnport 20300 -writeConfig $HDFS_TEST_CONF_DIR/core-site.xml \
-    > /tmp/libhdfs-test-cluster.out 2>&1 & 
+    -format -nnport 20300 -writeConfig "${HDFS_TEST_CONF_DIR}/core-site.xml" \
+    > /tmp/libhdfs-test-cluster.out 2>&1 &
 
 MINI_CLUSTER_PID=$!
 for i in {1..15}; do
   echo "Waiting for DFS cluster, attempt $i of 15"
-  [ -f $HDFS_TEST_CONF_DIR/core-site.xml ] && break;
+  [[ -f "${HDFS_TEST_CONF_DIR}/core-site.xml" ]] && break;
   sleep 2
 done
 
-if [ ! -f $HDFS_TEST_CONF_DIR/core-site.xml ]; then
+if [[ ! -f "${HDFS_TEST_CONF_DIR}/core-site.xml" ]]; then
   echo "Cluster did not come up in 30s"
-  kill -9 $MINI_CLUSTER_PID
+  kill -9 "${MINI_CLUSTER_PID}"
   exit 1
 fi
 
@@ -140,13 +121,13 @@ echo "Cluster up, running tests"
 # Disable error checking to make sure we get to cluster cleanup
 set +e
 
-CLASSPATH=$CLASSPATH \
-LD_PRELOAD="$LIB_JVM_DIR/libjvm.so:$LIBHDFS_INSTALL_DIR/libhdfs.so:" \
-$LIBHDFS_BUILD_DIR/$HDFS_TEST
+export CLASSPATH
+LD_PRELOAD="${LIB_JVM_DIR}/libjvm.so:${LIBHDFS_INSTALL_DIR}/libhdfs.so:" \
+"${LIBHDFS_BUILD_DIR}/${HDFS_TEST}"
 
 BUILD_STATUS=$?
 
 echo "Tearing cluster down"
-kill -9 $MINI_CLUSTER_PID
-echo "Exiting with $BUILD_STATUS"
-exit $BUILD_STATUS
+kill -9 "${MINI_CLUSTER_PID}"
+echo "Exiting with ${BUILD_STATUS}"
+exit "${BUILD_STATUS}"

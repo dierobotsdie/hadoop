@@ -68,7 +68,6 @@ function yetus_abs
   return 1
 }
 
-
 WANTED="$1"
 shift
 ARGV=("$@")

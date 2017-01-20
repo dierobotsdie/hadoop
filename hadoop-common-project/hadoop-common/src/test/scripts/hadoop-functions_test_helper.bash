@@ -17,7 +17,7 @@
 setup() {
 
   RELTMP="${BATS_TEST_DIRNAME}/../../../target/test-dir/bats.$$.${RANDOM}"
-  mkdir -p ${RELTMP}
+  mkdir -p "${RELTMP}"
   TMP=$(cd -P -- "${RELTMP}" >/dev/null && pwd -P)
   export TMP
   TESTBINDIR=$(cd -P -- "$(pwd)" >/dev/null && pwd -P)
@@ -38,6 +38,7 @@ setup() {
   # shellcheck disable=SC2034
   QATESTMODE=true
 
+  # shellcheck disable=SC1090
   . "${BATS_TEST_DIRNAME}/../../main/bin/hadoop-functions.sh"
   pushd "${TMP}" >/dev/null
 }

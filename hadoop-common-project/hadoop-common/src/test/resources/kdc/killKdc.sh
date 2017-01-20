@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,5 +15,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
  
-ps -ef | grep apacheds | grep -v grep | awk '{printf $2"\n"}' | xargs -t --no-run-if-empty kill -9
+# pkill is almost everywhere and much more trustworthy
+if command -v pkill; then
+  # shellcheck disable=SC2046
+  pkill -9 -U $(id -u) apacheds || exit 0
+else
+  # shellcheck disable=SC2009
+  pids=$(ps -ef | grep apacheds | grep -v grep | awk '{printf $2"\n"}')
+  if [[ -n "${pids}" ]]; then
+    # shellcheck disable=SC2086
+    echo ${pids} | xargs -t kill -9
+  fi
+fi
 

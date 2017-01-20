@@ -1080,12 +1080,12 @@ function hadoop_common_worker_mode_execute
   for (( i = 0; i < argsSize; i++ ))
   do
     if [[ "${argv[$i]}" =~ ^--workers$ ]]; then
-      unset argv[$i]
+      unset "argv[$i]"
     elif [[ "${argv[$i]}" =~ ^--hostnames$ ]] ||
       [[ "${argv[$i]}" =~ ^--hosts$ ]]; then
-      unset argv[$i];
+      unset "argv[$i]";
       let i++;
-      unset argv[$i];
+      unset "argv[$i]";
     fi
   done
   if [[ ${QATESTMODE} = true ]]; then
@@ -1670,8 +1670,7 @@ function hadoop_verify_piddir
     exit 1
   fi
   hadoop_mkdir "${HADOOP_PID_DIR}"
-  touch "${HADOOP_PID_DIR}/$$" >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! touch "${HADOOP_PID_DIR}/$$" >/dev/null 2>&1; then
     hadoop_error "ERROR: Unable to write in ${HADOOP_PID_DIR}. Aborting."
     exit 1
   fi
@@ -1688,8 +1687,7 @@ function hadoop_verify_logdir
     exit 1
   fi
   hadoop_mkdir "${HADOOP_LOG_DIR}"
-  touch "${HADOOP_LOG_DIR}/$$" >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! touch "${HADOOP_LOG_DIR}/$$" >/dev/null 2>&1; then
     hadoop_error "ERROR: Unable to write in ${HADOOP_LOG_DIR}. Aborting."
     exit 1
   fi
@@ -1792,8 +1790,7 @@ function hadoop_start_daemon
 
   # this is for the non-daemon pid creation
   #shellcheck disable=SC2086
-  echo $$ > "${pidfile}" 2>/dev/null
-  if [[ $? -gt 0 ]]; then
+  if ! echo $$ > "${pidfile}" 2>/dev/null; then
     hadoop_error "ERROR:  Cannot write ${command} pid ${pidfile}."
   fi
 
@@ -1839,20 +1836,17 @@ function hadoop_start_daemon_wrapper
 
   # this is for daemon pid creation
   #shellcheck disable=SC2086
-  echo $! > "${pidfile}" 2>/dev/null
-  if [[ $? -gt 0 ]]; then
+  if ! echo $! > "${pidfile}" 2>/dev/null; then
     hadoop_error "ERROR:  Cannot write ${daemonname} pid ${pidfile}."
   fi
 
   # shellcheck disable=SC2086
-  renice "${HADOOP_NICENESS}" $! >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! renice "${HADOOP_NICENESS}" $! >/dev/null 2>&1; then
     hadoop_error "ERROR: Cannot set priority of ${daemonname} process $!"
   fi
 
   # shellcheck disable=SC2086
-  disown %+ >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! disown %+ >/dev/null 2>&1; then
     hadoop_error "ERROR: Cannot disconnect ${daemonname} process $!"
   fi
   sleep 1
@@ -1922,8 +1916,7 @@ function hadoop_start_secure_daemon
   hadoop_debug "Command line options: $*"
 
   #shellcheck disable=SC2086
-  echo $$ > "${privpidfile}" 2>/dev/null
-  if [[ $? -gt 0 ]]; then
+  if ! echo $$ > "${privpidfile}" 2>/dev/null; then
     hadoop_error "ERROR:  Cannot write ${daemonname} pid ${privpidfile}."
   fi
 
@@ -1999,26 +1992,23 @@ function hadoop_start_secure_daemon_wrapper
   done
 
   #shellcheck disable=SC2086
-  if ! echo $! > "${jsvcpidfile}"; then
-    hadoop_error "ERROR:  Cannot write ${daemonname} pid ${jsvcpidfile}."
+  if ! echo $! > "${jsvcpidfile}" 2>/dev/null; then
+    hadoop_error "ERROR:  Cannot write ${daemonname} pid ${daemonpidfile}."
   fi
 
   sleep 1
   #shellcheck disable=SC2086
-  renice "${HADOOP_NICENESS}" $! >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! renice "${HADOOP_NICENESS}" $! >/dev/null 2>&1; then
     hadoop_error "ERROR: Cannot set priority of ${daemonname} process $!"
   fi
   if [[ -f "${daemonpidfile}" ]]; then
     #shellcheck disable=SC2046
-    renice "${HADOOP_NICENESS}" $(cat "${daemonpidfile}" 2>/dev/null) >/dev/null 2>&1
-    if [[ $? -gt 0 ]]; then
+    if ! renice "${HADOOP_NICENESS}" $(cat "${daemonpidfile}" 2>/dev/null) >/dev/null 2>&1; then
       hadoop_error "ERROR: Cannot set priority of ${daemonname} process $(cat "${daemonpidfile}" 2>/dev/null)"
     fi
   fi
   #shellcheck disable=SC2046
-  disown %+ >/dev/null 2>&1
-  if [[ $? -gt 0 ]]; then
+  if ! disown %+ >/dev/null 2>&1; then
     hadoop_error "ERROR: Cannot disconnect ${daemonname} process $!"
   fi
   # capture the ulimit output
@@ -2147,13 +2137,12 @@ function hadoop_daemon_handler
     start|default)
       hadoop_verify_piddir
       hadoop_verify_logdir
-      hadoop_status_daemon "${daemon_pidfile}"
-      if [[ $? == 0  ]]; then
-        hadoop_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
-        exit 1
-      else
+      if hadoop_status_daemon "${daemon_pidfile}"; then
         # stale pid file, so just remove it and continue on
         rm -f "${daemon_pidfile}" >/dev/null 2>&1
+      else
+        hadoop_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
+        exit 1
       fi
       ##COMPAT  - differenticate between --daemon start and nothing
       # "nothing" shouldn't detach
@@ -2208,13 +2197,12 @@ function hadoop_secure_daemon_handler
     start|default)
       hadoop_verify_piddir
       hadoop_verify_logdir
-      hadoop_status_daemon "${daemon_pidfile}"
-      if [[ $? == 0  ]]; then
-        hadoop_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
-        exit 1
-      else
+      if hadoop_status_daemon "${daemon_pidfile}"; then
         # stale pid file, so just remove it and continue on
         rm -f "${daemon_pidfile}" >/dev/null 2>&1
+      else
+        hadoop_error "${daemonname} is running as process $(cat "${daemon_pidfile}").  Stop it first."
+        exit 1
       fi
 
       ##COMPAT  - differenticate between --daemon start and nothing

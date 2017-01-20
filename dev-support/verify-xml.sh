@@ -55,47 +55,42 @@ function print_test_banner() {
 
 # Wrapper functions for running unit tests
 function run_all_xml_test() {
-  mvn test -Dtest=TestCommonConfigurationFields,TestHdfsConfigFields,TestMapreduceConfigFields,TestYarnConfigurationFields
-  if [ $? -ne 0 ] ; then
-    print_test_banner "All Test*ConfigFields FAIL"
-  else
+  if mvn test -Dtest=TestCommonConfigurationFields,TestHdfsConfigFields,TestMapreduceConfigFields,TestYarnConfigurationFields; then
     print_test_banner "All Test*ConfigFields SUCCESS"
+  else
+    print_test_banner "All Test*ConfigFields FAIL"
   fi
 }
 
 function run_common_xml_test() {
-  mvn test -Dtest=TestCommonConfigFields
-  if [ $? -ne 0 ] ; then
-    print_test_banner "TestCommonConfigurationFields FAIL"
-  else
+  if mvn test -Dtest=TestCommonConfigFields; then
     print_test_banner "TestCommonConfigurationFields SUCCESS"
+  else
+    print_test_banner "TestCommonConfigurationFields FAIL"
   fi
 }
 
 function run_hdfs_xml_test() {
-  mvn test -Dtest=TestHdfsConfigFields
-  if [ $? -ne 0 ] ; then
-    print_test_banner "TestHdfsConfigFields FAIL"
-  else
+  if mvn test -Dtest=TestHdfsConfigFields; then
     print_test_banner "TestHdfsConfigFields SUCCESS"
+  else
+    print_test_banner "TestHdfsConfigFields FAIL"
   fi
 }
 
 function run_mapreduce_xml_test() {
-  mvn test -Dtest=TestMapreduceConfigFields
-  if [ $? -ne 0 ] ; then
-    print_test_banner "TestMapreduceConfigFields FAIL"
-  else
+  if mvn test -Dtest=TestMapreduceConfigFields; then
     print_test_banner "TestMapreduceConfigFields SUCCESS"
+  else
+    print_test_banner "TestMapreduceConfigFields FAIL"
   fi
 }
 
 function run_yarn_xml_test() {
-  mvn test -Dtest=TestYarnConfigurationFields
-  if [ $? -ne 0 ] ; then
-    print_test_banner "TestYarnConfigurationFields FAIL"
-  else
+  if mvn test -Dtest=TestYarnConfigurationFields; then
     print_test_banner "TestYarnConfigurationFields SUCCESS"
+  else
+    print_test_banner "TestYarnConfigurationFields FAIL"
   fi
 }
 
@@ -104,14 +99,14 @@ cd -P -- "$(dirname -- "${BASH_SOURCE-$0}")/.." || exit
 dir="$(pwd -P)"
 
 # - Create unit test file names
-export commonOutputFile
 commonOutputFile="$(find "${dir}" -name org.apache.hadoop.conf.TestCommonConfigurationFields-output.txt)"
-export hdfsOutputFile
+export commonOutputFile
 hdfsOutputFile="$(find "${dir}" -name org.apache.hadoop.tools.TestHdfsConfigFields-output.txt)"
-export mrOutputFile
+export hdfsOutputFile
 mrOutputFile="$(find "${dir}" -name org.apache.hadoop.mapreduce.TestMapreduceConfigFields-output.txt)"
-export yarnOutputFile
+export mrOutputFile
 yarnOutputFile="$(find "${dir}" -name org.apache.hadoop.yarn.conf.TestYarnConfigurationFields-output.txt)"
+export yarnOutputFile
 
 # - Determine which tests to run
 case "$1" in

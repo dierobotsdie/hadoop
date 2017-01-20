@@ -42,6 +42,7 @@ HADOOP_LIBEXEC_DIR="${HADOOP_LIBEXEC_DIR:-$HADOOP_DEFAULT_LIBEXEC_DIR}"
 # shellcheck disable=SC2034
 HADOOP_NEW_CONFIG=true
 if [[ -f "${HADOOP_LIBEXEC_DIR}/hdfs-config.sh" ]]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_LIBEXEC_DIR}/hdfs-config.sh"
 else
   echo "ERROR: Cannot execute ${HADOOP_LIBEXEC_DIR}/hdfs-config.sh." 2>&1
@@ -104,6 +105,7 @@ SHARED_EDITS_DIR=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -confKey dfs.namenode.
 
 case "${SHARED_EDITS_DIR}" in
   qjournal://*)
+    # shellcheck disable=SC2001
     JOURNAL_NODES=$(echo "${SHARED_EDITS_DIR}" | sed 's,qjournal://\([^/]*\)/.*,\1,g; s/;/ /g; s/:[0-9]*//g')
     echo "Stopping journal nodes [${JOURNAL_NODES}]"
 

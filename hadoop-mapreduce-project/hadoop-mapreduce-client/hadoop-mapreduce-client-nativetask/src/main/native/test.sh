@@ -28,9 +28,9 @@ fi
 
 if [ "${SYSTEM_MAC}" = "TRUE" ]; then
   # MACOSX already setup RPATH, no extra help required
-  ./nttest $FILTER $@
+  ./nttest "${FILTER}" "${@}"
 else
-  JAVA_JVM_LIBRARY_DIR=`dirname ${JAVA_JVM_LIBRARY}`
-  LD_LIBRARY_PATH=$JAVA_JVM_LIBRARY_DIR:$LD_LIBRARY_PATH ./nttest $FILTER $@
+  JAVA_JVM_LIBRARY_DIR=$(dirname "${JAVA_JVM_LIBRARY}")
+  LD_LIBRARY_PATH=$JAVA_JVM_LIBRARY_DIR:$LD_LIBRARY_PATH ./nttest "${FILTER}" "${@}"
 fi
 

@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
 # this work for additional information regarding copyright ownership.
@@ -26,8 +27,10 @@ function hadoop_subproject_init
 
   if [[ -z "${HADOOP_YARN_ENV_PROCESSED}" ]]; then
     if [[ -e "${YARN_CONF_DIR}/yarn-env.sh" ]]; then
+      # shellcheck disable=SC1090
       . "${YARN_CONF_DIR}/yarn-env.sh"
     elif [[ -e "${HADOOP_CONF_DIR}/yarn-env.sh" ]]; then
+      # shellcheck disable=SC1090
       . "${HADOOP_CONF_DIR}/yarn-env.sh"
     fi
     export HADOOP_YARN_ENV_PROCESSED=true
@@ -72,10 +75,13 @@ fi
 # shellcheck source=./hadoop-common-project/hadoop-common/src/main/bin/hadoop-config.sh
 if [[ -n "${HADOOP_COMMON_HOME}" ]] &&
    [[ -e "${HADOOP_COMMON_HOME}/libexec/hadoop-config.sh" ]]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_COMMON_HOME}/libexec/hadoop-config.sh"
 elif [[ -e "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh" ]]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh"
 elif [ -e "${HADOOP_HOME}/libexec/hadoop-config.sh" ]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_HOME}/libexec/hadoop-config.sh"
 else
   echo "ERROR: Hadoop common not found." 2>&1

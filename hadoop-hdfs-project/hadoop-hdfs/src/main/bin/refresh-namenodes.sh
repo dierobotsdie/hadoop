@@ -33,6 +33,7 @@ HADOOP_LIBEXEC_DIR="${HADOOP_LIBEXEC_DIR:-$HADOOP_DEFAULT_LIBEXEC_DIR}"
 # shellcheck disable=SC2034
 HADOOP_NEW_CONFIG=true
 if [[ -f "${HADOOP_LIBEXEC_DIR}/hdfs-config.sh" ]]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_LIBEXEC_DIR}/hdfs-config.sh"
 else
   echo "ERROR: Cannot execute ${HADOOP_LIBEXEC_DIR}/hdfs-config.sh." 2>&1
@@ -40,14 +41,14 @@ else
 fi
 
 namenodes=$("${HADOOP_HDFS_HOME}/bin/hdfs" getconf -nnRpcAddresses)
-if [[ "$?" != '0' ]] ; then
+ret=$?
+if [[ "${ret}" != '0' ]] ; then
   errorFlag='1' ;
 else
   for namenode in ${namenodes} ; do
     echo "Refreshing namenode [${namenode}]"
-    "${HADOOP_HDFS_HOME}/bin/hdfs" dfsadmin \
-    -fs hdfs://${namenode} -refreshNodes
-    if [[ "$?" != '0' ]]; then
+    if "${HADOOP_HDFS_HOME}/bin/hdfs" dfsadmin \
+          -fs "hdfs://${namenode}" -refreshNodes; then
       errorFlag='1'
     fi
   done

@@ -33,12 +33,13 @@
 # After this command, run refresh-namenodes.sh so that namenodes start
 # using the new exclude file.
 
-bin=`dirname "$0"`
-bin=`cd "$bin"; pwd`
+bin=$(dirname "$0")
+bin=$(cd "$bin" && pwd)
 
 HADOOP_DEFAULT_LIBEXEC_DIR="$bin"/../libexec
 HADOOP_LIBEXEC_DIR=${HADOOP_LIBEXEC_DIR:-$HADOOP_DEFAULT_LIBEXEC_DIR}
-. $HADOOP_LIBEXEC_DIR/hdfs-config.sh
+# shellcheck disable=SC1090
+. "${HADOOP_LIBEXEC_DIR}/hdfs-config.sh"
 
 if [ "$1" = '' ] ; then
   "Error: please specify local exclude file as a first argument"
@@ -67,8 +68,9 @@ echo "Copying exclude file [$excludeFilenameRemote] to namenodes:"
 
 for namenode in $namenodes ; do
   echo "    [$namenode]"
-  scp "$excludeFilenameLocal" "$namenode:$excludeFilenameRemote"
-  if [ "$?" != '0' ] ; then errorFlag='1' ; fi
+  if ! scp "$excludeFilenameLocal" "$namenode:$excludeFilenameRemote"; then
+    errorFlag='1'
+  fi
 done
 
 if [ "$errorFlag" = '1' ] ; then

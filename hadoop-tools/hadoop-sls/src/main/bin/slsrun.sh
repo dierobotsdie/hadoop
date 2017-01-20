@@ -109,7 +109,7 @@ function run_simulation() {
   hadoop_add_client_opts
 
   hadoop_finalize
-  # shellcheck disable=SC2086
+  # shellcheck disable=SC2086,SC2154
   hadoop_java_exec sls org.apache.hadoop.yarn.sls.SLSRunner ${args}
 }
 
@@ -126,6 +126,7 @@ HADOOP_LIBEXEC_DIR="${HADOOP_LIBEXEC_DIR:-$HADOOP_DEFAULT_LIBEXEC_DIR}"
 # shellcheck disable=SC2034
 HADOOP_NEW_CONFIG=true
 if [[ -f "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh" ]]; then
+  # shellcheck disable=SC1090
   . "${HADOOP_LIBEXEC_DIR}/hadoop-config.sh"
 else
   echo "ERROR: Cannot execute ${HADOOP_LIBEXEC_DIR}/hadoop-config.sh." 2>&1

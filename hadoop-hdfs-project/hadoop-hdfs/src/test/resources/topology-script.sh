@@ -17,5 +17,5 @@
 # limitations under the License.
 
 
-echo $1 | awk -F'-' '{printf("/rackID-%s",$2)}'
+echo "$1" | awk -F'-' '{printf("/rackID-%s",$2)}'
 
