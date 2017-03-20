@@ -325,7 +325,7 @@ esac
 # defined if SASL is configured for authentication of data transfer protocol
 # using non-privileged ports.
 # This will replace the hadoop.id.str Java property in secure mode.
-# export HADOOP_SECURE_DN_USER=hdfs
+# export HDFS_DATANODE_SECURE_USER=hdfs
 
 # Supplemental options for secure datanodes
 # By default, Hadoop uses jsvc which needs to know to launch a
@@ -361,7 +361,7 @@ esac
 
 # On privileged gateways, user to run the gateway as after dropping privileges
 # This will replace the hadoop.id.str Java property in secure mode.
-# export HADOOP_PRIVILEGED_NFS_USER=nfsserver
+# export HDFS_NFS3_SECURE_USER=nfsserver
 
 ###
 # ZKFailoverController specific parameters

@@ -52,6 +52,8 @@ if [[ -z "${HADOOP_LIBEXEC_DIR}" ]]; then
   HADOOP_LIBEXEC_DIR=$(cd -P -- "$(dirname -- "${_hadoop_common_this}")" >/dev/null && pwd -P)
 fi
 
+# shellcheck source=./hadoop-common-project/hadoop-common/src/main/bin/hadoop-functions.sh
+
 # get our functions defined for usage later
 if [[ -n "${HADOOP_COMMON_HOME}" ]] &&
    [[ -e "${HADOOP_COMMON_HOME}/libexec/hadoop-functions.sh" ]]; then

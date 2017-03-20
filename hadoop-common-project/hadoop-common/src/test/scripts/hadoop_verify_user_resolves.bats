@@ -15,7 +15,31 @@
 
 load hadoop-functions_test_helper
 
-@test "hadoop_get_verify_uservar" {
-  run hadoop_get_verify_uservar cool program
-  [ "${output}" = "COOL_PROGRAM_USER" ]
+@test "hadoop_verify_user_resolves (bad: null)" {
+  run hadoop_verify_user_resolves
+  [ "${status}" = "1" ]
 }
+
+@test "hadoop_verify_user_resolves (bad: var string)" {
+  run hadoop_verify_user_resolves PrObAbLyWiLlNoTeXiSt
+  [ "${status}" = "1" ]
+}
+
+@test "hadoop_verify_user_resolves (bad: number as var)" {
+  run hadoop_verify_user_resolves 501
+  [ "${status}" = "1" ]
+}
+
+@test "hadoop_verify_user_resolves (good: name)" {
+  myvar=$(id -u -n)
+  run hadoop_verify_user_resolves myvar
+  [ "${status}" = "0" ]
+}
+
+
+@test "hadoop_verify_user_resolves (good: number)" {
+  myvar=1
+  run hadoop_verify_user_resolves myvar
+  [ "${status}" = "0" ]
+}
+
