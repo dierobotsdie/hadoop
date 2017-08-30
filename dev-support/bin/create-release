@@ -174,6 +174,12 @@ function domd5()
   run "${MD5SUM}" "${1}" > "${1}.md5"
 }
 
+function locate_jvm()
+{
+  JAVA_HOME=$(ls -d /usr/lib/jvm/*${JVM_VERSION}* | grep "${JVM_HINT}" | head -1 )
+  export JAVA_HOME
+}
+
 function header()
 {
   echo
@@ -187,6 +193,7 @@ function header()
   echo "Version to create      : ${HADOOP_VERSION}"
   echo "Release Candidate Label: ${RC_LABEL##-}"
   echo "Source Version         : ${DEFAULT_HADOOP_VERSION}"
+  echo "Using JDK              : ${JAVA_HOME}"
   printf "\n\n"
 }
 
@@ -285,6 +292,7 @@ function usage
   echo "--asfrelease            Make an ASF release"
   echo "--docker                Use Hadoop's Dockerfile for guaranteed environment"
   echo "--dockercache           Use a Docker-private maven cache"
+  echo "--jvmhint=[filter]      Simple filter to pick a JVM to use"
   echo "--logdir=[path]         Path to store logs"
   echo "--mvncache=[path]       Path to the maven cache to use"
   echo "--native                Also build the native components"
@@ -320,6 +328,9 @@ function option_parse
       ;;
       --indocker)
         INDOCKER=true
+      ;;
+      --jvmhint=*)
+        JVMHINT=${i#*=}
       ;;
       --logdir=*)
         LOGDIR=${i#*=}
@@ -489,9 +500,6 @@ function dockermode
     echo "RUN mkdir -p /maven"
     echo "RUN chown -R ${user_name} /maven"
 
-    # we always force build with the Oracle JDK
-    # but with the correct version
-    echo "ENV JAVA_HOME /usr/lib/jvm/java-${JVM_VERSION}-oracle"
     echo "USER ${user_name}"
     printf "\n\n"
   ) | docker build -t "${imgname}" -
@@ -654,6 +662,8 @@ set_defaults
 option_parse "${PARAMS[@]}"
 
 dockermode
+
+locate_jvm
 
 header
 

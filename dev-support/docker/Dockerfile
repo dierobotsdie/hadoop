@@ -19,7 +19,7 @@
 # See BUILDING.txt.
 
 
-FROM ubuntu:trusty
+FROM ubuntu:xenial
 
 WORKDIR /root
 
@@ -33,9 +33,9 @@ ENV DEBCONF_TERSE true
 # Ubuntu Java.  See Java section below!
 ######
 RUN apt-get -q update && apt-get -q install --no-install-recommends -y \
+    apt-utils \
     build-essential \
     bzip2 \
-    cmake \
     curl \
     doxygen \
     fuse \
@@ -43,7 +43,6 @@ RUN apt-get -q update && apt-get -q install --no-install-recommends -y \
     gcc \
     git \
     gnupg-agent \
-    make \
     libbz2-dev \
     libcurl4-openssl-dev \
     libfuse-dev \
@@ -52,48 +51,61 @@ RUN apt-get -q update && apt-get -q install --no-install-recommends -y \
     libsnappy-dev \
     libssl-dev \
     libtool \
+    locales \
+    make \
     pinentry-curses \
     pkg-config \
-    protobuf-compiler \
-    protobuf-c-compiler \
     python \
     python2.7 \
-    python2.7-dev \
     python-pip \
+    python-pkg-resources \
+    python-setuptools \
+    python-wheel \
     rsync \
+    software-properties-common \
     snappy \
+    sudo \
     zlib1g-dev
 
 #######
-# Oracle Java
+# OpenJDK 8
 #######
+RUN apt-get -q install --no-install-recommends -y \
+   openjdk-8-jdk
 
-RUN echo "dot_style = mega" > "/root/.wgetrc"
-RUN echo "quiet = on" >> "/root/.wgetrc"
+######
+# Install cmake 3.1.0
+######
+RUN mkdir -p /opt/cmake && \
+    curl -L -s -S \
+         https://cmake.org/files/v3.1/cmake-3.1.0-Linux-x86_64.tar.gz \
+         -o /opt/cmake.tar.gz && \
+    tar xzf /opt/cmake.tar.gz --strip-components 1 -C /opt/cmake
+ENV CMAKE_HOME /opt/cmake
+ENV PATH "${PATH}:/opt/cmake/bin"
 
-RUN apt-get -q install --no-install-recommends -y software-properties-common
-RUN add-apt-repository -y ppa:webupd8team/java
-RUN apt-get -q update
-
-# Auto-accept the Oracle JDK license
-RUN echo oracle-java8-installer shared/accepted-oracle-license-v1-1 select true | sudo /usr/bin/debconf-set-selections
-RUN apt-get -q install --no-install-recommends -y oracle-java8-installer
-
-####
-# Apps that require Java
-###
-RUN apt-get -q update && apt-get -q install --no-install-recommends -y ant
+######
+# Install Google Protobuf 2.5.0
+######
+RUN mkdir -p /opt/protobuf-src && \
+    curl -L -s -S \
+         https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.5.0.tar.gz \
+         -o /opt/protobuf.tar.gz && \
+    tar xzf /opt/protobuf.tar.gz --strip-components 1 -C /opt/protobuf-src
+RUN cd /opt/protobuf-src && ./configure --prefix=/opt/protobuf && make install
+ENV PROTOBUF_HOME /opt/protobuf
+ENV PATH "${PATH}:/opt/protobuf/bin"
 
 ######
 # Install Apache Maven
 ######
 RUN mkdir -p /opt/maven && \
     curl -L -s -S \
-         http://www-us.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz \
+         https://www-us.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz \
          -o /opt/maven.tar.gz && \
     tar xzf /opt/maven.tar.gz --strip-components 1 -C /opt/maven
 ENV MAVEN_HOME /opt/maven
-ENV PATH "$PATH:/opt/maven/bin"
+ENV PATH "${PATH}:/opt/maven/bin"
 
 ######
 # Install findbugs
@@ -104,6 +116,7 @@ RUN mkdir -p /opt/findbugs && \
          -o /opt/findbugs.tar.gz && \
     tar xzf /opt/findbugs.tar.gz --strip-components 1 -C /opt/findbugs
 ENV FINDBUGS_HOME /opt/findbugs
+ENV PATH "${PATH}:/opt/findbugs/bin"
 
 ####
 # Install shellcheck
@@ -126,12 +139,12 @@ RUN apt-get -q install --no-install-recommends -y bats
 ####
 # Install pylint
 ####
-RUN pip install pylint
+RUN pip2 install pylint
 
 ####
 # Install dateutil.parser
 ####
-RUN pip install python-dateutil
+RUN pip2 install python-dateutil
 
 ###
 # Avoid out of memory errors in builds
@@ -155,8 +168,11 @@ RUN apt-get -y install nodejs && \
 ###
 
 ####
-# Install Forrest (for Apache Hadoop website)
+# Install Ant & Forrest (for Apache Hadoop website)
 ###
+RUN apt-get -q update && apt-get -q install --no-install-recommends -y ant
+
+
 RUN mkdir -p /usr/local/apache-forrest ; \
     curl -s -S -O http://archive.apache.org/dist/forrest/0.8/apache-forrest-0.8.tar.gz ; \
     tar xzf *forrest* --strip-components 1 -C /usr/local/apache-forrest ; \
